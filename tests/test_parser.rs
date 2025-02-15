@@ -1,11 +1,14 @@
 use anyhow::anyhow;
-use inbq::{parser::{Parser, Query}, scanner::Scanner};
+use inbq::{
+    parser::{Parser, Query},
+    scanner::Scanner,
+};
 
 fn parse_sql(sql: &str) -> anyhow::Result<Query> {
     let mut scanner = Scanner::new(sql);
     let tokens = scanner.scan();
     if scanner.had_error {
-        return Err(anyhow!("scanner error"))
+        return Err(anyhow!("scanner error"));
     }
     let mut parser = Parser::new(&tokens);
     let ast = parser.parse()?;
@@ -15,12 +18,11 @@ fn parse_sql(sql: &str) -> anyhow::Result<Query> {
 #[test]
 fn test_can_parse() {
     let sqls = [
-      r#"
+        r#"
       select *
       from `project.dataset.table`
       "#,
-
-      r#"
+        r#"
       select
           --this is a comment
           'pippo' as pippo,
@@ -40,27 +42,23 @@ fn test_can_parse() {
       where 1=1
       order by c desc
       "#,
-
-      r#"
+        r#"
       with tmp as (with inner_tmp as (select 1 as x) select * from inner_tmp)
       select * from tmp
       "#,
-
-      r#"
+        r#"
       with tmp as (with inner_tmp as (select 1 as x) select * from inner_tmp)
       select *
       "#,
-
-      r#"
+        r#"
       with tmp as (select 1 as x), tmp2 as (select 2 as y union all (select 2 as y))
       select *
       from tmp inner join tmp d using (x) left join tmp as dd on dd.x = d.x
       "#,
-
-      r#"
+        r#"
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
       SELECT n FROM T1
-      "#
+      "#,
     ];
     for sql in sqls {
         println!("Testing parser for SQL: {}", sql);

@@ -1,13 +1,16 @@
 use anyhow::{anyhow, Ok};
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display}
+    fmt::{Debug, Display},
 };
 
-use crate::{parser::{
-    ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, LiteralExpr, QueryExpr,
-    SelectColExpr, SelectQueryExpr, With,
-}, scanner::TokenLiteral};
+use crate::{
+    parser::{
+        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, LiteralExpr, QueryExpr,
+        SelectColExpr, SelectQueryExpr, With,
+    },
+    scanner::TokenLiteral,
+};
 
 #[derive(Debug, Clone)]
 pub enum NodeName {
@@ -148,7 +151,7 @@ impl Context {
     fn get_object(&self, key: &String) -> Option<&ContextObject> {
         for i in (0..self.objects_stack.len()).rev() {
             if self.objects_stack[i].name == *key {
-                return Some(&self.objects_stack[i])
+                return Some(&self.objects_stack[i]);
             }
         }
         None
@@ -218,8 +221,7 @@ impl Lineage {
                 };
                 self.context
                     .update_output_lineage_from_nodes(&cte_ctx.lineage_nodes);
-                self.context
-                    .add_object(cte_ctx);
+                self.context.add_object(cte_ctx);
             }
             Cte::Recursive(recursive_cte) => todo!(),
         }
@@ -526,13 +528,21 @@ impl Lineage {
                             .lineage_nodes
                             .iter()
                             .find(|n| n.name.string() == col_name)
-                            .ok_or(anyhow!("Cannot find column {:?} in table {:?}.", col_name, left_join_table.name))?
+                            .ok_or(anyhow!(
+                                "Cannot find column {:?} in table {:?}.",
+                                col_name,
+                                left_join_table.name
+                            ))?
                             .clone();
                         let right_lineage_node = right_join_table
                             .lineage_nodes
                             .iter()
                             .find(|n| n.name.string() == col_name)
-                            .ok_or(anyhow!("Cannot find column {:?} in table {:?}.", col_name, right_join_table.name))?
+                            .ok_or(anyhow!(
+                                "Cannot find column {:?} in table {:?}.",
+                                col_name,
+                                right_join_table.name
+                            ))?
                             .clone();
                         lineage_nodes.push(LineageNode {
                             name: NodeName::Defined(col.lexeme(None)),
@@ -571,7 +581,7 @@ impl Lineage {
                 //     TokenLiteral::Number(_) => unreachable!(),
                 // }}).fold(String::from(""), |acc, el| {format!("{}{}", acc, el.to_string())});
                 let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
-            
+
                 // We first check whether it is a context object (cte), otherwise we check for source tables
                 let table_like_obj = self
                     .context
@@ -604,9 +614,13 @@ impl Lineage {
                 let start_lineage_len = self.context.lineage_stack.len();
                 self.query_expr_lin(&from_grouping_query_expr.query_expr)?;
                 let curr_lineage_len = self.context.lineage_stack.len();
-                let source_name = &from_grouping_query_expr.alias.as_ref().map(|alias| alias.lexeme(None));
+                let source_name = &from_grouping_query_expr
+                    .alias
+                    .as_ref()
+                    .map(|alias| alias.lexeme(None));
 
-                let lineage_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len, source_name);
+                let lineage_nodes =
+                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len, source_name);
                 let table_like = ContextObject {
                     name: lineage_nodes[0].source.clone(),
                     lineage_nodes,

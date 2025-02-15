@@ -5,10 +5,9 @@ use lineage::compute_lineage;
 use parser::{AstPrinter, Parser, Query};
 use scanner::Scanner;
 
+pub mod lineage;
 pub mod parser;
 pub mod scanner;
-pub mod lineage;
-
 
 // TOOD: return a Result
 fn parse(sql: &str) -> anyhow::Result<Query> {
@@ -45,7 +44,7 @@ fn main() -> anyhow::Result<()> {
                     println!("Parsed AST: {:?}\n\n", statement);
                     let output_lineage = compute_lineage(&statement.query_expr)?;
                     println!("Output lineage: {:?}.", output_lineage);
-                },
+                }
                 None => println!("Empty query."),
             }
         }

@@ -99,7 +99,6 @@ pub enum TokenLiteral {
     Number(f64),
 }
 
-
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenType,
@@ -165,7 +164,8 @@ impl Scanner {
     }
 
     fn n_peek(&mut self, n: i32) -> Option<&[char]> {
-        self.source_chars.get(self.current as usize..(self.current+n) as usize)
+        self.source_chars
+            .get(self.current as usize..(self.current + n) as usize)
     }
 
     fn match_char(&mut self, expected: char) -> bool {
@@ -197,13 +197,15 @@ impl Scanner {
     }
 
     fn current_source_str(&self) -> String {
-        self.source_chars[self.start as usize..self.current as usize].iter().collect()
+        self.source_chars[self.start as usize..self.current as usize]
+            .iter()
+            .collect()
     }
 
     fn reset(&mut self) {
         self.tokens.clear();
         self.start = 0;
-        self.current= 0;
+        self.current = 0;
         self.line = 1;
         self.had_error = false;
     }
@@ -214,7 +216,12 @@ impl Scanner {
             self.start = self.current;
             self.scan_token();
         }
-        self.tokens.push(Token { kind: TokenType::Eof, lexeme: String::from("eof"), literal: None, line: self.line });
+        self.tokens.push(Token {
+            kind: TokenType::Eof,
+            lexeme: String::from("eof"),
+            literal: None,
+            line: self.line,
+        });
         self.tokens.clone()
     }
 
@@ -225,7 +232,16 @@ impl Scanner {
             let peek_char = self.peek();
 
             if peek_char == '\0' {
-                self.add_token_w_literal(TokenType::Number, TokenLiteral::Number(self.source_chars[self.start as usize..(self.current as usize)].iter().collect::<String>().parse().unwrap()));
+                self.add_token_w_literal(
+                    TokenType::Number,
+                    TokenLiteral::Number(
+                        self.source_chars[self.start as usize..(self.current as usize)]
+                            .iter()
+                            .collect::<String>()
+                            .parse()
+                            .unwrap(),
+                    ),
+                );
                 break;
             }
 
@@ -259,7 +275,16 @@ impl Scanner {
             } else if peek_char.is_ascii_digit() {
                 self.advance();
             } else {
-                self.add_token_w_literal(TokenType::Number, TokenLiteral::Number(self.source_chars[self.start as usize..(self.current as usize)].iter().collect::<String>().parse().unwrap()));
+                self.add_token_w_literal(
+                    TokenType::Number,
+                    TokenLiteral::Number(
+                        self.source_chars[self.start as usize..(self.current as usize)]
+                            .iter()
+                            .collect::<String>()
+                            .parse()
+                            .unwrap(),
+                    ),
+                );
                 break;
             }
         }
@@ -273,7 +298,14 @@ impl Scanner {
                 break;
             }
             if self.match_char(delimiter) {
-                self.add_token_w_literal(TokenType::String, TokenLiteral::String(self.source_chars[self.start as usize + 1..self.current as usize - 1].iter().collect::<String>()));
+                self.add_token_w_literal(
+                    TokenType::String,
+                    TokenLiteral::String(
+                        self.source_chars[self.start as usize + 1..self.current as usize - 1]
+                            .iter()
+                            .collect::<String>(),
+                    ),
+                );
                 break;
             }
             if peek_char == '\n' {
@@ -291,7 +323,9 @@ impl Scanner {
             }
             self.advance();
         }
-        let identifer: String = self.source_chars[self.start as usize..self.current as usize].iter().collect();
+        let identifer: String = self.source_chars[self.start as usize..self.current as usize]
+            .iter()
+            .collect();
         match identifer.to_lowercase().as_str() {
             "limit" => self.add_token(TokenType::Limit),
             "offset" => self.add_token(TokenType::Offset),
@@ -334,7 +368,10 @@ impl Scanner {
             "distinct" => self.add_token(TokenType::Distinct),
             "intersect" => self.add_token(TokenType::Intersect),
             "except" => self.add_token(TokenType::Except),
-            _ => self.add_token_w_literal(TokenType::Identifier, TokenLiteral::String(self.current_source_str())),
+            _ => self.add_token_w_literal(
+                TokenType::Identifier,
+                TokenLiteral::String(self.current_source_str()),
+            ),
         }
     }
 
@@ -356,10 +393,8 @@ impl Scanner {
                 } else {
                     self.add_token(TokenType::Dot);
                 }
-            },
-            '+' => {
-                self.add_token(TokenType::Plus)
             }
+            '+' => self.add_token(TokenType::Plus),
             '=' => self.add_token(TokenType::Equal),
             '/' => {
                 if self.match_char('*') {
@@ -368,7 +403,13 @@ impl Scanner {
                             self.line += 1;
                         }
                         let peek_chars = self.n_peek(2);
-                        if peek_chars.is_none() || peek_chars.unwrap().iter().zip("*/".chars()).all(|(&c1, c2)| c1==c2) {
+                        if peek_chars.is_none()
+                            || peek_chars
+                                .unwrap()
+                                .iter()
+                                .zip("*/".chars())
+                                .all(|(&c1, c2)| c1 == c2)
+                        {
                             self.n_advance(2);
                             break;
                         }
@@ -403,7 +444,7 @@ impl Scanner {
                     self.add_token(TokenType::NotEqual);
                 } else if self.match_char('=') {
                     self.add_token(TokenType::LessEqual);
-                } else if self.match_char('<'){
+                } else if self.match_char('<') {
                     self.add_token(TokenType::BitwiseLeftShift);
                 } else {
                     self.add_token(TokenType::Less);
@@ -444,19 +485,19 @@ impl Scanner {
             '\n' => {
                 self.line += 1;
             }
-            '\r' | ' ' | '\t' => { }
+            '\r' | ' ' | '\t' => {}
 
             // strings
             // TODO: we should also handle triple quoted strings
-            c if c == '\'' || c == '"'  => {
+            c if c == '\'' || c == '"' => {
                 // TODO: biquery supports also escaped sequences. We should handle them.
                 self.match_string(c);
-            },
+            }
 
             // numeric
             c if c.is_ascii_digit() => {
                 self.match_number();
-            },
+            }
 
             // Keywords and identifiers
             c if c.is_alphabetic() || c == '_' => {
@@ -464,15 +505,23 @@ impl Scanner {
             }
 
             '`' => {
-                let quoted_ident_start_idx = self.current-1;
+                let quoted_ident_start_idx = self.current - 1;
                 loop {
                     let curr_char = self.advance();
                     if curr_char == '`' {
-                        let quoted_ident_end_idx = self.current-1;
-                        if quoted_ident_end_idx == quoted_ident_start_idx+1 {
+                        let quoted_ident_end_idx = self.current - 1;
+                        if quoted_ident_end_idx == quoted_ident_start_idx + 1 {
                             self.error("Found empty quoted identifier.");
                         }
-                        self.add_token_w_literal(TokenType::QuotedIdentifier, TokenLiteral::String(self.source_chars[(quoted_ident_start_idx+1) as usize..quoted_ident_end_idx as usize].iter().collect::<String>()));
+                        self.add_token_w_literal(
+                            TokenType::QuotedIdentifier,
+                            TokenLiteral::String(
+                                self.source_chars[(quoted_ident_start_idx + 1) as usize
+                                    ..quoted_ident_end_idx as usize]
+                                    .iter()
+                                    .collect::<String>(),
+                            ),
+                        );
                         break;
                     }
                     if self.peek() == '\0' {

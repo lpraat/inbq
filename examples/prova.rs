@@ -1,5 +1,11 @@
-use std::{borrow::BorrowMut, cell::RefCell, error::Error, fmt::{format, Display}, rc::Rc};
 use anyhow::{anyhow, Context};
+use std::{
+    borrow::BorrowMut,
+    cell::RefCell,
+    error::Error,
+    fmt::{format, Display},
+    rc::Rc,
+};
 
 // struct Base{
 //     x: i32,
@@ -10,17 +16,16 @@ use anyhow::{anyhow, Context};
 //     base: Base,
 //     z: i32
 // }
-// 
-// 
-// 
-// 
-// 
+//
+//
+//
+//
+//
 use self::B::Base;
 
 enum B {
-    Base()
-} 
-
+    Base(),
+}
 
 fn main() {
     Base();
