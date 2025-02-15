@@ -54,7 +54,7 @@ with
                 f1.g+d.g as y
             from
                 f1
-                inner join project.dataset.table as d using (x, y)
+                inner join tmp as d using (x, y)
                 inner join tmp2 using (y)
         )
     )

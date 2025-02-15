@@ -91,7 +91,7 @@ pub enum ContextObjectKind {
 #[derive(Debug, Clone)]
 struct Context {
     source_objects: HashMap<String, ContextObject>,
-    objects_stack: Vec<HashMap<String, ContextObject>>,
+    objects_stack: Vec<ContextObject>,
     stack: Vec<HashMap<String, ContextObject>>,
     columns_stack: Vec<HashMap<String, Vec<String>>>,
     lineage_stack: Vec<LineageNode>,
@@ -147,15 +147,15 @@ impl Context {
 
     fn get_object(&self, key: &String) -> Option<&ContextObject> {
         for i in (0..self.objects_stack.len()).rev() {
-            if let Some(ctx_obj) = self.objects_stack[i].get(key) {
-                return Some(ctx_obj);
+            if self.objects_stack[i].name == *key {
+                return Some(&self.objects_stack[i])
             }
         }
         None
     }
 
-    fn add_object(&mut self, map: HashMap<String, ContextObject>) {
-        self.objects_stack.push(map);
+    fn add_object(&mut self, object: ContextObject) {
+        self.objects_stack.push(object);
     }
 
     fn pop_object(&mut self) {
@@ -219,7 +219,7 @@ impl Lineage {
                 self.context
                     .update_output_lineage_from_nodes(&cte_ctx.lineage_nodes);
                 self.context
-                    .add_object(HashMap::from([(cte_name.clone(), cte_ctx)]));
+                    .add_object(cte_ctx);
             }
             Cte::Recursive(recursive_cte) => todo!(),
         }
@@ -699,13 +699,13 @@ pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
         output: vec![],
         source_objects: HashMap::from([
             (
-                String::from("project.dataset.table"),
+                String::from("tmp"),
                 ContextObject {
                     kind: ContextObjectKind::Table,
-                    name: String::from("project.dataset.table"),
+                    name: String::from("tmp"),
                     lineage_nodes: vec![LineageNode {
                         name: NodeName::Defined(String::from("z")),
-                        source: String::from("project.dataset.table"),
+                        source: String::from("tmp"),
                         input: vec![],
                     }],
                 },
