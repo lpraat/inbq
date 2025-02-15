@@ -224,9 +224,9 @@ pub enum FromExpr {
 
 #[derive(Debug, Clone)]
 pub struct CrossJoinExpr {
-    left: Box<FromExpr>,
-    join: ParseToken,
-    right: Box<FromExpr>,
+    pub left: Box<FromExpr>,
+    pub join: ParseToken,
+    pub right: Box<FromExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,7 +256,7 @@ pub struct FromPathExpr {
 
 #[derive(Debug, Clone)]
 pub struct GroupingFromExpr {
-    query_expr: Box<FromExpr>,
+    pub query_expr: Box<FromExpr>,
 }
 
 #[derive(Debug, Clone)]

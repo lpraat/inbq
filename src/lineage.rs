@@ -6,8 +6,7 @@ use std::{
 
 use crate::{
     parser::{
-        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, LiteralExpr, QueryExpr,
-        SelectColExpr, SelectQueryExpr, With,
+        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, QueryExpr, SelectColExpr, SelectQueryExpr, With
     },
     scanner::TokenLiteral,
 };
@@ -494,6 +493,7 @@ impl Lineage {
         Ok(())
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_expr_lin(
         &mut self,
         from_expr: &FromExpr,
@@ -501,85 +501,14 @@ impl Lineage {
         joined_tables: &mut Vec<ContextObject>,
     ) -> anyhow::Result<()> {
         match from_expr {
-            FromExpr::Join(join_expr) => {
-                self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
-                self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
-                if let JoinCondition::Using(using_columns) = &join_expr.cond {
-                    let mut joined_table_names: Vec<String> = vec![];
-                    let mut lineage_nodes = vec![];
-                    let from_tables_len = from_tables.len();
-
-                    let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
-                    let left_join_table: &mut ContextObject = if !joined_tables.is_empty() {
-                        // We have already joined two tables
-                        joined_tables.last_mut().unwrap()
-                    } else {
-                        // This is the first join, which corresponds to index -2 in the original from_tables
-                        from_tables_split.0.last_mut().unwrap()
-                    };
-                    joined_table_names.push(left_join_table.name.clone());
-
-                    let right_join_table = &mut from_tables_split.1.last_mut().unwrap();
-                    joined_table_names.push(right_join_table.name.clone());
-
-                    for col in using_columns {
-                        let col_name = col.lexeme(None);
-                        let left_lineage_node = left_join_table
-                            .lineage_nodes
-                            .iter()
-                            .find(|n| n.name.string() == col_name)
-                            .ok_or(anyhow!(
-                                "Cannot find column {:?} in table {:?}.",
-                                col_name,
-                                left_join_table.name
-                            ))?
-                            .clone();
-                        let right_lineage_node = right_join_table
-                            .lineage_nodes
-                            .iter()
-                            .find(|n| n.name.string() == col_name)
-                            .ok_or(anyhow!(
-                                "Cannot find column {:?} in table {:?}.",
-                                col_name,
-                                right_join_table.name
-                            ))?
-                            .clone();
-                        lineage_nodes.push(LineageNode {
-                            name: NodeName::Defined(col.lexeme(None)),
-                            source: String::from(""),
-                            input: vec![left_lineage_node, right_lineage_node],
-                        });
-                    }
-                    let joined_table_name = joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        });
-                    let table_like = ContextObject {
-                        name: joined_table_name.clone(),
-                        lineage_nodes: lineage_nodes
-                            .into_iter()
-                            .map(|n| LineageNode {
-                                name: n.name,
-                                source: joined_table_name.clone(),
-                                input: n.input,
-                            })
-                            .collect(),
-                        kind: ContextObjectKind::UsingTable,
-                    };
-                    self.context
-                        .update_output_lineage_from_nodes(&table_like.lineage_nodes);
-                    joined_tables.push(table_like);
-                }
-            }
-            FromExpr::LeftJoin(join_expr) => todo!(),
-            FromExpr::RightJoin(join_expr) => todo!(),
-            FromExpr::CrossJoin(cross_join_expr) => todo!(),
+            FromExpr::Join(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
+            FromExpr::LeftJoin(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
+            FromExpr::RightJoin(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
+            FromExpr::CrossJoin(cross_join_expr) => {
+                self.from_expr_lin(&cross_join_expr.left, from_tables, joined_tables)?;
+                self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?;
+            },
             FromExpr::Path(from_path_expr) => {
-                // let table_name = from_path_expr.path_expr.path.literal().iter().map(|&el| {match el.clone().unwrap() {
-                //     TokenLiteral::String(s) => s,
-                //     TokenLiteral::Number(_) => unreachable!(),
-                // }}).fold(String::from(""), |acc, el| {format!("{}{}", acc, el.to_string())});
                 let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
 
                 // We first check whether it is a context object (cte), otherwise we check for source tables
@@ -632,11 +561,84 @@ impl Lineage {
 
                 self.add_new_from_table(from_tables, table_like)?;
             }
-            FromExpr::GroupingFrom(grouping_from_expr) => todo!(),
+            FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(&grouping_from_expr.query_expr, from_tables, joined_tables)?,
         }
         Ok(())
     }
 
+    fn join_expr_lineage(&mut self, join_expr: &JoinExpr, from_tables: &mut Vec<ContextObject>, joined_tables: &mut Vec<ContextObject>) -> anyhow::Result<()> {
+        self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
+        self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
+        if let JoinCondition::Using(using_columns) = &join_expr.cond {
+            let mut joined_table_names: Vec<String> = vec![];
+            let mut lineage_nodes = vec![];
+            let from_tables_len = from_tables.len();
+
+            let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
+            let left_join_table: &mut ContextObject = if !joined_tables.is_empty() {
+                // We have already joined two tables
+                joined_tables.last_mut().unwrap()
+            } else {
+                // This is the first join, which corresponds to index -2 in the original from_tables
+                from_tables_split.0.last_mut().unwrap()
+            };
+            joined_table_names.push(left_join_table.name.clone());
+
+            let right_join_table = &mut from_tables_split.1.last_mut().unwrap();
+            joined_table_names.push(right_join_table.name.clone());
+
+            for col in using_columns {
+                let col_name = col.lexeme(None);
+                let left_lineage_node = left_join_table
+                    .lineage_nodes
+                    .iter()
+                    .find(|n| n.name.string() == col_name)
+                    .ok_or(anyhow!(
+                        "Cannot find column {:?} in table {:?}.",
+                        col_name,
+                        left_join_table.name
+                    ))?
+                    .clone();
+                let right_lineage_node = right_join_table
+                    .lineage_nodes
+                    .iter()
+                    .find(|n| n.name.string() == col_name)
+                    .ok_or(anyhow!(
+                        "Cannot find column {:?} in table {:?}.",
+                        col_name,
+                        right_join_table.name
+                    ))?
+                    .clone();
+                lineage_nodes.push(LineageNode {
+                    name: NodeName::Defined(col.lexeme(None)),
+                    source: String::from(""),
+                    input: vec![left_lineage_node, right_lineage_node],
+                });
+            }
+            let joined_table_name = joined_table_names
+                .into_iter()
+                .fold(String::from("join"), |acc, name| {
+                    format!("{}_{}", acc, name)
+                });
+            let table_like = ContextObject {
+                name: joined_table_name.clone(),
+                lineage_nodes: lineage_nodes
+                    .into_iter()
+                    .map(|n| LineageNode {
+                        name: n.name,
+                        source: joined_table_name.clone(),
+                        input: n.input,
+                    })
+                    .collect(),
+                kind: ContextObjectKind::UsingTable,
+            };
+            self.context
+                .update_output_lineage_from_nodes(&table_like.lineage_nodes);
+            joined_tables.push(table_like);
+        }
+
+        Ok(())
+    }
     fn select_query_expr_lin(&mut self, select_query_expr: &SelectQueryExpr) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
