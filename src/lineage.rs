@@ -6,7 +6,8 @@ use std::{
 
 use crate::{
     parser::{
-        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, QueryExpr, SelectColExpr, SelectQueryExpr, With
+        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr,
+        QueryExpr, SelectColExpr, SelectQueryExpr, With,
     },
     scanner::TokenLiteral,
 };
@@ -501,13 +502,19 @@ impl Lineage {
         joined_tables: &mut Vec<ContextObject>,
     ) -> anyhow::Result<()> {
         match from_expr {
-            FromExpr::Join(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
-            FromExpr::LeftJoin(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
-            FromExpr::RightJoin(join_expr) => self.join_expr_lineage(join_expr, from_tables, joined_tables)?,
+            FromExpr::Join(join_expr) => {
+                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
+            }
+            FromExpr::LeftJoin(join_expr) => {
+                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
+            }
+            FromExpr::RightJoin(join_expr) => {
+                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
+            }
             FromExpr::CrossJoin(cross_join_expr) => {
                 self.from_expr_lin(&cross_join_expr.left, from_tables, joined_tables)?;
                 self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?;
-            },
+            }
             FromExpr::Path(from_path_expr) => {
                 let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
 
@@ -561,12 +568,19 @@ impl Lineage {
 
                 self.add_new_from_table(from_tables, table_like)?;
             }
-            FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(&grouping_from_expr.query_expr, from_tables, joined_tables)?,
+            FromExpr::GroupingFrom(grouping_from_expr) => {
+                self.from_expr_lin(&grouping_from_expr.query_expr, from_tables, joined_tables)?
+            }
         }
         Ok(())
     }
 
-    fn join_expr_lineage(&mut self, join_expr: &JoinExpr, from_tables: &mut Vec<ContextObject>, joined_tables: &mut Vec<ContextObject>) -> anyhow::Result<()> {
+    fn join_expr_lineage(
+        &mut self,
+        join_expr: &JoinExpr,
+        from_tables: &mut Vec<ContextObject>,
+        joined_tables: &mut Vec<ContextObject>,
+    ) -> anyhow::Result<()> {
         self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
         self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
         if let JoinCondition::Using(using_columns) = &join_expr.cond {
