@@ -5,6 +5,7 @@ use lineage::compute_lineage;
 use parser::{AstPrinter, Parser, Query};
 use scanner::Scanner;
 
+pub mod arena;
 pub mod lineage;
 pub mod parser;
 pub mod scanner;

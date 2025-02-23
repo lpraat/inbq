@@ -342,6 +342,7 @@ impl AstPrinter {
     }
 }
 
+// TODO: this struct should own the scanner and use it
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
     curr: i32,
