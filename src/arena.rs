@@ -2,26 +2,32 @@ use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArenaIndex {
-    pub index: usize
+    pub index: usize,
 }
-
 
 #[derive(Debug)]
 pub struct Arena<T> {
-    nodes: Vec<T>
+    nodes: Vec<T>,
 }
-
 
 impl<T> Default for Arena<T> {
     fn default() -> Self {
-        Self { nodes: Vec::default() }
+        Self {
+            nodes: Vec::default(),
+        }
     }
 }
 
 impl<T> Arena<T> {
     pub fn allocate(&mut self, node: T) -> ArenaIndex {
         self.nodes.push(node);
-        ArenaIndex { index: self.nodes.len() - 1 }
+        ArenaIndex {
+            index: self.nodes.len() - 1,
+        }
+    }
+    
+    pub fn len(&self) -> usize {
+        self.nodes.len()
     }
 }
 
