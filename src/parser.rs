@@ -112,9 +112,8 @@ pub struct GroupingQueryExpr {
 
 #[derive(Debug, Clone)]
 pub struct SelectQueryExpr {
-    // TODO: SelectQueryExpr
     pub with: Option<With>,
-    pub select: Select, // TODO: SelectExpr
+    pub select: Select,
     pub order_by: Option<OrderBy>,
     pub limit: Option<Limit>,
 }
@@ -186,7 +185,7 @@ pub struct SetSelectQueryExpr {
 
 #[derive(Debug, Clone)]
 pub struct Select {
-    pub exprs: Vec<SelectColExpr>,
+    pub exprs: Vec<SelectExpr>,
     pub from: Option<From>,
     pub r#where: Option<Where>,
     pub group_by: Option<GroupBy>,
@@ -195,15 +194,27 @@ pub struct Select {
 }
 
 #[derive(Debug, Clone)]
-pub enum SelectColExpr {
-    Col(ColExpr),
-    All,
+pub enum SelectExpr {
+    Col(SelectColExpr),
+    ColAll(SelectColAllExpr),
+    All(SelectAllExpr)
 }
 
 #[derive(Debug, Clone)]
-pub struct ColExpr {
+pub struct SelectColExpr {
     pub expr: Expr,
     pub alias: Option<ParseToken>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectColAllExpr {
+    pub expr: Expr,
+    pub except: Option<Vec<ParseToken>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectAllExpr {
+    pub except: Option<Vec<ParseToken>>
 }
 
 #[derive(Debug, Clone)]
@@ -710,7 +721,7 @@ impl<'a> Parser<'a> {
     fn parse_select(&mut self) -> anyhow::Result<Select> {
         self.consume(TokenType::Select, "Expected `SELECT`.")?;
         let mut select_exprs = vec![];
-        let col_expr = self.parse_select_col_expr()?;
+        let col_expr = self.parse_select_expr()?;
         select_exprs.push(col_expr);
 
         let mut comma_matched = self.match_token_type(TokenType::Comma);
@@ -734,7 +745,7 @@ impl<'a> Parser<'a> {
                 return Err(anyhow!(ParseError));
             }
 
-            match self.parse_select_col_expr() {
+            match self.parse_select_expr() {
                 Ok(col_expr) => {
                     if self.source_tokens[last_position as usize].kind != TokenType::Comma {
                         self.error(self.peek_prev(), "Expected `,`.");
@@ -801,11 +812,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // TODO: add except .. replace
-    // select_col_expr -> [expr.]"*" | expr [["AS"] "Identifier"]
-    fn parse_select_col_expr(&mut self) -> anyhow::Result<SelectColExpr> {
+    // TODO: add replace
+    // select_expr -> [expr.]"*" [except] | expr [["AS"] "Identifier"]
+    fn parse_select_expr(&mut self) -> anyhow::Result<SelectExpr> {
         if self.match_token_type(TokenType::Star) {
-            return Ok(SelectColExpr::All);
+            let except = self.parse_except()?;
+            return Ok(SelectExpr::All(SelectAllExpr { except }));
         }
 
         let expr = match self.parse_expr() {
@@ -815,30 +827,52 @@ impl<'a> Parser<'a> {
             }
             Ok(expr) => expr,
         };
-
-        if self.match_token_type(TokenType::Dot) {
-            self.consume(TokenType::Star, "Expected `*`.")?;
-            Ok(SelectColExpr::All)
-        } else {
-            if self.match_token_type(TokenType::As) {
-                let identifier = ParseToken::Single(
-                    self.consume(TokenType::Identifier, "Expected Identifier.")?
-                        .clone(),
-                );
-                return Ok(SelectColExpr::Col(ColExpr {
-                    expr,
-                    alias: Some(identifier),
-                }));
-            }
-            if self.match_token_type(TokenType::Identifier) {
-                let identifier = ParseToken::Single(self.peek_prev().clone());
-                return Ok(SelectColExpr::Col(ColExpr {
-                    expr,
-                    alias: Some(identifier),
-                }));
-            }
-            Ok(SelectColExpr::Col(ColExpr { expr, alias: None }))
+        
+        if self.peek_prev().kind == TokenType::Star {
+            let except = self.parse_except()?;
+            return Ok(SelectExpr::ColAll(SelectColAllExpr { expr, except }))
         }
+
+        if self.match_token_type(TokenType::As) {
+            let identifier = ParseToken::Single(
+                self.consume(TokenType::Identifier, "Expected `Identifier`.")?
+                    .clone(),
+            );
+            return Ok(SelectExpr::Col(SelectColExpr { expr, alias: Some(identifier) }));
+        }
+        if self.match_token_type(TokenType::Identifier) {
+            let identifier = ParseToken::Single(self.peek_prev().clone());
+            return Ok(SelectExpr::Col(SelectColExpr { expr, alias: Some(identifier) }))
+
+        }
+        Ok(SelectExpr::Col(SelectColExpr { expr, alias: None }))
+    }
+
+    // except -> "EXCEPT" "(" ("Identifier" | "QuotedIdentifier") ["," ("Identifier" | "QuotedIdentifier")]* ")"
+    fn parse_except(&mut self) -> anyhow::Result<Option<Vec<ParseToken>>> {
+        if !self.match_token_type(TokenType::Except) {
+            return Ok(None);
+        }
+        
+        self.consume(TokenType::LeftParen, "Expected `(`.")?;
+        
+        let mut except_columns = vec![];
+        let column = self.consume_one_of(
+            &[TokenType::Identifier, TokenType::QuotedIdentifier],
+            "Expected Identifier.",
+        )?;
+        except_columns.push(ParseToken::Single(column.clone()));
+        while self.match_token_type(TokenType::Comma) {
+            except_columns.push(ParseToken::Single(
+                self.consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected Identifier.",
+                )?
+                .clone(),
+            ));
+        }
+        self.consume(TokenType::RightParen, "Expected `)`.")?;
+        Ok(Some(except_columns))
     }
 
     // from_expr -> from_item_expr (cross_join_op from_item_expr | cond_join_op from_item_expr cond)*
@@ -1006,6 +1040,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
     fn parse_as_alias(&mut self) -> anyhow::Result<Option<&Token>> {
         if self.match_token_type(TokenType::As) {
             return Ok(Some(self.consume_one_of(

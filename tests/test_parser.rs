@@ -18,10 +18,10 @@ fn parse_sql(sql: &str) -> anyhow::Result<Query> {
 #[test]
 fn test_can_parse() {
     let sqls = [
-        r#"
+      "
       select *
       from `project.dataset.table`
-      "#,
+      ",
         r#"
       select
           --this is a comment
@@ -43,6 +43,15 @@ fn test_can_parse() {
       order by c desc
       "#,
         r#"
+      select
+        * except (id1, id2)
+      from table
+      "#,
+      r#"
+      select tmp.s.x[0]
+      from tmp
+      "#,
+        r#"
       with tmp as (with inner_tmp as (select 1 as x) select * from inner_tmp)
       select * from tmp
       "#,
@@ -59,6 +68,16 @@ fn test_can_parse() {
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
       SELECT n FROM T1
       "#,
+      
+      // TODO: struct
+      // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
+      // select tmp.s.x[0]
+      // from tmp
+      // 
+      // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
+      // select tmp.s.* except (y)
+      // from tmp
+
     ];
     for sql in sqls {
         println!("Testing parser for SQL: {}", sql);

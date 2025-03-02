@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Ok};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Debug, Display},
-    future::pending,
 };
 
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        ColExpr, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr,
-        QueryExpr, SelectColExpr, SelectQueryExpr, With,
+        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, QueryExpr,
+        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, With,
     },
     scanner::TokenLiteral,
 };
@@ -29,7 +28,7 @@ impl From<NodeName> for String {
 impl NodeName {
     fn string(&self) -> &str {
         match self {
-            NodeName::Anonymous => "",
+            NodeName::Anonymous => "__anonymous__",
             NodeName::Defined(s) => s,
         }
     }
@@ -255,7 +254,8 @@ impl Lineage {
                 self.query_expr_lin(&non_recursive_cte.query)?;
                 let curr_lineage_len = self.context.lineage_stack.len();
 
-                let consumed_lineage_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+                let consumed_lineage_nodes =
+                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
                 let cte_idx = self.context.allocate_new_ctx_object(
                     &cte_name,
                     ContextObjectKind::Cte,
@@ -349,23 +349,47 @@ impl Lineage {
         }
     }
 
-    fn select_col_expr_expr_lin(&mut self, expr: &Expr) -> anyhow::Result<()> {
-        let mut source: Option<String> = None;
-        let mut col_name: Option<String> = None;
+    fn select_expr_col_expr(&mut self, expr: &Expr) -> anyhow::Result<()> {
         match expr {
             Expr::Binary(binary_expr) => {
+                let source: String;
+                let col_name: String;
+
                 let operator = binary_expr.operator.lexeme(None);
                 if operator == "." {
                     let left_expr = binary_expr.left.as_ref();
                     let right_expr = binary_expr.right.as_ref();
                     match left_expr {
+                        Expr::Literal(literal_expr) => match literal_expr {
+                            LiteralExpr::Identifier(ident) => {
+                                source = ident.clone();
+                            }
+                            LiteralExpr::QuotedIdentifier(qident) => {
+                                source = qident.clone();
+                            }
+                            LiteralExpr::String(_)
+                            | LiteralExpr::Number(_)
+                            | LiteralExpr::Bool(_)
+                            | LiteralExpr::Null
+                            | LiteralExpr::Star => return Err(anyhow!("Invalid query.")),
+                            _ => {
+                                return Err(anyhow!("Invalid query."));
+                            }
+                        },
+                        _ => {
+                            // binary expr (e.g., tmp.s.x[0]) where s is a struct
+                            todo!()
+                        }
+                    }
+
+                    match right_expr {
                         Expr::Literal(literal_expr) => {
                             match literal_expr {
                                 LiteralExpr::Identifier(ident) => {
-                                    source = Some(ident.clone());
+                                    col_name = ident.clone();
                                 }
                                 LiteralExpr::QuotedIdentifier(qident) => {
-                                    source = Some(qident.clone());
+                                    col_name = qident.clone();
                                 }
                                 LiteralExpr::String(_)
                                 | LiteralExpr::Number(_)
@@ -381,56 +405,31 @@ impl Lineage {
                         _ => todo!(),
                     }
 
-                    match right_expr {
-                        Expr::Literal(literal_expr) => {
-                            match literal_expr {
-                                LiteralExpr::Identifier(ident) => {
-                                    col_name = Some(ident.clone());
-                                }
-                                LiteralExpr::QuotedIdentifier(qident) => {
-                                    col_name = Some(qident.clone());
-                                }
-                                LiteralExpr::String(_)
-                                | LiteralExpr::Number(_)
-                                | LiteralExpr::Bool(_)
-                                | LiteralExpr::Null
-                                | LiteralExpr::Star => return Err(anyhow!("Invalid query.")),
-                                _ => {
-                                    // TODO: struct is valid, e.g. this is valid ( struct(1 as x).x )
-                                    unreachable!("Invalid query.")
-                                }
-                            }
-                        }
-                        _ => todo!(),
-                    }
-
-                    let col_source_idx =
-                        self.get_column_source(source.as_ref(), col_name.as_ref().unwrap())?;
+                    let col_source_idx = self.get_column_source(Some(&source), &col_name)?;
                     let col_source = &self.context.arena_lineage_nodes[col_source_idx];
 
                     let new_lineage_node_idx = self.context.allocate_new_lineage_node(
-                        NodeName::Defined(col_name.unwrap()),
+                        NodeName::Defined(col_name),
                         col_source.source_obj,
                         vec![col_source_idx],
                     );
 
                     self.context.lineage_stack.push(new_lineage_node_idx);
                 } else {
-                    self.select_col_expr_expr_lin(binary_expr.left.as_ref())?;
-                    self.select_col_expr_expr_lin(binary_expr.right.as_ref())?;
+                    self.select_expr_col_expr(binary_expr.left.as_ref())?;
+                    self.select_expr_col_expr(binary_expr.right.as_ref())?;
                 }
             }
             Expr::Unary(unary_expr) => todo!(),
             Expr::Grouping(grouping_expr) => todo!(),
             Expr::Literal(literal_expr) => match literal_expr {
                 LiteralExpr::Identifier(ident) | LiteralExpr::QuotedIdentifier(ident) => {
-                    col_name = Some(ident.clone());
-                    let col_source_idx =
-                        self.get_column_source(None, col_name.as_ref().unwrap())?;
+                    let col_name = ident.clone();
+                    let col_source_idx = self.get_column_source(None, &col_name)?;
                     let col_source = &self.context.arena_lineage_nodes[col_source_idx];
 
                     let new_lineage_node_idx = self.context.allocate_new_lineage_node(
-                        NodeName::Defined(col_name.unwrap()),
+                        NodeName::Defined(col_name),
                         col_source.source_obj,
                         vec![col_source_idx],
                     );
@@ -461,13 +460,26 @@ impl Lineage {
         Ok(())
     }
 
-    fn select_col_expr_col_all(
+    fn select_expr_all_lin(
         &mut self,
         anon_obj_idx: ArenaIndex,
+        select_expr: &SelectAllExpr,
         lineage_nodes: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         let mut new_lineage_nodes = vec![];
-        for (col_name, sources) in self.context.columns_stack.last().unwrap().iter() {
+        let except_columns = select_expr
+            .except
+            .clone()
+            .map_or(HashSet::default(), |cols| {
+                cols.into_iter()
+                    .map(|c| c.lexeme(None))
+                    .collect::<HashSet<String>>()
+            });
+        for (col_name, sources) in self.context.curr_columns_stack().unwrap().iter() {
+            if except_columns.contains(col_name) {
+                continue;
+            }
+
             if sources.len() > 1
                 && !sources.iter().any(|el| {
                     self.context
@@ -519,10 +531,73 @@ impl Lineage {
         Ok(())
     }
 
-    fn select_col_expr_col_lin(
+    fn select_expr_col_all_lin(
         &mut self,
         anon_obj_idx: ArenaIndex,
-        col_expr: &ColExpr,
+        col_expr: &SelectColAllExpr,
+        lineage_nodes: &mut Vec<ArenaIndex>,
+    ) -> anyhow::Result<()> {
+        let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
+            cols.into_iter()
+                .map(|c| c.lexeme(None))
+                .collect::<HashSet<String>>()
+        });
+        match &col_expr.expr {
+            Expr::Binary(binary_expr) => {
+                let star = &binary_expr.right;
+                assert!(matches!(**star, Expr::Literal(LiteralExpr::Star)));
+                let curr_left = &binary_expr.left;
+                let curr_left = loop {
+                    match **curr_left {
+                        Expr::Binary(ref binary_expr) => todo!(),
+                        Expr::Literal(ref literal_expr) => match &literal_expr {
+                            LiteralExpr::Identifier(ident) => break ident.clone(),
+                            LiteralExpr::QuotedIdentifier(qident) => break qident.clone(),
+                            _ => {
+                                return Err(anyhow!("Invalid query."));
+                            }
+                        },
+                        _ => return Err(anyhow!("Invalid query.")),
+                    }
+                };
+
+                let source_obj_idx = *self
+                    .context
+                    .curr_stack()
+                    .unwrap()
+                    .get(&curr_left)
+                    .ok_or(anyhow!("Cannot find table like obj {:?}", curr_left))?;
+                let source_obj = &self.context.arena_objects[source_obj_idx];
+                let mut new_lineage_nodes = vec![];
+
+                for node_idx in source_obj.lineage_nodes.clone() {
+                    let node = &self.context.arena_lineage_nodes[node_idx];
+
+                    if except_columns.contains(node.name.string()) {
+                        continue;
+                    }
+
+                    new_lineage_nodes.push((node.name.clone(), anon_obj_idx, node.input.clone()))
+                }
+                new_lineage_nodes.into_iter().for_each(|tup| {
+                    let lineage_node_idx =
+                        self.context.allocate_new_lineage_node(tup.0, tup.1, tup.2);
+                    self.context.lineage_stack.push(lineage_node_idx);
+                    lineage_nodes.push(lineage_node_idx);
+                    self.context.arena_objects[anon_obj_idx]
+                        .lineage_nodes
+                        .push(lineage_node_idx);
+                });
+            }
+            _ => return Err(anyhow!("Invalid query.")),
+        };
+        Ok(())
+    }
+
+    fn select_expr_col_lin(
+        &mut self,
+        anon_obj_idx: ArenaIndex,
+        col_expr: &SelectColExpr,
         lineage_nodes: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         let pending_node_idx =
@@ -533,7 +608,7 @@ impl Lineage {
             .push(pending_node_idx);
 
         let start_pending_len = self.context.lineage_stack.len();
-        self.select_col_expr_expr_lin(&col_expr.expr)?;
+        self.select_expr_col_expr(&col_expr.expr)?;
         let curr_pending_len = self.context.lineage_stack.len();
 
         let mut consumed_nodes = vec![];
@@ -661,8 +736,10 @@ impl Lineage {
                     .as_ref()
                     .map(|alias| alias.lexeme(None));
 
-                let consumed_lineage_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
-                let lineage_nodes_source = self.context.arena_lineage_nodes[consumed_lineage_nodes[0]].source_obj;
+                let consumed_lineage_nodes =
+                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+                let lineage_nodes_source =
+                    self.context.arena_lineage_nodes[consumed_lineage_nodes[0]].source_obj;
 
                 let new_source_name = if let Some(name) = source_name {
                     name
@@ -677,7 +754,7 @@ impl Lineage {
                     ContextObjectKind::Query,
                     consumed_lineage_nodes
                         .into_iter()
-                        .map(|idx|{
+                        .map(|idx| {
                             let node = &self.context.arena_lineage_nodes[idx];
                             (node.name.clone(), vec![idx])
                         })
@@ -805,11 +882,14 @@ impl Lineage {
         let mut lineage_nodes = vec![];
         for expr in &select_query_expr.select.exprs {
             match expr {
-                SelectColExpr::Col(col_expr) => {
-                    self.select_col_expr_col_lin(anon_obj_idx, col_expr, &mut lineage_nodes)?
+                SelectExpr::Col(col_expr) => {
+                    self.select_expr_col_lin(anon_obj_idx, col_expr, &mut lineage_nodes)?;
                 }
-                SelectColExpr::All => {
-                    self.select_col_expr_col_all(anon_obj_idx, &mut lineage_nodes)?
+                SelectExpr::All(all_expr) => {
+                    self.select_expr_all_lin(anon_obj_idx, all_expr, &mut lineage_nodes)?
+                }
+                SelectExpr::ColAll(col_all_expr) => {
+                    self.select_expr_col_all_lin(anon_obj_idx, col_all_expr, &mut lineage_nodes)?
                 }
             }
         }
@@ -848,7 +928,7 @@ impl Lineage {
 pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
     // TODO: we should read this from a config file, the user must provide it in some way
     let mut ctx = Context::default();
-    
+
     let tmp_idx = ctx.allocate_new_ctx_object(
         "tmp",
         ContextObjectKind::Cte,
@@ -861,14 +941,13 @@ pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
     );
     ctx.source_objects =
         HashMap::from([(String::from("tmp"), tmp_idx), (String::from("D"), d_idx)]);
-    
-    
+
     let mut lineage = Lineage {
         anon_id: 0,
         context: ctx,
     };
     lineage.query_expr_lin(query)?;
-    
+
     println!("Final lineage:");
     // TODO: we should place this code in the Lineage class, save all the lineage in one place
     let output_lineage_nodes = lineage.context.output.clone();
