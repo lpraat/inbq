@@ -546,10 +546,15 @@ impl Lineage {
             Expr::Binary(binary_expr) => {
                 let star = &binary_expr.right;
                 assert!(matches!(**star, Expr::Literal(LiteralExpr::Star)));
-                let curr_left = &binary_expr.left;
+                let mut curr_left = &binary_expr.left;
+
+                // Retrieve the last object before the star
+                // if col_expr=x.y.z.* then curr_left = z
                 let curr_left = loop {
                     match **curr_left {
-                        Expr::Binary(ref binary_expr) => todo!(),
+                        Expr::Binary(ref binary_expr) => {
+                            curr_left = &binary_expr.left;
+                        }
                         Expr::Literal(ref literal_expr) => match &literal_expr {
                             LiteralExpr::Identifier(ident) => break ident.clone(),
                             LiteralExpr::QuotedIdentifier(qident) => break qident.clone(),
