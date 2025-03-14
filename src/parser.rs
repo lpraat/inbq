@@ -92,6 +92,7 @@ pub struct GroupingExpr {
 
 #[derive(Debug, Clone)]
 pub struct ArrayExpr {
+    types: Option<Vec<ParseToken>>,
     exprs: Vec<Expr>,
 }
 
@@ -197,7 +198,7 @@ pub struct Select {
 pub enum SelectExpr {
     Col(SelectColExpr),
     ColAll(SelectColAllExpr),
-    All(SelectAllExpr)
+    All(SelectAllExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -214,7 +215,7 @@ pub struct SelectColAllExpr {
 
 #[derive(Debug, Clone)]
 pub struct SelectAllExpr {
-    pub except: Option<Vec<ParseToken>>
+    pub except: Option<Vec<ParseToken>>,
 }
 
 #[derive(Debug, Clone)]
@@ -827,10 +828,10 @@ impl<'a> Parser<'a> {
             }
             Ok(expr) => expr,
         };
-        
+
         if self.peek_prev().kind == TokenType::Star {
             let except = self.parse_except()?;
-            return Ok(SelectExpr::ColAll(SelectColAllExpr { expr, except }))
+            return Ok(SelectExpr::ColAll(SelectColAllExpr { expr, except }));
         }
 
         if self.match_token_type(TokenType::As) {
@@ -838,12 +839,17 @@ impl<'a> Parser<'a> {
                 self.consume(TokenType::Identifier, "Expected `Identifier`.")?
                     .clone(),
             );
-            return Ok(SelectExpr::Col(SelectColExpr { expr, alias: Some(identifier) }));
+            return Ok(SelectExpr::Col(SelectColExpr {
+                expr,
+                alias: Some(identifier),
+            }));
         }
         if self.match_token_type(TokenType::Identifier) {
             let identifier = ParseToken::Single(self.peek_prev().clone());
-            return Ok(SelectExpr::Col(SelectColExpr { expr, alias: Some(identifier) }))
-
+            return Ok(SelectExpr::Col(SelectColExpr {
+                expr,
+                alias: Some(identifier),
+            }));
         }
         Ok(SelectExpr::Col(SelectColExpr { expr, alias: None }))
     }
@@ -853,9 +859,9 @@ impl<'a> Parser<'a> {
         if !self.match_token_type(TokenType::Except) {
             return Ok(None);
         }
-        
+
         self.consume(TokenType::LeftParen, "Expected `(`.")?;
-        
+
         let mut except_columns = vec![];
         let column = self.consume_one_of(
             &[TokenType::Identifier, TokenType::QuotedIdentifier],
@@ -1355,8 +1361,17 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // array_expr -> "[" expr ("," expr)* "]"
+    // array_expr -> ["ARRAY" "<" bq_type ("," bq_type)* ">"] "[" expr ("," expr)* "]"
     fn parse_array_expr(&mut self) -> anyhow::Result<Expr> {
+        let mut array_types: Option<Vec<ParseToken>> = None;
+        if self.match_token_type(TokenType::Array) && self.match_token_type(TokenType::Less) {
+            let mut types = vec![self.parse_bq_type()?.clone()];
+            while self.match_token_type(TokenType::Comma) {
+                types.push(self.parse_bq_type()?.clone());
+            }
+            self.consume(TokenType::Greater, "Expected `>`.")?;
+            array_types = Some(types.into_iter().map(ParseToken::Single).collect());
+        }
         self.consume(TokenType::LeftSquare, "Expected `[`.")?;
         let mut array_elements = vec![];
         array_elements.push(self.parse_expr()?);
@@ -1366,12 +1381,39 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RightSquare, "Expected `]`.")?;
         Ok(Expr::Array(ArrayExpr {
             exprs: array_elements,
+            types: array_types
         }))
     }
 
+    // bq_type -> 
+    // "ARRAY" | "BIGNUMERIC"" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY" 
+    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING"" | "STRUCT" | "TIME"" | "TIMESTAMP"
+    fn parse_bq_type(&mut self) -> anyhow::Result<&Token> {
+        self.consume_one_of(&[
+            TokenType::Array,
+            TokenType::BigNumeric,
+            TokenType::Bool,
+            TokenType::Bytes,
+            TokenType::Date,
+            TokenType::Datetime,
+            TokenType::Float64,
+            TokenType::Geography,
+            TokenType::Int64,
+            TokenType::Interval,
+            TokenType::Json,
+            TokenType::Numeric,
+            TokenType::Range,
+            TokenType::StringType,
+            TokenType::Struct,
+            TokenType::Time,
+            TokenType::Timestamp,
+        ],
+            "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+             `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+        )
+    }
+
     // primary_expr -> "True" | "False" | "Null" | "Identifier" | "String" | "Number" | array_expr | "(" expression ")" | "(" query_expr ")"
-    // where:
-    // array_expr -> "[" array_elements "]"
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
@@ -1436,7 +1478,7 @@ impl<'a> Parser<'a> {
                     }));
                 }
             }
-            TokenType::LeftSquare => {
+            TokenType::LeftSquare | TokenType::Array => {
                 return self.parse_array_expr();
             }
             _ => {

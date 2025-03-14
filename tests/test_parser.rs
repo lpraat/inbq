@@ -16,7 +16,7 @@ fn parse_sql(sql: &str) -> anyhow::Result<Query> {
 }
 
 #[test]
-fn test_can_parse() {
+fn test_should_parse() {
     let sqls = [
       "
       select *
@@ -68,6 +68,12 @@ fn test_can_parse() {
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
       SELECT n FROM T1
       "#,
+      r#"
+      SELECT 
+        [1,2,3],
+        ARRAY[1,2,3],
+        ARRAY<int64, string>[1,"foo"]
+      "#
       
       // TODO: struct
       // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
