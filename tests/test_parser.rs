@@ -20,7 +20,7 @@ fn test_should_parse() {
     let sqls = [
       "
       select *
-      from `project.dataset.table`
+      from `project-id.dataset.table`
       ",
         r#"
       select
@@ -69,17 +69,34 @@ fn test_should_parse() {
       SELECT n FROM T1
       "#,
       r#"
-      SELECT 
+      SELECT
         [1,2,3],
-        ARRAY[1,2,3],
-        ARRAY<int64, string>[1,"foo"]
+        ARRAY[1,2,3][0],
+        ARRAY<ARRAY<int64>>[1,2]
+      "#,
+      r#"
+      SELECT
+          ARRAY<Array<Array<int64>>>[[[1,2]]],
+          1>>4,
+          3<<2>>3,
+      "#,
+      r#"
+      select
+        array<struct<int64, array<int64>>>[struct(1, [1,2,3])]
+      "#,
+      r#"
+      select
+        STRUCT(1,2,3),
+        STRUCT(1 AS a, 'abc' AS b),
+        STRUCT<date>("2011-05-05"),
+        STRUCT<x int64>(5 AS x)  -- should be an error, just not a syntax one
       "#
-      
+
       // TODO: struct
       // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
       // select tmp.s.x[0]
       // from tmp
-      // 
+      //
       // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
       // select tmp.s.* except (y)
       // from tmp

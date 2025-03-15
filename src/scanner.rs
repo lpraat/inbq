@@ -129,6 +129,7 @@ pub struct Scanner {
     current: i32,
     line: i32,
     pub had_error: bool,
+    open_type_brackets: Option<i32>
 }
 
 impl Scanner {
@@ -140,6 +141,7 @@ impl Scanner {
             current: 0,
             line: 1,
             had_error: false,
+            open_type_brackets: None
         }
     }
 
@@ -341,8 +343,20 @@ impl Scanner {
         let identifer: String = self.source_chars[self.start as usize..self.current as usize]
             .iter()
             .collect();
+
         match identifer.to_lowercase().as_str() {
-            "array" => self.add_token(TokenType::Array),
+            "array" => {
+                self.add_token(TokenType::Array);
+                if self.peek() == '<' && self.open_type_brackets.is_none() {
+                    self.open_type_brackets = Some(0);
+                }
+            },
+            "struct" => {
+                self.add_token(TokenType::Struct);
+                if self.peek() == '<' && self.open_type_brackets.is_none() {
+                    self.open_type_brackets = Some(0)
+                }
+            },
             "bignumeric" => self.add_token(TokenType::BigNumeric),
             "bool" => self.add_token(TokenType::Bool),
             "bytes" => self.add_token(TokenType::Bytes),
@@ -355,8 +369,7 @@ impl Scanner {
             "json" => self.add_token(TokenType::Json),
             "numeric" => self.add_token(TokenType::Numeric),
             "range" => self.add_token(TokenType::Range),
-            "string" => self.add_token(TokenType::StringType),
-            "struct" => self.add_token(TokenType::Struct),
+            "string" => self.add_token(TokenType::String),
             "time" => self.add_token(TokenType::Time),
             "timestamp" => self.add_token(TokenType::Timestamp),
             "limit" => self.add_token(TokenType::Limit),
@@ -479,6 +492,9 @@ impl Scanner {
                 } else if self.match_char('<') {
                     self.add_token(TokenType::BitwiseLeftShift);
                 } else {
+                    if self.open_type_brackets.is_some() {
+                        self.open_type_brackets = self.open_type_brackets.map(|n|n+1);
+                    }
                     self.add_token(TokenType::Less);
                 }
             }
@@ -492,9 +508,27 @@ impl Scanner {
             '>' => {
                 if self.match_char('=') {
                     self.add_token(TokenType::GreaterEqual);
-                } else if self.match_char('>') {
-                    self.add_token(TokenType::BitwiseRightShift);
+                } else if self.peek() == '>' {
+                    if self.open_type_brackets.is_some() {
+                        self.open_type_brackets = self.open_type_brackets.map(|n| n - 1);
+                        self.add_token(TokenType::Greater);
+                    } else {
+                        self.match_char('>');
+                        self.add_token(TokenType::BitwiseRightShift);
+                    }
                 } else {
+                    if self.open_type_brackets.is_some() {
+                        self.open_type_brackets = self.open_type_brackets.and_then(
+                            |n| {
+                                let new_n = n-1;
+                                if new_n == 0 {
+                                    None
+                                } else {
+                                    Some(new_n)
+                                }
+                            }
+                        );
+                    }
                     self.add_token(TokenType::Greater);
                 }
             }

@@ -58,6 +58,7 @@ pub enum Expr {
     Grouping(GroupingExpr),
     Literal(LiteralExpr),
     Array(ArrayExpr),
+    Struct(StructExpr),
     Query(QueryExpr),
 }
 
@@ -90,10 +91,51 @@ pub struct GroupingExpr {
     expr: Box<Expr>,
 }
 
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Array(Box<Type>),
+    BigNumeric,
+    Bool,
+    Bytes,
+    Date,
+    Datetime,
+    Float64,
+    Geography,
+    Int64,
+    Interval,
+    Json,
+    Numeric,
+    Range,
+    String,
+    Struct(Vec<StructFieldType>),
+    Time,
+    Timestamp
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldType {
+    name: Option<ParseToken>,
+    r#type: Type
+}
+
+
 #[derive(Debug, Clone)]
 pub struct ArrayExpr {
-    types: Option<Vec<ParseToken>>,
+    r#type: Option<Type>,
     exprs: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructExpr {
+    r#type: Option<Type>,
+    fields: Vec<StructField>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructField {
+    expr: Expr,
+    alias: Option<ParseToken>
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +188,7 @@ pub struct OrderByExpr {
 #[derive(Debug, Clone)]
 pub struct Limit {
     count: LiteralExpr,
-    offset: Option<LiteralExpr>,
+    offset: Option<LiteralExpr>, // TODO: just use an int
 }
 
 #[derive(Debug, Clone)]
@@ -1361,16 +1403,11 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // array_expr -> ["ARRAY" "<" bq_type ("," bq_type)* ">"] "[" expr ("," expr)* "]"
+    // array_expr -> ["ARRAY" [array_type] "[" expr ("," expr)* "]"
     fn parse_array_expr(&mut self) -> anyhow::Result<Expr> {
-        let mut array_types: Option<Vec<ParseToken>> = None;
-        if self.match_token_type(TokenType::Array) && self.match_token_type(TokenType::Less) {
-            let mut types = vec![self.parse_bq_type()?.clone()];
-            while self.match_token_type(TokenType::Comma) {
-                types.push(self.parse_bq_type()?.clone());
-            }
-            self.consume(TokenType::Greater, "Expected `>`.")?;
-            array_types = Some(types.into_iter().map(ParseToken::Single).collect());
+        let mut array_type: Option<Type> = None;
+        if self.match_token_type(TokenType::Array) && self.check_token_type(TokenType::Less) {
+            array_type = Some(self.parse_array_type()?);
         }
         self.consume(TokenType::LeftSquare, "Expected `[`.")?;
         let mut array_elements = vec![];
@@ -1381,39 +1418,150 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RightSquare, "Expected `]`.")?;
         Ok(Expr::Array(ArrayExpr {
             exprs: array_elements,
-            types: array_types
+            r#type: array_type
         }))
     }
 
-    // bq_type -> 
-    // "ARRAY" | "BIGNUMERIC"" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY" 
-    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING"" | "STRUCT" | "TIME"" | "TIMESTAMP"
-    fn parse_bq_type(&mut self) -> anyhow::Result<&Token> {
-        self.consume_one_of(&[
-            TokenType::Array,
-            TokenType::BigNumeric,
-            TokenType::Bool,
-            TokenType::Bytes,
-            TokenType::Date,
-            TokenType::Datetime,
-            TokenType::Float64,
-            TokenType::Geography,
-            TokenType::Int64,
-            TokenType::Interval,
-            TokenType::Json,
-            TokenType::Numeric,
-            TokenType::Range,
-            TokenType::StringType,
-            TokenType::Struct,
-            TokenType::Time,
-            TokenType::Timestamp,
-        ],
-            "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
-             `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
-        )
+
+    // struct_expr -> ["STRUCT" [struct_type] "(" expr ["AS" field_name]] ("," expr ["AS" field_name])* ")"
+    // where:
+    // field_name -> "Identifier" | "QuotedIdentifier"
+    fn parse_struct_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenType::Struct, "Expected `STRUCT`.")?;
+        
+        let struct_type = if self.check_token_type(TokenType::Less) {
+            Some(self.parse_struct_type()?)
+        } else {
+            None
+        };
+        
+        self.consume(TokenType::LeftParen, "Expected `(`.")?;
+
+        let mut struct_fields = vec![];
+        loop {
+            let field_expr = self.parse_expr()?;
+            let field_alias = if self.match_token_type(TokenType::As) {
+                let alias = self.consume_one_of(&[TokenType::Identifier, TokenType::QuotedIdentifier], "Expected `Identifier` or `QuotedIdentifier`.")?.clone();
+                Some(ParseToken::Single(alias))
+            } else {
+                None
+            };
+
+            struct_fields.push(StructField{ expr: field_expr, alias: field_alias });
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected `)`.")?;
+
+        Ok(Expr::Struct(StructExpr{ r#type: struct_type, fields: struct_fields }))
+    }
+    
+    // array_type -> "<" bq_type ("," bq_type)* ">"
+    fn parse_array_type(&mut self) -> anyhow::Result<Type> {
+        self.consume(TokenType::Less, "Expected `<`.")?;
+        let array_type = self.parse_bq_type()?;
+        self.consume(TokenType::Greater, "Expected `>`.")?;
+        Ok(Type::Array(Box::new(array_type)))
+    }
+    
+    // struct_type -> "<" ["field_name"] bq_type ("," ["field_name"] bq_type)* ">"
+    fn parse_struct_type(&mut self) -> anyhow::Result<Type> {
+        self.consume(TokenType::Less, "Expected `<`.")?;
+        let mut struct_field_types = vec![];
+        loop {
+            let field_type_name = if self.match_token_type(TokenType::Identifier) || self.match_token_type(TokenType::QuotedIdentifier) {
+                Some(ParseToken::Single(self.peek_prev().clone()))
+            } else {
+                None
+            };
+
+            let field_type = self.parse_bq_type()?;
+            struct_field_types.push(StructFieldType { name: field_type_name, r#type: field_type });
+
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::Greater, "Expected `>`.")?;
+
+        Ok(Type::Struct(struct_field_types))
     }
 
-    // primary_expr -> "True" | "False" | "Null" | "Identifier" | "String" | "Number" | array_expr | "(" expression ")" | "(" query_expr ")"
+    // TODO: we will need a bq_parameterized_type parse function (e.g., for STRING(255) or NUMERIC(5,2))
+    // bq_type ->
+    // "ARRAY" array_type | "STRUCT" struct_type 
+    // | "BIGNUMERIC"" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
+    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
+    fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
+        let peek_token = self.advance().clone();
+        match peek_token.kind {
+            TokenType::BigNumeric => {
+                Ok(Type::BigNumeric)
+            }
+            TokenType::Bool => {
+                Ok(Type::Bool)
+            }
+            TokenType::Bytes => {
+                Ok(Type::Bytes)
+            }
+            TokenType::Date => {
+                Ok(Type::Date)
+            }
+            TokenType::Datetime => {
+                Ok(Type::Datetime)
+            }
+            TokenType::Float64 => {
+                Ok(Type::Float64)
+            }
+            TokenType::Geography => {
+                Ok(Type::Geography)
+            }
+            TokenType::Int64 => {
+                Ok(Type::Int64)
+            }
+            TokenType::Interval => {
+                Ok(Type::Interval)
+            }
+            TokenType::Json => {
+                Ok(Type::Json)
+            }
+            TokenType::Numeric => {
+                Ok(Type::Numeric)
+            }
+            TokenType::Range => {
+                Ok(Type::Range)
+            }
+            TokenType::StringType => {
+                Ok(Type::String)
+            }
+            TokenType::Time => {
+                Ok(Type::Time)
+            }
+            TokenType::Timestamp => {
+                Ok(Type::Timestamp)
+            }
+            TokenType::Struct => {
+                Ok(self.parse_struct_type()?)
+            }
+            TokenType::Array => {
+                Ok(self.parse_array_type()?)
+            }
+            _ => {
+                self.error(
+                    &peek_token,
+                    "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+                     `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+                );
+                Err(anyhow!(ParseError))
+            }
+        }
+    }
+
+    // primary_expr ->
+    // "True" | "False" | "Null" | "Identifier" | "String" | "Number"
+    // | array_expr | struct_expr
+    // | "(" expression ")" | "(" query_expr ")"
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
@@ -1477,6 +1625,9 @@ impl<'a> Parser<'a> {
                         expr: Box::new(expr),
                     }));
                 }
+            }
+            TokenType::Struct => {
+                return self.parse_struct_expr();
             }
             TokenType::LeftSquare | TokenType::Array => {
                 return self.parse_array_expr();

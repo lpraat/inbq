@@ -443,6 +443,7 @@ impl Lineage {
                 LiteralExpr::Star => todo!(),
             },
             Expr::Array(array_expr) => todo!(),
+            Expr::Struct(struct_expr) => todo!(),
             Expr::Query(query_expr) => self.query_expr_lin(query_expr)?,
         }
 
