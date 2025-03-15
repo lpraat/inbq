@@ -445,6 +445,8 @@ impl Lineage {
             Expr::Array(array_expr) => todo!(),
             Expr::Struct(struct_expr) => todo!(),
             Expr::Query(query_expr) => self.query_expr_lin(query_expr)?,
+            Expr::GenericFunction(generic_function_expr) => todo!(),
+            Expr::Function(function_expr) => todo!(),
         }
 
         Ok(())
