@@ -82,14 +82,23 @@ fn test_should_parse() {
       "#,
       r#"
       select
-        array<struct<int64, array<int64>>>[struct(1, [1,2,3])]
+        array<struct<int64, array<int64>>>[struct(1, [1,2,3])],
+        array<struct<`int64`, array<`int64`>>>[struct(1, [1,2,3])]
       "#,
       r#"
       select
         STRUCT(1,2,3),
         STRUCT(1 AS a, 'abc' AS b),
         STRUCT<date>("2011-05-05"),
+        STRUCT<`date`>("2011-05-05"),
         STRUCT<x int64>(5 AS x)  -- should be an error, just not a syntax one
+      "#,
+      r#"
+      select
+          concat("foo", "bar"),
+          concat(tbl.c, ' ', 3)
+      from tbl
+          
       "#
 
       // TODO: struct

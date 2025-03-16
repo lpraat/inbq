@@ -61,22 +61,26 @@ pub enum Expr {
     Struct(StructExpr),
     Query(QueryExpr),
     GenericFunction(GenericFunctionExpr), // a generic function call, whose signature is not yet implemented in the parser
-    Function(FunctionExpr)
+    Function(FunctionExpr),
 }
 
 #[derive(Debug, Clone)]
 pub enum FunctionExpr {
     // list of known functions here
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
+    ConcatFn(ConcatFnExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct ConcatFnExpr {
+    values: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExpr {
     name: ParseToken,
-    arguments: ParseToken
+    arguments: ParseToken,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub enum LiteralExpr {
@@ -107,7 +111,6 @@ pub struct GroupingExpr {
     expr: Box<Expr>,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum Type {
     Array(Box<Type>),
@@ -126,15 +129,14 @@ pub enum Type {
     String,
     Struct(Vec<StructFieldType>),
     Time,
-    Timestamp
+    Timestamp,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructFieldType {
     name: Option<ParseToken>,
-    r#type: Type
+    r#type: Type,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ArrayExpr {
@@ -151,7 +153,7 @@ pub struct StructExpr {
 #[derive(Debug, Clone)]
 pub struct StructField {
     expr: Expr,
-    alias: Option<ParseToken>
+    alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone)]
@@ -419,7 +421,7 @@ pub struct Parser<'a> {
 }
 
 // TODO:
-// - modify error handling (right now we are interested only in the last error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
+// - modify error handling (right now we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
 
 // - check that identifiers are not reserved keywords
 
@@ -1368,7 +1370,7 @@ impl<'a> Parser<'a> {
     // mul_concat_expr -> unary_expr | unary_expr (("*" | "/" | "||") unary_expr)*
     fn parse_mul_concat_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
-            &[TokenType::Star, TokenType::Slash, TokenType::Concat],
+            &[TokenType::Star, TokenType::Slash, TokenType::ConcatOperator],
             Self::parse_unary_expr,
         )
     }
@@ -1442,10 +1444,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RightSquare, "Expected `]`.")?;
         Ok(Expr::Array(ArrayExpr {
             exprs: array_elements,
-            r#type: array_type
+            r#type: array_type,
         }))
     }
-
 
     // struct_expr -> ["STRUCT" [struct_type] "(" expr ["AS" field_name]] ("," expr ["AS" field_name])* ")"
     // where:
@@ -1465,20 +1466,31 @@ impl<'a> Parser<'a> {
         loop {
             let field_expr = self.parse_expr()?;
             let field_alias = if self.match_token_type(TokenType::As) {
-                let alias = self.consume_one_of(&[TokenType::Identifier, TokenType::QuotedIdentifier], "Expected `Identifier` or `QuotedIdentifier`.")?.clone();
+                let alias = self
+                    .consume_one_of(
+                        &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                        "Expected `Identifier` or `QuotedIdentifier`.",
+                    )?
+                    .clone();
                 Some(ParseToken::Single(alias))
             } else {
                 None
             };
 
-            struct_fields.push(StructField{ expr: field_expr, alias: field_alias });
+            struct_fields.push(StructField {
+                expr: field_expr,
+                alias: field_alias,
+            });
             if !self.match_token_type(TokenType::Comma) {
                 break;
             }
         }
         self.consume(TokenType::RightParen, "Expected `)`.")?;
 
-        Ok(Expr::Struct(StructExpr{ r#type: struct_type, fields: struct_fields }))
+        Ok(Expr::Struct(StructExpr {
+            r#type: struct_type,
+            fields: struct_fields,
+        }))
     }
 
     // array_type -> "<" bq_type ("," bq_type)* ">"
@@ -1494,14 +1506,23 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Less, "Expected `<`.")?;
         let mut struct_field_types = vec![];
         loop {
-            let field_type_name = if self.match_token_type(TokenType::Identifier) || self.match_token_type(TokenType::QuotedIdentifier) {
+            let lookahead = self.peek_next_i(1);
+            let field_type_name = if (self.check_token_type(TokenType::Identifier)
+                || self.check_token_type(TokenType::QuotedIdentifier))
+                && (lookahead.kind == TokenType::Identifier
+                    || lookahead.kind == TokenType::QuotedIdentifier)
+            {
+                self.advance();
                 Some(ParseToken::Single(self.peek_prev().clone()))
             } else {
                 None
             };
 
             let field_type = self.parse_bq_type()?;
-            struct_field_types.push(StructFieldType { name: field_type_name, r#type: field_type });
+            struct_field_types.push(StructFieldType {
+                name: field_type_name,
+                r#type: field_type,
+            });
 
             if !self.match_token_type(TokenType::Comma) {
                 break;
@@ -1519,58 +1540,46 @@ impl<'a> Parser<'a> {
     // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
     fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
         let peek_token = self.advance().clone();
+
+        // reserved keywords
         match peek_token.kind {
-            TokenType::BigNumeric => {
-                Ok(Type::BigNumeric)
-            }
-            TokenType::Bool => {
-                Ok(Type::Bool)
-            }
-            TokenType::Bytes => {
-                Ok(Type::Bytes)
-            }
-            TokenType::Date => {
-                Ok(Type::Date)
-            }
-            TokenType::Datetime => {
-                Ok(Type::Datetime)
-            }
-            TokenType::Float64 => {
-                Ok(Type::Float64)
-            }
-            TokenType::Geography => {
-                Ok(Type::Geography)
-            }
-            TokenType::Int64 => {
-                Ok(Type::Int64)
-            }
-            TokenType::Interval => {
-                Ok(Type::Interval)
-            }
-            TokenType::Json => {
-                Ok(Type::Json)
-            }
-            TokenType::Numeric => {
-                Ok(Type::Numeric)
-            }
-            TokenType::Range => {
-                Ok(Type::Range)
-            }
-            TokenType::StringType => {
-                Ok(Type::String)
-            }
-            TokenType::Time => {
-                Ok(Type::Time)
-            }
-            TokenType::Timestamp => {
-                Ok(Type::Timestamp)
-            }
-            TokenType::Struct => {
+            TokenType::Array => return self.parse_array_type(),
+            TokenType::Struct => return self.parse_struct_type(),
+            _ => {}
+        }
+
+        // identifier or quotedidentifier
+        let literal: &str = peek_token.literal.as_ref().unwrap().string_literal()?;
+        match literal {
+            "bignumeric" => Ok(Type::BigNumeric),
+            "bool" => Ok(Type::Bool),
+            "bytes" => Ok(Type::Bytes),
+            "date" => Ok(Type::Date),
+            "datetime" => Ok(Type::Datetime),
+            "float64" => Ok(Type::Float64),
+            "geography" => Ok(Type::Geography),
+            "int64" => Ok(Type::Int64),
+            "interval" => Ok(Type::Interval),
+            "json" => Ok(Type::Json),
+            "numeric" => Ok(Type::Numeric),
+            "range" => Ok(Type::Range),
+            "stringType" => Ok(Type::String),
+            "time" => Ok(Type::Time),
+            "timestamp" => Ok(Type::Timestamp),
+            "struct" => {
+                // we cannot use struct as a quotedidentifier
+                if peek_token.kind == TokenType::QuotedIdentifier {
+                    return Err(anyhow!("Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."))
+                }
                 Ok(self.parse_struct_type()?)
-            }
-            TokenType::Array => {
+            },
+            "array" => {
+                // we cannot use array as a quotedidentifier
+                if peek_token.kind == TokenType::QuotedIdentifier {
+                    return Err(anyhow!("Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."))
+                }
                 Ok(self.parse_array_type()?)
-            }
+            },
             _ => {
                 self.error(
                     &peek_token,
@@ -1581,17 +1590,22 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     // generic_function -> ("Identifier" | "QuotedIdentifier") "(" ... ")"
     fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
-        let function_name = self.consume_one_of(&[TokenType::Identifier, TokenType::QuotedIdentifier], "Expected `Identifier` or `QuotedIdentifier`.")?.clone();
+        let function_name = self
+            .consume_one_of(
+                &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                "Expected `Identifier` or `QuotedIdentifier`.",
+            )?
+            .clone();
         self.consume(TokenType::LeftParen, "Expected `(`.")?;
         let mut n_parens = 1;
 
         let mut argument_tokens = vec![];
         loop {
             if self.is_at_end() {
-                return Err(anyhow!("Expected `)`."))
+                return Err(anyhow!("Expected `)`."));
             }
             let tok = self.advance();
             argument_tokens.push(tok.clone());
@@ -1608,7 +1622,38 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
         }
-        Ok(Expr::GenericFunction(GenericFunctionExpr { name: ParseToken::Single(function_name), arguments: ParseToken::Multiple(argument_tokens) }))
+        Ok(Expr::GenericFunction(GenericFunctionExpr {
+            name: ParseToken::Single(function_name),
+            arguments: ParseToken::Multiple(argument_tokens),
+        }))
+    }
+
+    fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(
+            &[TokenType::Identifier, TokenType::QuotedIdentifier],
+            "Expected `Identifier` or `QuotedIdentifier`.",
+        )?;
+        self.consume(TokenType::LeftParen, "Expected `(`.")?;
+
+        let mut values = vec![];
+        loop {
+            let value = self.parse_expr()?;
+            values.push(value);
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected `)`.")?;
+        Ok(Expr::Function(FunctionExpr::ConcatFn(ConcatFnExpr { values })))
+    }
+
+    fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
+        let peek_function_name: &str = self.peek().literal.as_ref().unwrap().string_literal()?;
+        match peek_function_name {
+            "concat" => self.parse_concat_fn_expr(),
+            _ => self.parse_generic_function()
+        }
+
     }
 
     // primary_expr ->
@@ -1633,7 +1678,7 @@ impl<'a> Parser<'a> {
             }
             TokenType::Identifier => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
-                    return self.parse_generic_function();
+                    return self.parse_function_expr();
                 } else if let TokenLiteral::String(ident) = peek_token.literal.as_ref().unwrap() {
                     // TODO: refactor this?
                     self.advance();
@@ -1641,10 +1686,10 @@ impl<'a> Parser<'a> {
                 } else {
                     panic!("Found unexpected TokenLiteral for TokenType::Identifier.");
                 }
-            },
+            }
             TokenType::QuotedIdentifier => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
-                    return self.parse_generic_function();
+                    return self.parse_function_expr();
                 } else if let TokenLiteral::String(ident) = peek_token.literal.as_ref().unwrap() {
                     self.advance();
                     Expr::Literal(LiteralExpr::QuotedIdentifier(ident.to_string()))

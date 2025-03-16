@@ -1,6 +1,5 @@
-
 - Implement Pratt Parsing
 - We have a vec in from exprs (we dont need it)
 - Adjust parsing for table names without quoted identifiers (e.g., project-id.dataset-id.table-id)
 - Add window functions
-- Add function calls
+- Finalize lineage module

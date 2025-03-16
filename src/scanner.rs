@@ -1,5 +1,8 @@
+use anyhow::anyhow;
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TokenType {
+    // Here we should have reserved keywords + symbols/operators (+, -, ||, brackets) + EoF
     Asc,
     Desc,
     First,
@@ -35,7 +38,7 @@ pub enum TokenType {
 
     Recursive,
 
-    Concat,
+    ConcatOperator,
 
     BitwiseNot,
     BitwiseOr,
@@ -70,22 +73,7 @@ pub enum TokenType {
     As,
 
     Array,
-    BigNumeric,
-    Bool,
-    Bytes,
-    Date,
-    Datetime,
-    Float64,
-    Geography,
-    Int64,
-    Interval,
-    Json,
-    Numeric,
-    Range,
-    StringType, // to differentiate it from String literal
     Struct,
-    Time,
-    Timestamp,
 
     Group,
     Order,
@@ -113,6 +101,16 @@ pub enum TokenLiteral {
     String(String),
     Number(f64),
 }
+
+impl TokenLiteral {
+    pub fn string_literal(&self) -> anyhow::Result<&str> {
+        match self {
+            TokenLiteral::String(s) => Ok(s),
+            other => Err(anyhow!("TokenLiteral {:?} is not a TokenLiteral::String.", other))
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -357,21 +355,7 @@ impl Scanner {
                     self.open_type_brackets = Some(0)
                 }
             },
-            "bignumeric" => self.add_token(TokenType::BigNumeric),
-            "bool" => self.add_token(TokenType::Bool),
-            "bytes" => self.add_token(TokenType::Bytes),
-            "date" => self.add_token(TokenType::Date),
-            "datetime" => self.add_token(TokenType::Datetime),
-            "float64" => self.add_token(TokenType::Float64),
-            "geography" => self.add_token(TokenType::Geography),
-            "int64" => self.add_token(TokenType::Int64),
-            "interval" => self.add_token(TokenType::Interval),
-            "json" => self.add_token(TokenType::Json),
-            "numeric" => self.add_token(TokenType::Numeric),
-            "range" => self.add_token(TokenType::Range),
             "string" => self.add_token(TokenType::String),
-            "time" => self.add_token(TokenType::Time),
-            "timestamp" => self.add_token(TokenType::Timestamp),
             "limit" => self.add_token(TokenType::Limit),
             "offset" => self.add_token(TokenType::Offset),
             "first" => self.add_token(TokenType::First),
@@ -540,7 +524,7 @@ impl Scanner {
             }
             '|' => {
                 if self.match_char('|') {
-                    self.add_token(TokenType::Concat);
+                    self.add_token(TokenType::ConcatOperator);
                 } else {
                     self.add_token(TokenType::BitwiseOr);
                 }
