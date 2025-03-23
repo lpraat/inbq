@@ -18,10 +18,23 @@ fn parse_sql(sql: &str) -> anyhow::Result<Query> {
 #[test]
 fn test_should_parse() {
     let sqls = [
-      "
+      r#"
       select *
       from `project-id.dataset.table`
-      ",
+      "#,
+      r#"
+      select
+          columnA,
+          column-a,
+          `287column`,
+      from
+          my-project.mydataset.mytable,
+          mydataset.mytable,
+          `dataset.inventory`,
+          my-table,
+          mytable,
+          `287mytable`
+      "#,
         r#"
       select
           --this is a comment
@@ -94,6 +107,12 @@ fn test_should_parse() {
         STRUCT<x int64>(5 AS x)  -- should be an error, just not a syntax one
       "#,
       r#"
+      SELECT ARRAY<STRUCT<warehouse string, state string>>
+          [('warehouse #1', 'WA'),
+           ('warehouse #2', 'CA'),
+           ('warehouse #3', 'WA')] col
+      "#,
+      r#"
       with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
       select tmp.s.x[0]
       from tmp
@@ -109,6 +128,17 @@ fn test_should_parse() {
           concat(tbl.c, ' ', 3)
       from tbl
       "#,
+      r#"
+      INSERT dataset.Inventory (product, quantity)
+      VALUES('top load washer', 10),
+            ('front load washer', 20),
+            ('dryer', 30),
+            ('refrigerator', 10),
+            ('microwave', 20),
+            (DEFAULT, 30),
+            ('oven', 5);
+      select * from dataset.Inventory
+      "#
     ];
     for sql in sqls {
         println!("Testing parsing for SQL: {}", sql);

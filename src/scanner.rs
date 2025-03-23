@@ -35,12 +35,13 @@ pub enum TokenType {
     String,
     Number,
     Eof,
-    
+
     // Technically, these are not reserved keywords?
     First,
     Last,
     Offset,
-    
+    Insert,
+
     // Reserved kewords
     Asc,
     Desc,
@@ -58,6 +59,7 @@ pub enum TokenType {
     Null,
     Is,
     In,
+    Into,
     Between,
     Like,
     With,
@@ -343,7 +345,6 @@ impl Scanner {
                     self.open_type_brackets = Some(0)
                 }
             },
-            "string" => self.add_token(TokenType::String),
             "limit" => self.add_token(TokenType::Limit),
             "offset" => self.add_token(TokenType::Offset),
             "first" => self.add_token(TokenType::First),
@@ -353,6 +354,7 @@ impl Scanner {
             "with" => self.add_token(TokenType::With),
             "recursive" => self.add_token(TokenType::Recursive),
             "select" => self.add_token(TokenType::Select),
+            "insert" => self.add_token(TokenType::Insert),
             "as" => self.add_token(TokenType::As),
             "from" => self.add_token(TokenType::From),
             "where" => self.add_token(TokenType::Where),
@@ -378,6 +380,7 @@ impl Scanner {
             "null" => self.add_token(TokenType::Null),
             "is" => self.add_token(TokenType::Is),
             "in" => self.add_token(TokenType::In),
+            "into" => self.add_token(TokenType::Into),
             "between" => self.add_token(TokenType::Between),
             "like" => self.add_token(TokenType::Like),
             "union" => self.add_token(TokenType::Union),

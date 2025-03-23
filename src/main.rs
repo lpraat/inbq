@@ -10,7 +10,6 @@ pub mod lineage;
 pub mod parser;
 pub mod scanner;
 
-// TOOD: return a Result
 fn parse(sql: &str) -> anyhow::Result<Query> {
     println!("Parsing {}", &sql[..std::cmp::min(50, sql.len())]);
 
@@ -40,16 +39,11 @@ fn main() -> anyhow::Result<()> {
             let sql_path = env::current_dir()?.join(input_args[1].clone());
             let sql_str = fs::read_to_string(sql_path)?;
             let ast = parse(&sql_str)?;
-            match ast.statements.first() {
-                Some(statement) => {
-                    println!("Parsed AST: {:?}\n\n", statement);
-                    let output_lineage = compute_lineage(&statement.query_expr)?;
-                    println!("Output lineage: {:?}.", output_lineage);
-                }
-                None => println!("Empty query."),
-            }
+            println!("Parsed AST: {:?}\n\n", ast);
+            let output_lineage = compute_lineage(&ast);
+            println!("Output lineage: {:?}.", output_lineage);
         }
-        _ => println!("Usage: inbq [sql_file_path]"),
+        _ => println!("Usage: inbq [sql_file_path]")
     }
 
     let elapsed = now.elapsed();

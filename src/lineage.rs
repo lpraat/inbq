@@ -7,8 +7,7 @@ use std::{
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, QueryExpr,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, With,
+        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, Query, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, Statement, With
     },
     scanner::TokenLiteral,
 };
@@ -61,7 +60,7 @@ impl LineageNode {
         }
         input_cols
     }
-    
+
     fn pretty_print_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
         let node = &ctx.arena_lineage_nodes[node_idx];
         let node_source_name = &ctx.arena_objects[node.source_obj].name;
@@ -728,7 +727,7 @@ impl Lineage {
                 if contains_alias {
                     // If aliased, we create a new object
                     let table_like_obj = &self.context.arena_objects[table_like_obj_id].clone();
-                    
+
                     let new_lineage_nodes: Vec<ArenaIndex> = table_like_obj.lineage_nodes.iter().map(|el| {
                         let ln =  &self.context.arena_lineage_nodes[*el];
                         self.context.allocate_new_lineage_node(ln.name.clone(), table_like_obj_id, vec![*el])
@@ -946,11 +945,25 @@ impl Lineage {
 
         Ok(())
     }
+
+    fn query_statement_lin(&mut self, query_statement: &QueryStatement) -> anyhow::Result<()> {
+        self.query_expr_lin(&query_statement.query_expr)
+    }
+
+    fn query_lin(&mut self, query: &Query) -> anyhow::Result<()> {
+        for statement in &query.statements {
+            match statement {
+                Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
+                _ => todo!()
+            }
+        }
+        Ok(())
+    }
 }
 
 // TODO: add line in errors
 
-pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
+pub fn compute_lineage(query: &Query) -> anyhow::Result<()> {
     // TODO: we should read this from a config file, the user must provide it in some way
     let mut ctx = Context::default();
 
@@ -971,7 +984,7 @@ pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
         anon_id: 0,
         context: ctx,
     };
-    lineage.query_expr_lin(query)?;
+    lineage.query_lin(query)?;
 
     println!("Final lineage:");
 

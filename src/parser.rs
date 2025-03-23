@@ -43,13 +43,29 @@ impl ParseToken {
 // TODO: create another file to place all these AST objects
 #[derive(Debug, Clone)]
 pub struct Query {
-    pub statements: Vec<QueryStatement>,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Query(QueryStatement),
+    Insert(InsertStatement),
 }
 
 #[derive(Debug, Clone)]
 pub struct QueryStatement {
     pub query_expr: QueryExpr,
 }
+
+
+#[derive(Debug, Clone)]
+pub struct InsertStatement {
+    target_table: ParseToken,
+    columns: Option<Vec<ParseToken>>,
+    values: Option<Vec<Expr>>,
+    query_expr: Option<QueryExpr>
+}
+
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -490,6 +506,21 @@ impl<'a> Parser<'a> {
         false
     }
 
+    fn match_identifier(&mut self, value: &str) -> bool {
+        if self.check_identifier(value) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+
+    }
+
+    fn check_identifier(&self, value: &str) -> bool {
+        let peek = self.peek();
+        peek.kind == TokenType::Identifier && peek.literal.as_ref().unwrap().string_literal().unwrap() == value
+    }
+
     fn consume(&mut self, token_type: TokenType, message: &str) -> anyhow::Result<&Token> {
         if self.check_token_type(token_type) {
             Ok(self.advance())
@@ -525,28 +556,88 @@ impl<'a> Parser<'a> {
         println!("[line {}] Error {}: {}", line, location, message);
     }
 
-    // TODO: add the other procedural language statements
     // query -> query_statement (; query_statement [";"])*
     fn parse_query(&mut self) -> anyhow::Result<Query> {
         let mut statements = vec![];
-        statements.push(self.parse_query_statement()?);
-
-        while self.match_token_type(TokenType::Semicolon) {
-            if self.check_token_type(TokenType::Eof) {
-                break;
-            }
-            statements.push(self.parse_query_statement()?);
+        
+        if self.check_token_type(TokenType::Eof) {
+            // Empty SQL
+            return Ok(Query {statements})
         }
 
-        self.consume(TokenType::Eof, "Expected EOF")?;
+        loop {
+            if self.check_token_type(TokenType::Insert) {
+                statements.push(self.parse_insert_statement()?);
+            } else {
+                statements.push(self.parse_query_statement()?);
+            }
+
+            if !self.match_token_type(TokenType::Semicolon) {
+                break
+            }
+        }
+
+        self.consume(TokenType::Eof, "Expected `EOF`.")?;
         Ok(Query { statements })
     }
 
     // query_statement -> query_expr
-    fn parse_query_statement(&mut self) -> anyhow::Result<QueryStatement> {
+    fn parse_query_statement(&mut self) -> anyhow::Result<Statement> {
         let query_expr = self.parse_query_expr()?;
-        Ok(QueryStatement { query_expr })
+        Ok(Statement::Query(QueryStatement { query_expr }))
     }
+
+    // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
+    // where
+    // input -> query_expr | "VALUES" "(" expr ")" ("(" expr ")")*
+    // column_name -> "Identifier" | "QuotedIdentifier"
+    fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenType::Insert, "Expected `INSERT`.")?;
+        self.match_token_type(TokenType::Into);
+        let target_table = self.parse_path()?.path;
+        let columns = if self.match_token_type(TokenType::LeftParen) {
+            let mut columns = vec![];
+            loop {
+                let column_name = self.consume_one_of(&[TokenType::Identifier, TokenType::QuotedIdentifier], "Expected `Identifier` or `QuotedIdentifier`.")?;
+                columns.push(ParseToken::Single(column_name.clone()));
+                if !self.match_token_type(TokenType::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenType::RightParen, "Expected `)`.")?;
+            Some(columns)
+        } else {None};
+
+        let values = if self.match_identifier("VALUES") {
+            let mut values = vec![];
+            loop {
+                self.consume(TokenType::LeftParen, "Expected `(`.")?;
+
+                loop {
+                    let expr = self.parse_expr()?;
+                    values.push(expr);
+                    if !self.match_token_type(TokenType::Comma) {
+                        break
+                    }
+                }
+                self.consume(TokenType::RightParen, "Expected `)`.")?;
+
+                if !self.match_token_type(TokenType::Comma) {
+                    break
+                }
+            }
+            Some(values)
+        } else {None};
+
+
+        let query_expr = if values.is_none() {
+            Some(self.parse_query_expr()?)
+        } else {None};
+
+
+        Ok(Statement::Insert(InsertStatement { target_table, columns, values, query_expr }))
+    }
+
 
     // query_expr ->
     // ["WITH" with_expr] select | "(" query_expr ")"
@@ -1070,6 +1161,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // TODO: add FROM UNNEST
     // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")"
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenType::LeftParen) {
@@ -1493,6 +1585,27 @@ impl<'a> Parser<'a> {
             fields: struct_fields,
         }))
     }
+    
+    // struct_tuple_expr -> "(" expr ("," expr)* ")"
+    fn parse_struct_tuple_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenType::LeftParen, "Expected `(`.")?;
+
+        let mut struct_exprs = vec![];
+        loop {
+            let field_expr = self.parse_expr()?;
+            struct_exprs.push(field_expr);
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected `)`.")?;
+
+        Ok(Expr::Struct(StructExpr {
+            r#type: None,
+            fields: struct_exprs.into_iter().map(|expr| StructField { expr, alias: None }).collect(),
+        }))
+        
+    }
 
     // array_type -> "<" bq_type ("," bq_type)* ">"
     fn parse_array_type(&mut self) -> anyhow::Result<Type> {
@@ -1564,7 +1677,7 @@ impl<'a> Parser<'a> {
             "json" => Ok(Type::Json),
             "numeric" => Ok(Type::Numeric),
             "range" => Ok(Type::Range),
-            "stringType" => Ok(Type::String),
+            "string" => Ok(Type::String),
             "time" => Ok(Type::Time),
             "timestamp" => Ok(Type::Timestamp),
             "struct" => {
@@ -1732,6 +1845,10 @@ impl<'a> Parser<'a> {
                     })));
                 } else {
                     let expr = self.parse_expr()?;
+                    if self.match_token_type(TokenType::Comma) {
+                        self.curr = curr_position-1; // -1 parse again the LeftParen
+                        return self.parse_struct_tuple_expr()
+                    }
                     self.consume(TokenType::RightParen, "Expected `)`.")?;
                     return Ok(Expr::Grouping(GroupingExpr {
                         expr: Box::new(expr),
