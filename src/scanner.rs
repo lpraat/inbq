@@ -36,11 +36,10 @@ pub enum TokenType {
     Number,
     Eof,
 
-    // Technically, these are not reserved keywords?
+    // Technically, these are not reserved keywords (TODO: remove)
     First,
     Last,
     Offset,
-    Insert,
 
     // Reserved kewords
     Asc,
@@ -308,7 +307,8 @@ impl Scanner {
                     TokenLiteral::String(
                         self.source_chars[self.start as usize + 1..self.current as usize - 1]
                             .iter()
-                            .collect::<String>(),
+                            .collect::<String>()
+                            .to_lowercase(),
                     ),
                 );
                 break;
@@ -354,7 +354,6 @@ impl Scanner {
             "with" => self.add_token(TokenType::With),
             "recursive" => self.add_token(TokenType::Recursive),
             "select" => self.add_token(TokenType::Select),
-            "insert" => self.add_token(TokenType::Insert),
             "as" => self.add_token(TokenType::As),
             "from" => self.add_token(TokenType::From),
             "where" => self.add_token(TokenType::Where),
@@ -390,7 +389,7 @@ impl Scanner {
             "except" => self.add_token(TokenType::Except),
             _ => self.add_token_w_literal(
                 TokenType::Identifier,
-                TokenLiteral::String(self.current_source_str()),
+                TokenLiteral::String(self.current_source_str().to_lowercase()),
             ),
         }
     }
@@ -560,7 +559,7 @@ impl Scanner {
                                 self.source_chars[(quoted_ident_start_idx + 1) as usize
                                     ..quoted_ident_end_idx as usize]
                                     .iter()
-                                    .collect::<String>(),
+                                    .collect::<String>().to_lowercase(),
                             ),
                         );
                         break;

@@ -107,7 +107,7 @@ fn test_should_parse() {
         STRUCT<x int64>(5 AS x)  -- should be an error, just not a syntax one
       "#,
       r#"
-      SELECT ARRAY<STRUCT<warehouse string, state string>>
+      SELECT ARRAY<STRUCT<warehouse STRING, state string>>
           [('warehouse #1', 'WA'),
            ('warehouse #2', 'CA'),
            ('warehouse #3', 'WA')] col
@@ -138,6 +138,14 @@ fn test_should_parse() {
             (DEFAULT, 30),
             ('oven', 5);
       select * from dataset.Inventory
+      "#,
+      r#"
+      DELETE dataset.Inventory
+      WHERE quantity = 0
+      "#,
+      r#"
+      DELETE dataset.Inventory i
+      WHERE i.product NOT IN (SELECT product from dataset.NewArrivals)
       "#
     ];
     for sql in sqls {
