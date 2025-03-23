@@ -47,29 +47,50 @@ struct LineageNode {
     input: Vec<ArenaIndex>,
 }
 
-fn pretty_print_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
-    let node = &ctx.arena_lineage_nodes[node_idx];
-    let node_source_name = &ctx.arena_objects[node.source_obj].name;
-    let in_str = node
-        .input
-        .iter()
-        .map(|idx| {
-            let in_node = &ctx.arena_lineage_nodes[*idx];
-            format!(
-                "{}->{}",
-                ctx.arena_objects[in_node.source_obj].name, in_node.name
-            )
-        })
-        .fold((0, String::from("")), |acc, el| {
-            if acc.0 == 0 {
-                (acc.0 + 1, el.to_string())
-            } else {
-                (acc.0 + 1, format!("{}, {}", acc.1, el))
-            }
-        })
-        .1;
-    println!("{}->{} <-[{}]", node_source_name, node.name, in_str)
+impl LineageNode {
+    fn compute_lineage(&self, ctx: &Context) -> Vec<String> {
+        let mut input_cols = vec![];
+        let mut stack = self.input.clone();
+        while let Some(popped) = stack.pop() {
+            let inp = &ctx.arena_lineage_nodes[popped];
+            let col_name = inp.name.clone();
+            let table_name = &ctx.arena_objects[inp.source_obj].name;
+            let input = format!("[{}]{}.{}", inp.source_obj.index, table_name, col_name);
+            input_cols.push(input);
+            stack.extend(inp.input.clone());
+        }
+        input_cols
+    }
+    
+    fn pretty_print_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
+        let node = &ctx.arena_lineage_nodes[node_idx];
+        let node_source_name = &ctx.arena_objects[node.source_obj].name;
+        let in_str = node
+            .input
+            .iter()
+            .map(|idx| {
+                let in_node = &ctx.arena_lineage_nodes[*idx];
+                format!(
+                    "[{}]{}->{}",
+                    in_node.source_obj.index,
+                    ctx.arena_objects[in_node.source_obj].name, in_node.name
+                )
+            })
+            .fold((0, String::from("")), |acc, el| {
+                if acc.0 == 0 {
+                    (acc.0 + 1, el.to_string())
+                } else {
+                    (acc.0 + 1, format!("{}, {}", acc.1, el))
+                }
+            })
+            .1;
+        println!("[{}]{}->{} <-[{}]", node.source_obj.index, node_source_name, node.name, in_str)
+    }
 }
+
+
+
+
 
 #[derive(Debug, Clone)]
 pub struct ContextObject {
@@ -406,15 +427,7 @@ impl Lineage {
                     }
 
                     let col_source_idx = self.get_column_source(Some(&source), &col_name)?;
-                    let col_source = &self.context.arena_lineage_nodes[col_source_idx];
-
-                    let new_lineage_node_idx = self.context.allocate_new_lineage_node(
-                        NodeName::Defined(col_name),
-                        col_source.source_obj,
-                        vec![col_source_idx],
-                    );
-
-                    self.context.lineage_stack.push(new_lineage_node_idx);
+                    self.context.lineage_stack.push(col_source_idx);
                 } else {
                     self.select_expr_col_expr(binary_expr.left.as_ref())?;
                     self.select_expr_col_expr(binary_expr.right.as_ref())?;
@@ -426,14 +439,7 @@ impl Lineage {
                 LiteralExpr::Identifier(ident) | LiteralExpr::QuotedIdentifier(ident) => {
                     let col_name = ident.clone();
                     let col_source_idx = self.get_column_source(None, &col_name)?;
-                    let col_source = &self.context.arena_lineage_nodes[col_source_idx];
-
-                    let new_lineage_node_idx = self.context.allocate_new_lineage_node(
-                        NodeName::Defined(col_name),
-                        col_source.source_obj,
-                        vec![col_source_idx],
-                    );
-                    self.context.lineage_stack.push(new_lineage_node_idx);
+                    self.context.lineage_stack.push(col_source_idx);
                 }
 
                 LiteralExpr::String(_) => todo!(),
@@ -718,21 +724,32 @@ impl Lineage {
                 };
 
                 let table_like_obj_id = table_like_obj_id.unwrap();
-                let table_like_obj = &self.context.arena_objects[table_like_obj_id];
 
-                let new_table_like_idx = self.context.allocate_new_ctx_object(
-                    &table_like_name,
-                    table_like_obj.kind,
-                    table_like_obj
-                        .lineage_nodes
-                        .iter()
-                        .map(|ln| {
-                            let ln = &self.context.arena_lineage_nodes[*ln];
-                            (ln.name.clone(), ln.input.clone())
-                        })
-                        .collect(),
-                );
-                self.add_new_from_table(from_tables, new_table_like_idx)?;
+                if contains_alias {
+                    // If aliased, we create a new object
+                    let table_like_obj = &self.context.arena_objects[table_like_obj_id].clone();
+                    
+                    let new_lineage_nodes: Vec<ArenaIndex> = table_like_obj.lineage_nodes.iter().map(|el| {
+                        let ln =  &self.context.arena_lineage_nodes[*el];
+                        self.context.allocate_new_lineage_node(ln.name.clone(), table_like_obj_id, vec![*el])
+                    }).collect();
+
+                    let new_table_like_idx = self.context.allocate_new_ctx_object(
+                        &table_like_name,
+                        table_like_obj.kind,
+                        new_lineage_nodes
+                            .iter()
+                            .map(|ln| {
+                                let ln = &self.context.arena_lineage_nodes[*ln];
+                                (ln.name.clone(), ln.input.clone())
+                            })
+                            .collect(),
+                    );
+                    self.context.update_output_lineage_with_object_nodes(new_table_like_idx);
+                    self.add_new_from_table(from_tables, new_table_like_idx)?;
+                } else {
+                    self.add_new_from_table(from_tables, table_like_obj_id)?;
+                }
             }
             FromExpr::GroupingQuery(from_grouping_query_expr) => {
                 let start_lineage_len = self.context.lineage_stack.len();
@@ -939,12 +956,12 @@ pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
 
     let tmp_idx = ctx.allocate_new_ctx_object(
         "tmp",
-        ContextObjectKind::Cte,
+        ContextObjectKind::Table,
         vec![(NodeName::Defined("z".to_owned()), vec![])],
     );
     let d_idx = ctx.allocate_new_ctx_object(
         "D",
-        ContextObjectKind::Cte,
+        ContextObjectKind::Table,
         vec![(NodeName::Defined("z".to_owned()), vec![])],
     );
     ctx.source_objects =
@@ -957,21 +974,15 @@ pub fn compute_lineage(query: &QueryExpr) -> anyhow::Result<()> {
     lineage.query_expr_lin(query)?;
 
     println!("Final lineage:");
+
     // TODO: we should place this code in the Lineage class, save all the lineage in one place
     let output_lineage_nodes = lineage.context.output.clone();
     for pending_node in output_lineage_nodes {
-        pretty_print_lineage_node(pending_node, &lineage.context);
+        LineageNode::pretty_print_lineage_node(pending_node, &lineage.context);
+        let node = &lineage.context.arena_lineage_nodes[pending_node];
+        println!("Lineage for {:?} is: {:?}", node.name.string(), node.compute_lineage(&lineage.context));
     }
+
     // TODO: pop all the remaining contexts and return the final lineage
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_lineage() {
-        // TODO:
-    }
 }

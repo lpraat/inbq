@@ -94,25 +94,38 @@ fn test_should_parse() {
         STRUCT<x int64>(5 AS x)  -- should be an error, just not a syntax one
       "#,
       r#"
+      with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
+      select tmp.s.x[0]
+      from tmp
+      "#,
+      r#"
+      with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
+      select tmp.s.* except (y)
+      from tmp
+      "#,
+      r#"
       select
           concat("foo", "bar"),
           concat(tbl.c, ' ', 3)
       from tbl
-          
-      "#
-
-      // TODO: struct
-      // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
-      // select tmp.s.x[0]
-      // from tmp
-      //
-      // with tmp as (SELECT struct([1,2,3] as x, 2 as y) as s)
-      // select tmp.s.* except (y)
-      // from tmp
-
+      "#,
     ];
     for sql in sqls {
-        println!("Testing parser for SQL: {}", sql);
+        println!("Testing parsing for SQL: {}", sql);
         assert!(parse_sql(sql).is_ok())
+    }
+}
+
+#[test]
+fn test_should_not_parse() {
+    let sqls = [
+      "
+      select
+        array<struct<int64, `array`<int64>>>[struct(1, [1,2,3])],
+      ",
+    ];
+    for sql in sqls {
+        println!("Testing parsing error for SQL: {}", sql);
+        assert!(parse_sql(sql).is_err())
     }
 }

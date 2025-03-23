@@ -2,4 +2,7 @@
 - We have a vec in from exprs (we dont need it)
 - Adjust parsing for table names without quoted identifiers (e.g., project-id.dataset-id.table-id)
 - Add window functions
+- Parse temp table statement
+- Parse insert, update, delete, truncate, merge statements
 - Finalize lineage module
+- Extract lineage from generic function exprs

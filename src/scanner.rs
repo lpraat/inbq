@@ -2,12 +2,6 @@ use anyhow::anyhow;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TokenType {
-    // Here we should have reserved keywords + symbols/operators (+, -, ||, brackets) + EoF
-    Asc,
-    Desc,
-    First,
-    Last,
-
     LeftParen,
     RightParen,
     LeftSquare,
@@ -16,12 +10,18 @@ pub enum TokenType {
     Dot,
     Minus,
     Plus,
+    BitwiseNot,
+    BitwiseOr,
+    BitwiseAnd,
+    BitwiseXor,
+    BitwiseRightShift,
+    BitwiseLeftShift,
     Colon,
     Semicolon,
     Slash,
     Star,
     Tick,
-
+    ConcatOperator,
     Bang,
     BangEqual,
     Equal,
@@ -30,51 +30,43 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
-
     QuotedIdentifier,
     Identifier,
     String,
     Number,
-
+    Eof,
+    
+    // Technically, these are not reserved keywords?
+    First,
+    Last,
+    Offset,
+    
+    // Reserved kewords
+    Asc,
+    Desc,
     Recursive,
-
-    ConcatOperator,
-
-    BitwiseNot,
-    BitwiseOr,
-    BitwiseAnd,
-    BitwiseXor,
-    BitwiseRightShift,
-    BitwiseLeftShift,
-
     And,
     Or,
     Not,
     True,
     False,
-
     Union,
     All,
     Distinct,
     Intersect,
     Except,
-
     Null,
-
     Is,
     In,
     Between,
     Like,
-
     With,
     Select,
     From,
     Where,
     As,
-
     Array,
     Struct,
-
     Group,
     Order,
     By,
@@ -89,11 +81,7 @@ pub enum TokenType {
     Cross,
     Using,
     On,
-
     Limit,
-    Offset,
-
-    Eof,
 }
 
 #[derive(Debug, Clone)]

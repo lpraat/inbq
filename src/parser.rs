@@ -1078,7 +1078,8 @@ impl<'a> Parser<'a> {
             while self.peek().kind == TokenType::LeftParen {
                 self.curr += 1;
             }
-            if self.peek().kind == TokenType::Select {
+            let lookahead = self.peek();
+            if lookahead.kind == TokenType::Select || lookahead.kind == TokenType::With{
                 self.curr = curr;
                 let query_expr = self.parse_query_expr()?;
                 self.consume(TokenType::RightParen, "Expected `)`.")?;
