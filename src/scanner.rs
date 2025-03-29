@@ -44,6 +44,7 @@ pub enum TokenType {
     // Reserved kewords
     Asc,
     Desc,
+    Create,
     Recursive,
     And,
     Or,
@@ -52,6 +53,8 @@ pub enum TokenType {
     False,
     Union,
     All,
+    Exists,
+    If,
     Distinct,
     Intersect,
     Except,
@@ -100,6 +103,16 @@ impl TokenLiteral {
             TokenLiteral::String(s) => Ok(s),
             other => Err(anyhow!(
                 "TokenLiteral {:?} is not a TokenLiteral::String.",
+                other
+            )),
+        }
+    }
+
+    pub fn number_literal(&self) -> anyhow::Result<f64> {
+        match self {
+            TokenLiteral::Number(n) => Ok(*n),
+            other => Err(anyhow!(
+                "TokenLiteral {:?} is not a TokenLiteral::Number.",
                 other
             )),
         }
@@ -357,6 +370,9 @@ impl Scanner {
             "asc" => self.add_token(TokenType::Asc),
             "desc" => self.add_token(TokenType::Desc),
             "with" => self.add_token(TokenType::With),
+            "create" => self.add_token(TokenType::Create),
+            "exists" => self.add_token(TokenType::Exists),
+            "if" => self.add_token(TokenType::If),
             "recursive" => self.add_token(TokenType::Recursive),
             "select" => self.add_token(TokenType::Select),
             "as" => self.add_token(TokenType::As),

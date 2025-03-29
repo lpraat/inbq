@@ -54,6 +54,50 @@ pub enum Statement {
     Update(UpdateStatement),
     Truncate(TruncateStatement),
     Merge(MergeStatement),
+    CreateTable(CreateTableStatement),
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateTableStatement {
+    name: ParseToken,
+    schema: Option<Vec<ColumnSchema>>,
+    replace: bool,
+    is_temporary: bool,
+    if_not_exists: bool,
+    query: Option<QueryExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnSchema {
+    name: ParseToken,
+    r#type: ParameterizedType,
+}
+
+#[derive(Debug, Clone)]
+pub enum ParameterizedType {
+    Array(Box<ParameterizedType>),
+    BigNumeric(Option<u32>, Option<u32>),
+    Bool,
+    Bytes(Option<u32>),
+    Date,
+    Datetime,
+    Float64,
+    Geography,
+    Int64,
+    Interval,
+    Json,
+    Numeric(Option<u32>, Option<u32>),
+    Range,
+    String(Option<u32>),
+    Struct(Vec<StructParameterizedFieldType>),
+    Time,
+    Timestamp,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructParameterizedFieldType {
+    name: ParseToken,
+    r#type: ParameterizedType,
 }
 
 #[derive(Debug, Clone)]
@@ -474,7 +518,6 @@ pub struct Parser<'a> {
     curr: i32,
 }
 
-
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a Vec<Token>) -> Parser<'a> {
         Self {
@@ -612,19 +655,25 @@ impl<'a> Parser<'a> {
             }
 
             let peek = self.peek().clone();
-            let peek_literal = peek.literal.and_then(|el| match el {
-                TokenLiteral::String(literal_str) => Some(literal_str),
-                TokenLiteral::Number(_) => None,
-            });
-            let statement = match peek_literal.as_deref() {
-                Some("insert") => self.parse_insert_statement()?,
-                Some("delete") => self.parse_delete_statement()?,
-                Some("update") => self.parse_update_statement()?,
-                Some("truncate") => self.parse_truncate_statement()?,
-                Some("merge") => self.parse_merge_statement()?,
-                _ => self.parse_query_statement()?,
-            };
-            statements.push(statement);
+
+            if peek.kind == TokenType::Create {
+                statements.push(self.parse_create_table_statement()?);
+            } else {
+                let peek_literal = peek.literal.and_then(|el| match el {
+                    TokenLiteral::String(literal_str) => Some(literal_str),
+                    TokenLiteral::Number(_) => None,
+                });
+                let statement = match peek_literal.as_deref() {
+                    Some("insert") => self.parse_insert_statement()?,
+                    Some("delete") => self.parse_delete_statement()?,
+                    Some("update") => self.parse_update_statement()?,
+                    Some("truncate") => self.parse_truncate_statement()?,
+                    Some("merge") => self.parse_merge_statement()?,
+                    _ => self.parse_query_statement()?,
+                };
+                statements.push(statement);
+            }
+
             if !self.match_token_type(TokenType::Semicolon) {
                 break;
             }
@@ -632,6 +681,71 @@ impl<'a> Parser<'a> {
 
         self.consume(TokenType::Eof, "Expected `EOF`.")?;
         Ok(Query { statements })
+    }
+
+    // TODO: add collate, partition, etc...
+    // CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] TABLE [ IF NOT EXISTS ] table_name
+    // ["(" column_name parameterized_bq_type ("," column_name parameterized_bq_Type)* ")"]
+    // ["AS" query_statement]
+    fn parse_create_table_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenType::Create, "Expected `CREATE`.")?;
+        let replace = self.match_token_type(TokenType::Or);
+        if replace {
+            self.consume_identifier("replace", "Expected `REPLACE`.")?;
+        }
+
+        let is_temporary = self.match_identifier("temp") || self.match_identifier("temporary");
+        self.consume_identifier("table", "Expected `TABLE`.")?;
+
+        let if_not_exists = self.match_token_type(TokenType::If);
+        if if_not_exists {
+            self.consume(TokenType::Not, "Expected `NOT`.")?;
+            self.consume(TokenType::Exists, "Expected `EXISTS`.")?;
+        }
+
+        let name = self.parse_path()?.path;
+
+        let schema = if self.match_token_type(TokenType::LeftParen) {
+            let mut column_schema = vec![];
+            loop {
+                println!("parsing col : {:?}", self.peek());
+                let col_name = self
+                    .consume_one_of(
+                        &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                        "Expected `Identifier` or `QuotedIdentifier`.",
+                    )?
+                    .clone();
+                let col_type = self.parse_parameterized_bq_type()?;
+                column_schema.push(ColumnSchema {
+                    name: ParseToken::Single(col_name),
+                    r#type: col_type,
+                });
+
+                println!("parsing : {:?}", self.peek());
+                if !self.match_token_type(TokenType::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenType::RightParen, "Expected `)`.")?;
+            Some(column_schema)
+        } else {
+            None
+        };
+
+        let query = if self.match_token_type(TokenType::As) {
+            Some(self.parse_query_expr()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::CreateTable(CreateTableStatement {
+            name,
+            schema,
+            replace,
+            is_temporary,
+            if_not_exists,
+            query,
+        }))
     }
 
     // query_statement -> query_expr
@@ -1967,10 +2081,9 @@ impl<'a> Parser<'a> {
         Ok(Type::Struct(struct_field_types))
     }
 
-    // TODO: we will need a bq_parameterized_type parse function (e.g., for STRING(255) or NUMERIC(5,2))
     // bq_type ->
     // "ARRAY" array_type | "STRUCT" struct_type
-    // | "BIGNUMERIC"" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
+    // | "BIGNUMERIC" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
     // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
     fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
         let peek_token = self.advance().clone();
@@ -1989,18 +2102,21 @@ impl<'a> Parser<'a> {
             .unwrap()
             .string_literal()?
             .to_lowercase();
+
         match literal.as_str() {
-            "bignumeric" => Ok(Type::BigNumeric),
-            "bool" => Ok(Type::Bool),
+            "bignumeric" | "bigdecimal" => Ok(Type::BigNumeric),
+            "bool" | "boolean" => Ok(Type::Bool),
             "bytes" => Ok(Type::Bytes),
             "date" => Ok(Type::Date),
             "datetime" => Ok(Type::Datetime),
             "float64" => Ok(Type::Float64),
             "geography" => Ok(Type::Geography),
-            "int64" => Ok(Type::Int64),
+            "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
+                Ok(Type::Int64)
+            }
             "interval" => Ok(Type::Interval),
             "json" => Ok(Type::Json),
-            "numeric" => Ok(Type::Numeric),
+            "numeric" | "decimal" => Ok(Type::Numeric),
             "range" => Ok(Type::Range),
             "string" => Ok(Type::String),
             "time" => Ok(Type::Time),
@@ -2022,6 +2138,200 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 Ok(self.parse_array_type()?)
+            }
+            _ => {
+                self.error(
+                    &peek_token,
+                    "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+                     `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+                );
+                Err(anyhow!(ParseError))
+            }
+        }
+    }
+
+    // array_type -> "<" bq_type ("," bq_type)* ">"
+    fn parse_parameterized_array_type(&mut self) -> anyhow::Result<ParameterizedType> {
+        self.consume(TokenType::Less, "Expected `<`.")?;
+        let array_type = self.parse_parameterized_bq_type()?;
+        self.consume(TokenType::Greater, "Expected `>`.")?;
+        Ok(ParameterizedType::Array(Box::new(array_type)))
+    }
+
+    // struct_type -> "<" field_name bq_type ("," field_name bq_type)* ">"
+    // where:
+    // field_name -> "Identifier" | "QuotedIdentifier"
+    fn parse_parameterized_struct_type(&mut self) -> anyhow::Result<ParameterizedType> {
+        self.consume(TokenType::Less, "Expected `<`.")?;
+        let mut struct_field_types = vec![];
+        loop {
+            let field_name = self
+                .consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected `Identifier` or `QuotedIdentifier`.",
+                )?
+                .clone();
+            let field_type = self.parse_parameterized_bq_type()?;
+            struct_field_types.push(StructParameterizedFieldType {
+                name: ParseToken::Single(field_name),
+                r#type: field_type,
+            });
+
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenType::Greater, "Expected `>`.")?;
+
+        Ok(ParameterizedType::Struct(struct_field_types))
+    }
+
+    // parameterized_bq_type ->
+    // "ARRAY" array_type | "STRUCT" struct_type
+    // | "BIGNUMERIC" ["(" number ["," number] ")" ]
+    // | "NUMERIC" ["(" number ["," number] ")" ]
+    // | "BOOL" | "BYTES" ["(" number ")"] | "STRING" ["(" number ")"]
+    // | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
+    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" |  | "TIME"" | "TIMESTAMP"
+    fn parse_parameterized_bq_type(&mut self) -> anyhow::Result<ParameterizedType> {
+        let peek_token = self.advance().clone();
+
+        // reserved keywords
+        match peek_token.kind {
+            TokenType::Array => return self.parse_parameterized_array_type(),
+            TokenType::Struct => return self.parse_parameterized_struct_type(),
+            _ => {}
+        }
+
+        // identifier or quotedidentifier
+        let literal = peek_token
+            .literal
+            .as_ref()
+            .unwrap()
+            .string_literal()?
+            .to_lowercase();
+
+        match literal.as_str() {
+            "bignumeric" | "bigdecimal" => {
+                let (precision, scale) = if self.match_token_type(TokenType::LeftParen) {
+                    let precision: u32 = self
+                        .consume(TokenType::Number, "Expected `Number`.")?
+                        .literal
+                        .as_ref()
+                        .unwrap()
+                        .number_literal()
+                        .unwrap() as u32;
+                    let scale: Option<u32> = if self.match_token_type(TokenType::Comma) {
+                        Some(
+                            self.consume(TokenType::Number, "Expected `Number`.")?
+                                .literal
+                                .as_ref()
+                                .unwrap()
+                                .number_literal()
+                                .unwrap() as u32,
+                        )
+                    } else {
+                        None
+                    };
+                    self.consume(TokenType::RightParen, "Expected `)`.")?;
+                    (Some(precision), scale)
+                } else {
+                    (None, None)
+                };
+                Ok(ParameterizedType::BigNumeric(precision, scale))
+            }
+            "bool" | "boolean" => Ok(ParameterizedType::Bool),
+            "bytes" => {
+                let max_len = if self.match_token_type(TokenType::LeftParen) {
+                    let max_len = Some(
+                        self.consume(TokenType::Number, "Expected `Number`")?
+                            .literal
+                            .as_ref()
+                            .unwrap()
+                            .number_literal()
+                            .unwrap() as u32,
+                    );
+                    self.consume(TokenType::RightParen, "Expected `)`.")?;
+                    max_len
+                } else {
+                    None
+                };
+                Ok(ParameterizedType::Bytes(max_len))
+            }
+            "date" => Ok(ParameterizedType::Date),
+            "datetime" => Ok(ParameterizedType::Datetime),
+            "float64" => Ok(ParameterizedType::Float64),
+            "geography" => Ok(ParameterizedType::Geography),
+            "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
+                Ok(ParameterizedType::Int64)
+            }
+            "interval" => Ok(ParameterizedType::Interval),
+            "json" => Ok(ParameterizedType::Json),
+            "numeric" | "decimal" => {
+                let (precision, scale) = if self.match_token_type(TokenType::LeftParen) {
+                    let precision: u32 = self
+                        .consume(TokenType::Number, "Expected `Number`.")?
+                        .literal
+                        .as_ref()
+                        .unwrap()
+                        .number_literal()
+                        .unwrap() as u32;
+                    let scale: Option<u32> = if self.match_token_type(TokenType::Comma) {
+                        Some(
+                            self.consume(TokenType::Number, "Expected `Number`.")?
+                                .literal
+                                .as_ref()
+                                .unwrap()
+                                .number_literal()
+                                .unwrap() as u32,
+                        )
+                    } else {
+                        None
+                    };
+                    self.consume(TokenType::RightParen, "Expected `)`.")?;
+                    (Some(precision), scale)
+                } else {
+                    (None, None)
+                };
+                Ok(ParameterizedType::Numeric(precision, scale))
+            }
+            "range" => Ok(ParameterizedType::Range),
+            "string" => {
+                let max_len = if self.match_token_type(TokenType::LeftParen) {
+                    let max_len = Some(
+                        self.consume(TokenType::Number, "Expected `Number`")?
+                            .literal
+                            .as_ref()
+                            .unwrap()
+                            .number_literal()
+                            .unwrap() as u32,
+                    );
+                    self.consume(TokenType::RightParen, "Expected `)`.")?;
+                    max_len
+                } else {
+                    None
+                };
+                Ok(ParameterizedType::String(max_len))
+            }
+            "time" => Ok(ParameterizedType::Time),
+            "timestamp" => Ok(ParameterizedType::Timestamp),
+            "struct" => {
+                // we cannot use struct as a quotedidentifier
+                if peek_token.kind == TokenType::QuotedIdentifier {
+                    return Err(anyhow!(
+                        "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
+                    ));
+                }
+                Ok(self.parse_parameterized_struct_type()?)
+            }
+            "array" => {
+                // we cannot use array as a quotedidentifier
+                if peek_token.kind == TokenType::QuotedIdentifier {
+                    return Err(anyhow!(
+                        "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
+                    ));
+                }
+                Ok(self.parse_parameterized_array_type()?)
             }
             _ => {
                 self.error(

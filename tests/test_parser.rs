@@ -224,6 +224,10 @@ fn test_should_parse() {
         UPDATE SET quantity = T.quantity + S.quantity
       WHEN MATCHED THEN
         DELETE
+      "#,
+      r#"
+      CREATE TEMP TABLE tmp (x `decimal`(3,4), y STRUCT <a ARRAY <STRING>, b BOOL>);
+      CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b `BOOL`>);
       "#
     ];
     for sql in sqls {
