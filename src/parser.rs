@@ -1,5 +1,5 @@
 use core::panic;
-use std::fmt::Display;
+use std::{fmt::Display, thread::current};
 
 use anyhow::anyhow;
 
@@ -51,6 +51,9 @@ pub enum Statement {
     Query(QueryStatement),
     Insert(InsertStatement),
     Delete(DeleteStatement),
+    Update(UpdateStatement),
+    Truncate(TruncateStatement),
+    Merge(MergeStatement),
 }
 
 #[derive(Debug, Clone)]
@@ -58,22 +61,100 @@ pub struct QueryStatement {
     pub query_expr: QueryExpr,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct InsertStatement {
     target_table: ParseToken,
     columns: Option<Vec<ParseToken>>,
     values: Option<Vec<Expr>>,
-    query_expr: Option<QueryExpr>
+    query_expr: Option<QueryExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteStatement {
     target_table: ParseToken,
     alias: Option<ParseToken>,
-    cond: Expr
+    cond: Expr,
 }
 
+#[derive(Debug, Clone)]
+struct UpdateItem {
+    column: ParseToken,
+    expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateStatement {
+    target_table: ParseToken,
+    alias: Option<ParseToken>,
+    update_items: Vec<UpdateItem>,
+    from: From,
+    r#where: Where,
+}
+
+#[derive(Debug, Clone)]
+pub struct TruncateStatement {
+    target_table: ParseToken,
+}
+
+#[derive(Debug, Clone)]
+pub enum Merge {
+    Update(MergeUpdate),
+    Insert(MergeInsert),
+    InsertRow,
+    Delete,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeUpdate {
+    update_items: Vec<UpdateItem>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeInsert {
+    columns: Option<Vec<ParseToken>>,
+    values: Vec<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum When {
+    Matched(WhenMatched),
+    NotMatchedByTarget(WhenNotMatchedByTarget),
+    NotMatchedBySource(WhenNotMatchedBySource),
+}
+
+#[derive(Debug, Clone)]
+pub struct WhenMatched {
+    search_condition: Option<Expr>,
+    merge: Merge,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhenNotMatchedByTarget {
+    search_condition: Option<Expr>,
+    merge: Merge,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhenNotMatchedBySource {
+    search_condition: Option<Expr>,
+    merge: Merge,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeStatement {
+    target_table: ParseToken,
+    target_alias: Option<ParseToken>,
+    source: MergeSource,
+    source_alias: Option<ParseToken>,
+    condition: Expr,
+    whens: Vec<When>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MergeSource {
+    Table(ParseToken),
+    Subquery(QueryExpr),
+}
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -534,7 +615,8 @@ impl<'a> Parser<'a> {
 
     fn check_identifier(&self, value: &str) -> bool {
         let peek = self.peek();
-        peek.kind == TokenType::Identifier && peek.literal.as_ref().unwrap().string_literal().unwrap() == value
+        peek.kind == TokenType::Identifier
+            && peek.literal.as_ref().unwrap().string_literal().unwrap() == value
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> anyhow::Result<&Token> {
@@ -578,14 +660,14 @@ impl<'a> Parser<'a> {
 
         if self.check_token_type(TokenType::Eof) {
             // Empty SQL
-            return Ok(Query {statements})
+            return Ok(Query { statements });
         }
 
         loop {
             if self.check_token_type(TokenType::Eof) {
                 break;
             }
-            
+
             let peek = self.peek().clone();
             let peek_literal = peek.literal.and_then(|el| match el {
                 TokenLiteral::String(literal_str) => Some(literal_str),
@@ -594,11 +676,14 @@ impl<'a> Parser<'a> {
             let statement = match peek_literal.as_deref() {
                 Some("insert") => self.parse_insert_statement()?,
                 Some("delete") => self.parse_delete_statement()?,
-                _ => self.parse_query_statement()?
+                Some("update") => self.parse_update_statement()?,
+                Some("truncate") => self.parse_truncate_statement()?,
+                Some("merge") => self.parse_merge_statement()?,
+                _ => self.parse_query_statement()?,
             };
             statements.push(statement);
             if !self.match_token_type(TokenType::Semicolon) {
-                break
+                break;
             }
         }
 
@@ -613,7 +698,7 @@ impl<'a> Parser<'a> {
     }
 
     // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
-    // where
+    // where:
     // input -> query_expr | "VALUES" "(" expr ")" ("(" expr ")")*
     // column_name -> "Identifier" | "QuotedIdentifier"
     fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
@@ -623,7 +708,10 @@ impl<'a> Parser<'a> {
         let columns = if self.match_token_type(TokenType::LeftParen) {
             let mut columns = vec![];
             loop {
-                let column_name = self.consume_one_of(&[TokenType::Identifier, TokenType::QuotedIdentifier], "Expected `Identifier` or `QuotedIdentifier`.")?;
+                let column_name = self.consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected `Identifier` or `QuotedIdentifier`.",
+                )?;
                 columns.push(ParseToken::Single(column_name.clone()));
                 if !self.match_token_type(TokenType::Comma) {
                     break;
@@ -631,7 +719,9 @@ impl<'a> Parser<'a> {
             }
             self.consume(TokenType::RightParen, "Expected `)`.")?;
             Some(columns)
-        } else {None};
+        } else {
+            None
+        };
 
         let values = if self.match_identifier("values") {
             let mut values = vec![];
@@ -642,37 +732,284 @@ impl<'a> Parser<'a> {
                     let expr = self.parse_expr()?;
                     values.push(expr);
                     if !self.match_token_type(TokenType::Comma) {
-                        break
+                        break;
                     }
                 }
                 self.consume(TokenType::RightParen, "Expected `)`.")?;
 
                 if !self.match_token_type(TokenType::Comma) {
-                    break
+                    break;
                 }
             }
             Some(values)
-        } else {None};
-
+        } else {
+            None
+        };
 
         let query_expr = if values.is_none() {
             Some(self.parse_query_expr()?)
-        } else {None};
+        } else {
+            None
+        };
 
-
-        Ok(Statement::Insert(InsertStatement { target_table, columns, values, query_expr }))
+        Ok(Statement::Insert(InsertStatement {
+            target_table,
+            columns,
+            values,
+            query_expr,
+        }))
     }
-    
+
     // delete_statement -> "DELETE" ["FROM"] path ["AS"] [alias] "WHERE" expr
     fn parse_delete_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_identifier("delete", "Expected `DELETE`.")?;
         self.match_token_type(TokenType::From);
         let target_table = self.parse_path()?.path;
-        self.match_token_type(TokenType::As);
-        let alias = self.parse_as_alias()?.map(|tok| ParseToken::Single(tok.clone()));        
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
         self.consume(TokenType::Where, "Expected `WHERE`.")?;
         let cond = self.parse_expr()?;
-        Ok(Statement::Delete(DeleteStatement{ target_table, alias, cond }))
+        Ok(Statement::Delete(DeleteStatement {
+            target_table,
+            alias,
+            cond,
+        }))
+    }
+
+    // update statement -> "UPDATE" path ["AS"] [alias] SET set_clause ["FROM" from_expr] "WHERE" expr
+    // where:
+    // set_clause = ("Identifier" | "QuotedIdentifier") = expr ("," ("Identifier" | "QuotedIdentifier") = expr)*
+    fn parse_update_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_identifier("update", "Expected `UPDATE`.")?;
+        let target_table = self.parse_path()?.path;
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+        self.consume(TokenType::Set, "Expected `SET`.")?;
+        let mut update_items = vec![];
+        loop {
+            let column = self
+                .consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected `Identifier` or `QuotedIdentifier`.",
+                )?
+                .clone();
+            self.consume(TokenType::Equal, "Expected `=`.")?;
+            let expr = self.parse_expr()?;
+            update_items.push(UpdateItem {
+                column: ParseToken::Single(column),
+                expr,
+            });
+
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        let from = if self.match_token_type(TokenType::From) {
+            vec![self.parse_from_expr()?]
+        } else {
+            vec![]
+        };
+
+        self.consume(TokenType::Where, "Expected `WHERE`.")?;
+        let where_expr = self.parse_where_expr()?;
+
+        Ok(Statement::Update(UpdateStatement {
+            target_table,
+            alias,
+            update_items,
+            from: From { exprs: from },
+            r#where: Where {
+                expr: Box::new(where_expr),
+            },
+        }))
+    }
+
+    // truncate_statement -> "TRUNCATE" "TABLE" path
+    fn parse_truncate_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_identifier("truncate", "Expected `TRUNCATE`.")?;
+        self.consume_identifier("table", "Expected `TABLE`.")?;
+        let target_table = self.parse_path()?.path;
+        Ok(Statement::Truncate(TruncateStatement { target_table }))
+    }
+
+    // merge_statement -> "MERGE" ["INTO"] path ["AS"] [alias] "USING" path "ON" merge_condition (when_clause)+
+    // where:
+    // when_clause -> matched_clause | not_matched_by_target_clause | not_matched_by_source_clause
+    // matched_clause -> "WHEN" "MATCHED" ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
+    // not_matched_by_target_clause -> "WHEN" "NOT" "MATCHED" ["BY" "TARGET"] ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
+    fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_identifier("merge", "Expected `MERGE`.")?;
+        self.match_token_type(TokenType::Into);
+        let target_table = self.parse_path()?.path;
+        let target_alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+        self.consume(TokenType::Using, "Expected `USING`.")?;
+        let source = if self.check_token_type(TokenType::LeftParen) {
+            MergeSource::Subquery(self.parse_query_expr()?)
+        } else {
+            MergeSource::Table(self.parse_path()?.path)
+        };
+        let source_alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+        self.consume(TokenType::On, "Expected `On`.")?;
+        let condition = self.parse_expr()?;
+
+        self.consume(TokenType::When, "Expected `WHEN`.")?;
+
+        let mut whens = vec![];
+        loop {
+            let when = if self.match_token_type(TokenType::Not) {
+                self.consume_identifier("matched", "Expected `MATCHED`.")?;
+
+                let matched_by = self.match_token_type(TokenType::By);
+                if !matched_by || self.match_identifier("target") {
+                    // not_matched_by_target_clause
+                    let search_condition = self.parse_merge_search_condition()?;
+                    self.consume(TokenType::Then, "Expected `THEN`.")?;
+                    let merge_insert = self.parse_merge_insert()?;
+                    When::NotMatchedByTarget(WhenNotMatchedByTarget {
+                        search_condition,
+                        merge: merge_insert,
+                    })
+                } else {
+                    // not_matched_by_source_clause
+                    self.consume_identifier("source", "Expected `SOURCE`.")?;
+                    let search_condition = self.parse_merge_search_condition()?;
+                    self.consume(TokenType::Then, "Expected `THEN`.")?;
+                    if self.match_identifier("delete") {
+                        When::NotMatchedBySource(WhenNotMatchedBySource {
+                            search_condition,
+                            merge: Merge::Delete,
+                        })
+                    } else {
+                        When::NotMatchedBySource(WhenNotMatchedBySource {
+                            search_condition,
+                            merge: self.parse_merge_update()?,
+                        })
+                    }
+                }
+            } else {
+                // matched_clause
+                self.consume_identifier("matched", "Expected `MATCHED`.")?;
+                let search_condition = self.parse_merge_search_condition()?;
+                self.consume(TokenType::Then, "Expected `THEN`.")?;
+                let merge = if self.match_identifier("delete") {
+                    Merge::Delete
+                } else {
+                    self.parse_merge_update()?
+                };
+                When::Matched(WhenMatched {
+                    search_condition,
+                    merge,
+                })
+            };
+
+            whens.push(when);
+
+            if !self.match_token_type(TokenType::When) {
+                break;
+            }
+        }
+
+        Ok(Statement::Merge(MergeStatement {
+            target_table,
+            target_alias,
+            source,
+            source_alias,
+            condition,
+            whens,
+        }))
+    }
+
+    // merge_update -> "UPDATE" "SET" update_item ("," update_item)*
+    // where:
+    // update_item -> ("Identifier" | "QuotedIdentifier") "=" expr
+    fn parse_merge_update(&mut self) -> anyhow::Result<Merge> {
+        self.consume_identifier("update", "Expected `UPDATE`.")?;
+        self.consume(TokenType::Set, "Expected `SET`")?;
+        let mut update_items = vec![];
+        loop {
+            let column = self
+                .consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected `Identifier` or `QuotedIdentifier`.",
+                )?
+                .clone();
+            self.consume(TokenType::Equal, "Expected `=`.")?;
+            let expr = self.parse_expr()?;
+            update_items.push(UpdateItem {
+                column: ParseToken::Single(column),
+                expr,
+            });
+
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+        Ok(Merge::Update(MergeUpdate { update_items }))
+    }
+
+    // merge_insert -> "INSERT" "ROW" | "INSERT" [(" column ("," column)*] ")"] "VALUES" "(" expr ("," expr)* ")"
+    // where:
+    // columns -> "Identifier" | "QuotedIdentifier"
+    fn parse_merge_insert(&mut self) -> anyhow::Result<Merge> {
+        self.consume_identifier("insert", "Expected `INSERT`.")?;
+        if self.match_identifier("row") {
+            return Ok(Merge::InsertRow);
+        }
+
+        let columns = if self.match_token_type(TokenType::LeftParen) {
+            let mut columns = vec![];
+            loop {
+                let column_name = self.consume_one_of(
+                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
+                    "Expected `Identifier` or `QuotedIdentifier`.",
+                )?;
+                columns.push(ParseToken::Single(column_name.clone()));
+                if !self.match_token_type(TokenType::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenType::RightParen, "Expected `)`.")?;
+            Some(columns)
+        } else {
+            None
+        };
+
+        self.consume_identifier("values", "Expected `VALUES`.")?;
+        let mut values = vec![];
+        loop {
+            self.consume(TokenType::LeftParen, "Expected `(`.")?;
+
+            loop {
+                let expr = self.parse_expr()?;
+                values.push(expr);
+                if !self.match_token_type(TokenType::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenType::RightParen, "Expected `)`.")?;
+
+            if !self.match_token_type(TokenType::Comma) {
+                break;
+            }
+        }
+
+        Ok(Merge::Insert(MergeInsert { columns, values }))
+    }
+
+    // merge_search_condition -> ["AND" expr]
+    fn parse_merge_search_condition(&mut self) -> anyhow::Result<Option<Expr>> {
+        let expr = if self.match_token_type(TokenType::And) {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        Ok(expr)
     }
 
     // query_expr ->
@@ -1207,7 +1544,7 @@ impl<'a> Parser<'a> {
                 self.curr += 1;
             }
             let lookahead = self.peek();
-            if lookahead.kind == TokenType::Select || lookahead.kind == TokenType::With{
+            if lookahead.kind == TokenType::Select || lookahead.kind == TokenType::With {
                 self.curr = curr;
                 let query_expr = self.parse_query_expr()?;
                 self.consume(TokenType::RightParen, "Expected `)`.")?;
@@ -1404,7 +1741,9 @@ impl<'a> Parser<'a> {
                 | TokenType::LessEqual
                 | TokenType::BangEqual
                 | TokenType::NotEqual
-                | TokenType::Like => {
+                | TokenType::Like
+                | TokenType::In
+                | TokenType::Between => {
                     let operator = curr_token;
                     self.advance();
                     let right = self.parse_bitwise_or_expr()?;
@@ -1638,9 +1977,11 @@ impl<'a> Parser<'a> {
 
         Ok(Expr::Struct(StructExpr {
             r#type: None,
-            fields: struct_exprs.into_iter().map(|expr| StructField { expr, alias: None }).collect(),
+            fields: struct_exprs
+                .into_iter()
+                .map(|expr| StructField { expr, alias: None })
+                .collect(),
         }))
-
     }
 
     // array_type -> "<" bq_type ("," bq_type)* ">"
@@ -1699,7 +2040,12 @@ impl<'a> Parser<'a> {
         }
 
         // identifier or quotedidentifier
-        let literal = peek_token.literal.as_ref().unwrap().string_literal()?.to_lowercase();
+        let literal = peek_token
+            .literal
+            .as_ref()
+            .unwrap()
+            .string_literal()?
+            .to_lowercase();
         match literal.as_str() {
             "bignumeric" => Ok(Type::BigNumeric),
             "bool" => Ok(Type::Bool),
@@ -1719,17 +2065,21 @@ impl<'a> Parser<'a> {
             "struct" => {
                 // we cannot use struct as a quotedidentifier
                 if peek_token.kind == TokenType::QuotedIdentifier {
-                    return Err(anyhow!("Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."))
+                    return Err(anyhow!(
+                        "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
+                    ));
                 }
                 Ok(self.parse_struct_type()?)
-            },
+            }
             "array" => {
                 // we cannot use array as a quotedidentifier
                 if peek_token.kind == TokenType::QuotedIdentifier {
-                    return Err(anyhow!("Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."))
+                    return Err(anyhow!(
+                        "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
+                    ));
                 }
                 Ok(self.parse_array_type()?)
-            },
+            }
             _ => {
                 self.error(
                     &peek_token,
@@ -1794,16 +2144,17 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(TokenType::RightParen, "Expected `)`.")?;
-        Ok(Expr::Function(FunctionExpr::ConcatFn(ConcatFnExpr { values })))
+        Ok(Expr::Function(FunctionExpr::ConcatFn(ConcatFnExpr {
+            values,
+        })))
     }
 
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_function_name: &str = self.peek().literal.as_ref().unwrap().string_literal()?;
         match peek_function_name {
             "concat" => self.parse_concat_fn_expr(),
-            _ => self.parse_generic_function()
+            _ => self.parse_generic_function(),
         }
-
     }
 
     // primary_expr ->
@@ -1882,8 +2233,8 @@ impl<'a> Parser<'a> {
                 } else {
                     let expr = self.parse_expr()?;
                     if self.match_token_type(TokenType::Comma) {
-                        self.curr = curr_position-1; // -1 parse again the LeftParen
-                        return self.parse_struct_tuple_expr()
+                        self.curr = curr_position - 1; // -1 parse again the LeftParen
+                        return self.parse_struct_tuple_expr();
                     }
                     self.consume(TokenType::RightParen, "Expected `)`.")?;
                     return Ok(Expr::Grouping(GroupingExpr {

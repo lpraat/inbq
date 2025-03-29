@@ -146,6 +146,84 @@ fn test_should_parse() {
       r#"
       DELETE dataset.Inventory i
       WHERE i.product NOT IN (SELECT product from dataset.NewArrivals)
+      "#,
+      r#"
+      UPDATE dataset.Inventory
+      SET quantity = quantity - 10,
+          supply_constrained = DEFAULT
+      WHERE product like '%washer%'
+      "#,
+      r#"
+      UPDATE dataset.Inventory
+      SET quantity = quantity +
+        (SELECT quantity FROM dataset.NewArrivals
+         WHERE Inventory.product = NewArrivals.product),
+          supply_constrained = false
+      WHERE product IN (SELECT product FROM dataset.NewArrivals)
+      "#,
+      r#"
+      UPDATE dataset.Inventory i
+      SET quantity = i.quantity + n.quantity,
+          supply_constrained = false
+      FROM dataset.NewArrivals n
+      WHERE i.product = n.product
+      "#,
+      r#"
+      TRUNCATE TABLE dataset.Inventory
+      "#,
+      r#"
+      MERGE dataset.DetailedInventory T
+      USING dataset.Inventory S
+      ON T.product = S.product
+      WHEN NOT MATCHED AND quantity < 20 THEN
+        INSERT(product, quantity, supply_constrained, comments)
+        VALUES(product, quantity, true, ARRAY<STRUCT<created DATE, comment STRING>>[(DATE('2016-01-01'), 'comment1')])
+      WHEN NOT MATCHED THEN
+        INSERT(product, quantity, supply_constrained)
+        VALUES(product, quantity, false)
+      "#,
+      r#"
+      MERGE dataset.Inventory T
+      USING dataset.NewArrivals S
+      ON T.product = S.product
+      WHEN MATCHED THEN
+        UPDATE SET quantity = T.quantity + S.quantity
+      WHEN NOT MATCHED THEN
+        INSERT (product, quantity) VALUES(product, quantity)
+      "#,
+      r#"
+      MERGE dataset.NewArrivals T
+      USING (SELECT * FROM dataset.NewArrivals WHERE warehouse <> 'warehouse #2') S
+      ON T.product = S.product
+      WHEN MATCHED AND T.warehouse = 'warehouse #1' THEN
+        UPDATE SET quantity = T.quantity + 20
+      WHEN MATCHED THEN
+        DELETE
+      "#,
+      r#"
+      MERGE dataset.Inventory T
+      USING dataset.NewArrivals S
+      ON FALSE
+      WHEN NOT MATCHED AND product LIKE '%washer%' THEN
+        INSERT (product, quantity) VALUES(product, quantity)
+      WHEN NOT MATCHED BY SOURCE AND product LIKE '%washer%' THEN
+        DELETE
+      "#,
+      r#"
+      MERGE dataset.DetailedInventory T
+      USING dataset.Inventory S
+      ON T.product = S.product
+      WHEN MATCHED AND S.quantity < (SELECT AVG(quantity) FROM dataset.Inventory) THEN
+        UPDATE SET comments = ARRAY_CONCAT(comments, ARRAY<STRUCT<created DATE, comment STRING>>[(CAST('2016-02-01' AS DATE), 'comment2')])
+      "#,
+      r#"
+      MERGE dataset.Inventory T
+      USING (SELECT product, quantity, state FROM dataset.NewArrivals t1 JOIN dataset.Warehouse t2 ON t1.warehouse = t2.warehouse) S
+      ON T.product = S.product
+      WHEN MATCHED AND state = 'CA' THEN
+        UPDATE SET quantity = T.quantity + S.quantity
+      WHEN MATCHED THEN
+        DELETE
       "#
     ];
     for sql in sqls {

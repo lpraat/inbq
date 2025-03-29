@@ -7,7 +7,9 @@ use std::{
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, Query, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, Statement, With
+        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, Query,
+        QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, Statement, With,
     },
     scanner::TokenLiteral,
 };
@@ -72,7 +74,8 @@ impl LineageNode {
                 format!(
                     "[{}]{}->{}",
                     in_node.source_obj.index,
-                    ctx.arena_objects[in_node.source_obj].name, in_node.name
+                    ctx.arena_objects[in_node.source_obj].name,
+                    in_node.name
                 )
             })
             .fold((0, String::from("")), |acc, el| {
@@ -83,13 +86,12 @@ impl LineageNode {
                 }
             })
             .1;
-        println!("[{}]{}->{} <-[{}]", node.source_obj.index, node_source_name, node.name, in_str)
+        println!(
+            "[{}]{}->{} <-[{}]",
+            node.source_obj.index, node_source_name, node.name, in_str
+        )
     }
 }
-
-
-
-
 
 #[derive(Debug, Clone)]
 pub struct ContextObject {
@@ -728,10 +730,18 @@ impl Lineage {
                     // If aliased, we create a new object
                     let table_like_obj = &self.context.arena_objects[table_like_obj_id].clone();
 
-                    let new_lineage_nodes: Vec<ArenaIndex> = table_like_obj.lineage_nodes.iter().map(|el| {
-                        let ln =  &self.context.arena_lineage_nodes[*el];
-                        self.context.allocate_new_lineage_node(ln.name.clone(), table_like_obj_id, vec![*el])
-                    }).collect();
+                    let new_lineage_nodes: Vec<ArenaIndex> = table_like_obj
+                        .lineage_nodes
+                        .iter()
+                        .map(|el| {
+                            let ln = &self.context.arena_lineage_nodes[*el];
+                            self.context.allocate_new_lineage_node(
+                                ln.name.clone(),
+                                table_like_obj_id,
+                                vec![*el],
+                            )
+                        })
+                        .collect();
 
                     let new_table_like_idx = self.context.allocate_new_ctx_object(
                         &table_like_name,
@@ -744,7 +754,8 @@ impl Lineage {
                             })
                             .collect(),
                     );
-                    self.context.update_output_lineage_with_object_nodes(new_table_like_idx);
+                    self.context
+                        .update_output_lineage_with_object_nodes(new_table_like_idx);
                     self.add_new_from_table(from_tables, new_table_like_idx)?;
                 } else {
                     self.add_new_from_table(from_tables, table_like_obj_id)?;
@@ -954,7 +965,7 @@ impl Lineage {
         for statement in &query.statements {
             match statement {
                 Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
-                _ => todo!()
+                _ => todo!(),
             }
         }
         Ok(())
@@ -993,7 +1004,11 @@ pub fn compute_lineage(query: &Query) -> anyhow::Result<()> {
     for pending_node in output_lineage_nodes {
         LineageNode::pretty_print_lineage_node(pending_node, &lineage.context);
         let node = &lineage.context.arena_lineage_nodes[pending_node];
-        println!("Lineage for {:?} is: {:?}", node.name.string(), node.compute_lineage(&lineage.context));
+        println!(
+            "Lineage for {:?} is: {:?}",
+            node.name.string(),
+            node.compute_lineage(&lineage.context)
+        );
     }
 
     // TODO: pop all the remaining contexts and return the final lineage

@@ -65,6 +65,7 @@ pub enum TokenType {
     Select,
     From,
     Where,
+    When,
     As,
     Array,
     Struct,
@@ -79,9 +80,11 @@ pub enum TokenType {
     Right,
     Outer,
     Full,
+    Then,
     Cross,
     Using,
     On,
+    Set,
     Limit,
 }
 
@@ -95,11 +98,13 @@ impl TokenLiteral {
     pub fn string_literal(&self) -> anyhow::Result<&str> {
         match self {
             TokenLiteral::String(s) => Ok(s),
-            other => Err(anyhow!("TokenLiteral {:?} is not a TokenLiteral::String.", other))
+            other => Err(anyhow!(
+                "TokenLiteral {:?} is not a TokenLiteral::String.",
+                other
+            )),
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -116,7 +121,7 @@ pub struct Scanner {
     current: i32,
     line: i32,
     pub had_error: bool,
-    open_type_brackets: Option<i32>
+    open_type_brackets: Option<i32>,
 }
 
 impl Scanner {
@@ -128,7 +133,7 @@ impl Scanner {
             current: 0,
             line: 1,
             had_error: false,
-            open_type_brackets: None
+            open_type_brackets: None,
         }
     }
 
@@ -338,13 +343,13 @@ impl Scanner {
                 if self.peek() == '<' && self.open_type_brackets.is_none() {
                     self.open_type_brackets = Some(0);
                 }
-            },
+            }
             "struct" => {
                 self.add_token(TokenType::Struct);
                 if self.peek() == '<' && self.open_type_brackets.is_none() {
                     self.open_type_brackets = Some(0)
                 }
-            },
+            }
             "limit" => self.add_token(TokenType::Limit),
             "offset" => self.add_token(TokenType::Offset),
             "first" => self.add_token(TokenType::First),
@@ -357,6 +362,7 @@ impl Scanner {
             "as" => self.add_token(TokenType::As),
             "from" => self.add_token(TokenType::From),
             "where" => self.add_token(TokenType::Where),
+            "when" => self.add_token(TokenType::When),
             "order" => self.add_token(TokenType::Order),
             "group" => self.add_token(TokenType::Group),
             "by" => self.add_token(TokenType::By),
@@ -382,9 +388,11 @@ impl Scanner {
             "into" => self.add_token(TokenType::Into),
             "between" => self.add_token(TokenType::Between),
             "like" => self.add_token(TokenType::Like),
+            "then" => self.add_token(TokenType::Then),
             "union" => self.add_token(TokenType::Union),
             "all" => self.add_token(TokenType::All),
             "distinct" => self.add_token(TokenType::Distinct),
+            "set" => self.add_token(TokenType::Set),
             "intersect" => self.add_token(TokenType::Intersect),
             "except" => self.add_token(TokenType::Except),
             _ => self.add_token_w_literal(
@@ -467,7 +475,7 @@ impl Scanner {
                     self.add_token(TokenType::BitwiseLeftShift);
                 } else {
                     if self.open_type_brackets.is_some() {
-                        self.open_type_brackets = self.open_type_brackets.map(|n|n+1);
+                        self.open_type_brackets = self.open_type_brackets.map(|n| n + 1);
                     }
                     self.add_token(TokenType::Less);
                 }
@@ -492,16 +500,14 @@ impl Scanner {
                     }
                 } else {
                     if self.open_type_brackets.is_some() {
-                        self.open_type_brackets = self.open_type_brackets.and_then(
-                            |n| {
-                                let new_n = n-1;
-                                if new_n == 0 {
-                                    None
-                                } else {
-                                    Some(new_n)
-                                }
+                        self.open_type_brackets = self.open_type_brackets.and_then(|n| {
+                            let new_n = n - 1;
+                            if new_n == 0 {
+                                None
+                            } else {
+                                Some(new_n)
                             }
-                        );
+                        });
                     }
                     self.add_token(TokenType::Greater);
                 }
@@ -559,7 +565,8 @@ impl Scanner {
                                 self.source_chars[(quoted_ident_start_idx + 1) as usize
                                     ..quoted_ident_end_idx as usize]
                                     .iter()
-                                    .collect::<String>().to_lowercase(),
+                                    .collect::<String>()
+                                    .to_lowercase(),
                             ),
                         );
                         break;
