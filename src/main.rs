@@ -2,7 +2,7 @@ use std::{env, fs, time::Instant};
 
 use anyhow::anyhow;
 use lineage::compute_lineage;
-use parser::{AstPrinter, Parser, Query};
+use parser::{Parser, Query};
 use scanner::Scanner;
 
 pub mod arena;

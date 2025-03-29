@@ -468,70 +468,13 @@ pub struct Qualify {
     expr: Box<Expr>,
 }
 
-impl Expr {
-    fn accept<T>(&self, visitor: &mut impl Visitor<T>) -> T {
-        visitor.visit_expr(self)
-    }
-}
-
-trait Visitor<T> {
-    // TODO: mut or not? currently not
-    fn visit_expr(&mut self, expr: &Expr) -> T;
-}
-
-pub struct AstPrinter;
-impl Visitor<String> for AstPrinter {
-    fn visit_expr(&mut self, expr: &Expr) -> String {
-        match expr {
-            Expr::Unary(unary_expr) => {
-                self.parenthesize(&unary_expr.operator.lexeme(None), &[&unary_expr.right])
-            }
-            Expr::Binary(binary_expr) => self.parenthesize(
-                &binary_expr.operator.lexeme(None),
-                &[&binary_expr.left, &binary_expr.right],
-            ),
-            Expr::Grouping(grouping_expr) => self.parenthesize("group", &[&grouping_expr.expr]),
-            Expr::Literal(literal_expr) => match literal_expr {
-                LiteralExpr::Identifier(s) | LiteralExpr::QuotedIdentifier(s) => s.to_string(),
-                LiteralExpr::String(s) => format!("\"{}\"", s),
-                LiteralExpr::Number(num) => num.to_string(),
-                LiteralExpr::Bool(bool) => bool.to_string(),
-                LiteralExpr::Null => String::from("NULL"),
-                LiteralExpr::Star => String::from("*"),
-            },
-            _ => {
-                todo!()
-            }
-        }
-    }
-}
-impl AstPrinter {
-    pub fn print(&mut self, expr: &Expr) {
-        println!("{}", self.visit_expr(expr));
-    }
-    fn parenthesize(&mut self, name: &str, exprs: &[&Expr]) -> String {
-        let mut out = format!("({}", name);
-        for expr in exprs {
-            out += format!(" {}", &expr.accept(self)).as_str();
-        }
-        out += ")";
-        out
-    }
-}
-
 // TODO: this struct should own the scanner and use it
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
     curr: i32,
 }
 
-// TODO:
-// - modify error handling (right now we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
 
-// - check that identifiers are not reserved keywords
-
-// - we are currently considering equality operators as left associative but they are not. In bigquery this is a valid expression only if you add parentheses (x < y) is False
-//   we will fix this once we implement pratt parsing
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a Vec<Token>) -> Parser<'a> {
         Self {
