@@ -59,18 +59,18 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub struct CreateTableStatement {
-    name: ParseToken,
-    schema: Option<Vec<ColumnSchema>>,
-    replace: bool,
-    is_temporary: bool,
-    if_not_exists: bool,
-    query: Option<QueryExpr>,
+    pub name: ParseToken,
+    pub schema: Option<Vec<ColumnSchema>>,
+    pub replace: bool,
+    pub is_temporary: bool,
+    pub if_not_exists: bool,
+    pub query: Option<QueryExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ColumnSchema {
-    name: ParseToken,
-    r#type: ParameterizedType,
+    pub name: ParseToken,
+    pub r#type: ParameterizedType,
 }
 
 #[derive(Debug, Clone)]

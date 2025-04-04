@@ -2,14 +2,15 @@ use anyhow::{anyhow, Ok};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
+    fs::create_dir_all,
 };
 
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, Query,
-        QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, Statement, With,
+        CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr,
+        LiteralExpr, Query, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
+        SelectColExpr, SelectExpr, SelectQueryExpr, Statement, With,
     },
     scanner::TokenLiteral,
 };
@@ -102,6 +103,7 @@ pub struct ContextObject {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ContextObjectKind {
+    TempTable,
     Table,
     Cte,
     Query,
@@ -698,7 +700,7 @@ impl Lineage {
             FromExpr::Path(from_path_expr) => {
                 let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
 
-                // We first check whether it is a context object (cte), otherwise we check for source tables
+                // We first check whether it is a context object, otherwise we check for source tables
                 let table_like_obj_id = self
                     .context
                     .get_object(&table_name)
@@ -706,6 +708,8 @@ impl Lineage {
                         matches!(
                             self.context.arena_objects[obj_idx].kind,
                             ContextObjectKind::Cte
+                                | ContextObjectKind::TempTable
+                                | ContextObjectKind::Table
                         )
                     })
                     .map_or(self.context.source_objects.get(&table_name).cloned(), Some);
@@ -881,7 +885,9 @@ impl Lineage {
         }
 
         Ok(())
-    }
+    } 
+    
+    
     fn select_query_expr_lin(&mut self, select_query_expr: &SelectQueryExpr) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
@@ -961,10 +967,61 @@ impl Lineage {
         self.query_expr_lin(&query_statement.query_expr)
     }
 
+    fn create_table_statement_lin(
+        &mut self,
+        create_table_statement: &CreateTableStatement,
+    ) -> anyhow::Result<()> {
+        let table_name = create_table_statement.name.lexeme(None);
+        let table_kind = if create_table_statement.is_temporary {
+            ContextObjectKind::TempTable
+        } else {
+            ContextObjectKind::Table
+        };
+        let temp_table_idx = if let Some(ref query) = create_table_statement.query {
+            // Extract the schema from the query lineage
+            let start_lineage_len = self.context.lineage_stack.len();
+            self.query_expr_lin(query)?;
+            let curr_lineage_len = self.context.lineage_stack.len();
+
+            let consumed_lineage_nodes =
+                self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+            self.context.allocate_new_ctx_object(
+                &table_name,
+                table_kind,
+                consumed_lineage_nodes
+                    .into_iter()
+                    .map(|idx| {
+                        let node = &self.context.arena_lineage_nodes[idx];
+                        (node.name.clone(), vec![idx])
+                    })
+                    .collect(),
+            )
+        } else {
+            let schema = create_table_statement
+                .schema
+                .as_ref()
+                .ok_or(anyhow!("Schema not found for table: `{:?}`.", table_name))?;
+            self.context.allocate_new_ctx_object(
+                &table_name,
+                table_kind,
+                schema
+                    .iter()
+                    .map(|col_schema| (NodeName::Defined(col_schema.name.lexeme(None)), vec![]))
+                    .collect(),
+            )
+        };
+        self.context.add_object(temp_table_idx);
+        self.context.update_output_lineage_with_object_nodes(temp_table_idx);
+        Ok(())
+    }
+
     fn query_lin(&mut self, query: &Query) -> anyhow::Result<()> {
         for statement in &query.statements {
             match statement {
                 Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
+                Statement::CreateTable(create_table_statement) => {
+                    self.create_table_statement_lin(create_table_statement)?
+                }
                 _ => todo!(),
             }
         }
