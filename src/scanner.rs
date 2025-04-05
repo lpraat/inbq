@@ -326,7 +326,6 @@ impl Scanner {
                         self.source_chars[self.start as usize + 1..self.current as usize - 1]
                             .iter()
                             .collect::<String>()
-                            .to_lowercase(),
                     ),
                 );
                 break;
@@ -413,7 +412,7 @@ impl Scanner {
             "except" => self.add_token(TokenType::Except),
             _ => self.add_token_w_literal(
                 TokenType::Identifier,
-                TokenLiteral::String(self.current_source_str().to_lowercase()),
+                TokenLiteral::String(self.current_source_str()),
             ),
         }
     }
@@ -582,7 +581,6 @@ impl Scanner {
                                     ..quoted_ident_end_idx as usize]
                                     .iter()
                                     .collect::<String>()
-                                    .to_lowercase(),
                             ),
                         );
                         break;

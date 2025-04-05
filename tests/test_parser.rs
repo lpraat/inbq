@@ -1,19 +1,9 @@
+
 use anyhow::anyhow;
 use inbq::{
-    parser::{Parser, Query},
+    parser::{Parser, Ast, parse_sql},
     scanner::Scanner,
 };
-
-fn parse_sql(sql: &str) -> anyhow::Result<Query> {
-    let mut scanner = Scanner::new(sql);
-    let tokens = scanner.scan();
-    if scanner.had_error {
-        return Err(anyhow!("scanner error"));
-    }
-    let mut parser = Parser::new(&tokens);
-    let ast = parser.parse()?;
-    Ok(ast)
-}
 
 #[test]
 fn test_should_parse() {
@@ -169,6 +159,11 @@ fn test_should_parse() {
       WHERE i.product = n.product
       "#,
       r#"
+      update tmp as alias_tmp
+      set alias_tmp.z = (select z from D limit 1)
+      where true;
+      "#,
+      r#"
       TRUNCATE TABLE dataset.Inventory
       "#,
       r#"
@@ -232,7 +227,9 @@ fn test_should_parse() {
     ];
     for sql in sqls {
         println!("Testing parsing for SQL: {}", sql);
-        assert!(parse_sql(sql).is_ok())
+        assert!(parse_sql(sql).is_ok());
+        assert!(parse_sql(&sql.to_uppercase()).is_ok());
+        assert!(parse_sql(&sql.to_lowercase()).is_ok());
     }
 }
 

@@ -1,16 +1,17 @@
 use anyhow::{anyhow, Ok};
+use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
-    fs::create_dir_all,
+    fs::create_dir_all, io::BufWriter,
 };
+
+use std::io::Write;
 
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr,
-        LiteralExpr, Query, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
-        SelectColExpr, SelectExpr, SelectQueryExpr, Statement, With,
+        Ast, CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, JoinCondition, JoinExpr, LiteralExpr, ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, Statement, UpdateStatement, With
     },
     scanner::TokenLiteral,
 };
@@ -108,7 +109,20 @@ pub enum ContextObjectKind {
     Cte,
     Query,
     UsingTable,
-    Anonymous,
+    Anonymous, // TODO: anonymous_subquery?
+}
+
+impl From<ContextObjectKind> for String {
+    fn from(val: ContextObjectKind) -> Self {
+        match val {
+            ContextObjectKind::TempTable => "temp_table".to_owned(),
+            ContextObjectKind::Table => "table".to_owned(),
+            ContextObjectKind::Cte => "cte".to_owned(),
+            ContextObjectKind::Query => "query".to_owned(),
+            ContextObjectKind::UsingTable => "using_table".to_owned(),
+            ContextObjectKind::Anonymous => "anonymous".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -181,7 +195,7 @@ impl Context {
             for node_idx in &ctx_obj.lineage_nodes {
                 let node = &self.arena_lineage_nodes[*node_idx];
                 new_columns
-                    .entry(node.name.string().into())
+                    .entry(node.name.string().to_lowercase())
                     .or_default()
                     .push(new_ctx[key]);
             }
@@ -197,7 +211,7 @@ impl Context {
                 for node_idx in &ctx_obj.lineage_nodes {
                     let node = &self.arena_lineage_nodes[*node_idx];
                     new_columns
-                        .entry(node.name.string().into())
+                        .entry(node.name.string().to_lowercase())
                         .or_default()
                         .push(prev_ctx[key]);
                 }
@@ -312,8 +326,10 @@ impl Lineage {
         table: Option<&String>,
         column: &str,
     ) -> anyhow::Result<ArenaIndex> {
+        // columns are case insensitive
+        let column = column.to_lowercase();
         if let Some(table) = table {
-            if let Some(ctx_table_idx) = self.context.curr_stack().unwrap().get(&table.to_owned()) {
+            if let Some(ctx_table_idx) = self.context.curr_stack().ok_or(anyhow!("Table `{}` not found in context.", table))?.get(&table.to_owned()) {
                 let ctx_table = &self.context.arena_objects[*ctx_table_idx];
                 let col_in_schema = ctx_table
                     .lineage_nodes
@@ -335,7 +351,7 @@ impl Lineage {
                     column
                 ))
             }
-        } else if let Some(target_tables) = self.context.curr_columns_stack().unwrap().get(column) {
+        } else if let Some(target_tables) = self.context.curr_columns_stack().unwrap().get(&column) {
             if target_tables.len() > 1
                 && !target_tables.iter().any(|el| {
                     self.context
@@ -347,7 +363,7 @@ impl Lineage {
                 })
             {
                 return Err(anyhow!(
-                    "Column {} is ambiguous. It is contained in more than one table: {:?}.",
+                    "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
                     column,
                     target_tables
                 ));
@@ -369,7 +385,7 @@ impl Lineage {
                 .collect::<Vec<_>>()[0]
                 .1);
         } else {
-            return Err(anyhow!("Column {} not found in context.", column));
+            return Err(anyhow!("Column `{}` not found in context.", column));
         }
     }
 
@@ -484,7 +500,7 @@ impl Lineage {
             .clone()
             .map_or(HashSet::default(), |cols| {
                 cols.into_iter()
-                    .map(|c| c.lexeme(None))
+                    .map(|c| c.lexeme(None).to_lowercase())
                     .collect::<HashSet<String>>()
             });
         for (col_name, sources) in self.context.curr_columns_stack().unwrap().iter() {
@@ -551,7 +567,7 @@ impl Lineage {
     ) -> anyhow::Result<()> {
         let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
             cols.into_iter()
-                .map(|c| c.lexeme(None))
+                .map(|c| c.lexeme(None).to_lowercase())
                 .collect::<HashSet<String>>()
         });
         match &col_expr.expr {
@@ -632,6 +648,8 @@ impl Lineage {
         for _ in 0..curr_pending_len - start_pending_len {
             consumed_nodes.push(self.context.lineage_stack.pop().unwrap());
         }
+        let consumed_nodes = self.remove_consumed_nodes_duplicate(consumed_nodes);
+
         let first_node_name = consumed_nodes
             .first()
             .map(|idx| &self.context.arena_lineage_nodes[*idx].name)
@@ -642,7 +660,7 @@ impl Lineage {
         pending_node.input.extend(consumed_nodes);
 
         if let Some(alias) = &col_expr.alias {
-            pending_node.name = NodeName::Defined(alias.lexeme(None));
+            pending_node.name = NodeName::Defined(alias.lexeme(None).to_lowercase());
         }
 
         if pending_node.input.len() == 1 {
@@ -838,7 +856,7 @@ impl Lineage {
             joined_table_names.push(right_join_table.name.clone());
 
             for col in using_columns {
-                let col_name = col.lexeme(None);
+                let col_name = col.lexeme(None).to_lowercase();
                 let left_lineage_node_idx = left_join_table
                     .lineage_nodes
                     .iter()
@@ -885,9 +903,9 @@ impl Lineage {
         }
 
         Ok(())
-    } 
-    
-    
+    }
+
+
     fn select_query_expr_lin(&mut self, select_query_expr: &SelectQueryExpr) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
@@ -895,26 +913,11 @@ impl Lineage {
             self.with_lin(with)?;
         }
 
-        let mut pushed_context: bool = false;
-        if let Some(from) = select_query_expr.select.from.as_ref() {
-            let mut from_tables: Vec<ArenaIndex> = Vec::new();
-            let mut joined_tables: Vec<ArenaIndex> = Vec::new();
-
-            for expr in &from.exprs {
-                self.from_expr_lin(expr, &mut from_tables, &mut joined_tables)?;
-            }
-            let mut ctx_objects = from_tables
-                .into_iter()
-                .map(|idx| (self.context.arena_objects[idx].name.clone(), idx))
-                .collect::<HashMap<String, ArenaIndex>>();
-            ctx_objects.extend(
-                joined_tables
-                    .into_iter()
-                    .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
-            );
-            self.context.push_new_ctx(ctx_objects);
-            pushed_context = true;
-        }
+        
+        let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
+            self.from_lin(from)?;
+            true
+        } else {false};
 
         let anon_id = format!("anon_{}", self.get_anon_id());
         let anon_obj_idx =
@@ -1014,11 +1017,114 @@ impl Lineage {
         self.context.update_output_lineage_with_object_nodes(temp_table_idx);
         Ok(())
     }
+    
+    fn from_lin(&mut self, from: &crate::parser::From) -> anyhow::Result<()> {
+        let mut from_tables: Vec<ArenaIndex> = Vec::new();
+        let mut joined_tables: Vec<ArenaIndex> = Vec::new();
 
-    fn query_lin(&mut self, query: &Query) -> anyhow::Result<()> {
+        for expr in &from.exprs {
+            self.from_expr_lin(expr, &mut from_tables, &mut joined_tables)?;
+        }
+        let mut ctx_objects = from_tables
+            .into_iter()
+            .map(|idx| (self.context.arena_objects[idx].name.clone(), idx))
+            .collect::<HashMap<String, ArenaIndex>>();
+        ctx_objects.extend(
+            joined_tables
+                .into_iter()
+                .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
+        );
+        self.context.push_new_ctx(ctx_objects);
+        Ok(())
+    }
+    
+    fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
+        let target_table = update_statement.target_table.lexeme(None);
+        let updated_table = if let Some(ref alias) = update_statement.alias {
+            alias.lexeme(None)
+        } else {
+            target_table.clone()
+        };
+        
+        let target_table_id = self
+            .context
+            .get_object(&target_table)
+            .filter(|&obj_idx| {
+                matches!(
+                    self.context.arena_objects[obj_idx].kind,
+                    ContextObjectKind::Cte
+                        | ContextObjectKind::TempTable
+                        | ContextObjectKind::Table
+                )
+            })
+            .map_or(self.context.source_objects.get(&target_table).cloned(), Some);
+
+        if target_table_id.is_none() {
+            return Err(anyhow!(
+                "Table like obj name {} not in context.",
+                target_table
+            ));
+        }
+        
+        let pushed_context = if let Some(ref from) = update_statement.from {
+            self.from_lin(from)?;
+            true
+        } else {false};
+        
+        let target_table_obj = &self.context.arena_objects[target_table_id.unwrap()];
+        let target_table_nodes = target_table_obj.lineage_nodes.iter().map(|idx| (self.context.arena_lineage_nodes[*idx].name.string().to_owned(), *idx)).collect::<HashMap<String, ArenaIndex>>();
+        
+        for update_item in &update_statement.update_items {
+            let column = match update_item.column_path {
+                // col = ...
+                ParseToken::Single(_) => update_item.column_path.lexeme(None),
+                // table.col = ...
+                ParseToken::Multiple(ref vec) => vec.last().unwrap().literal.as_ref().unwrap().string_literal()?.to_owned(),
+            }.to_lowercase();
+            
+            let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!("Cannot find column {} in table {}", column, updated_table))?;
+                        
+            let start_pending_len = self.context.lineage_stack.len();
+            self.select_expr_col_expr(&update_item.expr)?;
+            let curr_pending_len = self.context.lineage_stack.len();
+            
+            let mut consumed_nodes = vec![];
+            for _ in 0..curr_pending_len - start_pending_len {
+                consumed_nodes.push(self.context.lineage_stack.pop().unwrap());
+            }
+            
+            if !consumed_nodes.is_empty() {
+                let consumed_nodes = self.remove_consumed_nodes_duplicate(consumed_nodes);
+                let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
+                col_lineage_node.input.extend(consumed_nodes);  
+                self.context.lineage_stack.push(*col_source_idx);
+                self.context.output.push(*col_source_idx);
+            }
+        }
+        
+        if pushed_context {
+            self.context.pop_curr_ctx();
+        }
+        Ok(())
+    }
+    
+    fn remove_consumed_nodes_duplicate(&self, consumed_nodes: Vec<ArenaIndex>) -> Vec<ArenaIndex> {
+        let mut set = HashSet::new();
+        let mut unique_consumed_nodes = vec![];
+        for node in consumed_nodes {
+            if !set.contains(&node) {
+                unique_consumed_nodes.push(node);
+                set.insert(node);
+            }
+        }
+        unique_consumed_nodes
+    }
+
+    fn ast_lin(&mut self, query: &Ast) -> anyhow::Result<()> {
         for statement in &query.statements {
             match statement {
                 Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
+                Statement::Update(update_statement) => self.update_statement_lin(update_statement)?,
                 Statement::CreateTable(create_table_statement) => {
                     self.create_table_statement_lin(create_table_statement)?
                 }
@@ -1031,9 +1137,36 @@ impl Lineage {
 
 // TODO: add line in errors
 
-pub fn compute_lineage(query: &Query) -> anyhow::Result<()> {
+
+#[derive(Serialize, Debug)]
+struct OutputObject {
+    id: usize,
+    name: String,
+    kind: String,
+    nodes: Vec<usize>
+}
+
+#[derive(Serialize, Debug)]
+struct OutputNode {
+    id: usize,
+    name: String,
+    source_object: usize,
+    input: Vec<usize>
+}
+
+#[derive(Serialize, Debug)]
+struct OutputLineage {
+    objects: Vec<OutputObject>,
+    lineage_nodes: Vec<OutputNode>,
+    output_lineage: Vec<usize>
+}
+
+pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
     // TODO: we should read this from a config file, the user must provide it in some way
     let mut ctx = Context::default();
+    
+    
+    // TODO: force all columns provided by user schema to be lowercase
 
     let tmp_idx = ctx.allocate_new_ctx_object(
         "tmp",
@@ -1052,10 +1185,8 @@ pub fn compute_lineage(query: &Query) -> anyhow::Result<()> {
         anon_id: 0,
         context: ctx,
     };
-    lineage.query_lin(query)?;
-
-    println!("Final lineage:");
-
+    lineage.ast_lin(ast)?;
+    
     // TODO: we should place this code in the Lineage class, save all the lineage in one place
     let output_lineage_nodes = lineage.context.output.clone();
     for pending_node in output_lineage_nodes {
@@ -1068,6 +1199,17 @@ pub fn compute_lineage(query: &Query) -> anyhow::Result<()> {
         );
     }
 
+    let output_lineage = OutputLineage {
+        objects: lineage.context.arena_objects.into_iter().enumerate().map(|(idx, obj)| OutputObject { id: idx, name: obj.name, kind: obj.kind.into(), nodes: obj.lineage_nodes.into_iter().map(|aidx|aidx.index).collect() }).collect(),
+        lineage_nodes: lineage.context.arena_lineage_nodes.into_iter().enumerate().map(|(idx, node)| OutputNode{ id: idx, name: node.name.into(), source_object: node.source_obj.index, input: node.input.into_iter().map(|aidx|aidx.index).collect() }).collect(),
+        output_lineage: lineage.context.output.into_iter().map(|aidx|aidx.index).collect(),
+    };
+
+    let file = std::fs::File::create("./out.json")?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, &output_lineage)?;
+    println!("{:?}", output_lineage);
+    
     // TODO: pop all the remaining contexts and return the final lineage
     Ok(())
 }

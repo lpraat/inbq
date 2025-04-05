@@ -3,7 +3,7 @@ use std::{fmt::Display, thread::current};
 
 use anyhow::anyhow;
 
-use crate::scanner::{Token, TokenLiteral, TokenType};
+use crate::scanner::{Scanner, Token, TokenLiteral, TokenType};
 
 // TODO: make this a real error
 #[derive(Debug)]
@@ -32,6 +32,19 @@ impl ParseToken {
                 .join(join_char.map_or(" ", |c| c)),
         }
     }
+    
+    pub fn literal_str(&self, join_char: Option<&str>) -> String {
+        match self {
+            ParseToken::Single(token) => {
+                println!("{:?}", token);
+                token.literal.as_ref().unwrap().string_literal().unwrap().to_owned()
+            },
+            ParseToken::Multiple(vec) => {
+                vec.iter().map(|tok|tok.literal.as_ref().unwrap().string_literal().unwrap().to_owned()).collect::<Vec<String>>().join(join_char.map_or(" ", |c| c))
+            },
+        }   
+    }
+    
     pub fn literal(&self) -> Vec<&Option<TokenLiteral>> {
         match self {
             ParseToken::Single(token) => vec![&token.literal],
@@ -42,7 +55,7 @@ impl ParseToken {
 
 // TODO: create another file to place all these AST objects
 #[derive(Debug, Clone)]
-pub struct Query {
+pub struct Ast {
     pub statements: Vec<Statement>,
 }
 
@@ -121,18 +134,18 @@ pub struct DeleteStatement {
 }
 
 #[derive(Debug, Clone)]
-struct UpdateItem {
-    column: ParseToken,
-    expr: Expr,
+pub struct UpdateItem {
+    pub column_path: ParseToken,
+    pub expr: Expr,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateStatement {
-    target_table: ParseToken,
-    alias: Option<ParseToken>,
-    update_items: Vec<UpdateItem>,
-    from: From,
-    r#where: Where,
+    pub target_table: ParseToken,
+    pub alias: Option<ParseToken>,
+    pub update_items: Vec<UpdateItem>,
+    pub from: Option<From>,
+    pub r#where: Where,
 }
 
 #[derive(Debug, Clone)]
@@ -526,7 +539,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> anyhow::Result<Query> {
+    pub fn parse(&mut self) -> anyhow::Result<Ast> {
         self.parse_query()
     }
 
@@ -602,7 +615,7 @@ impl<'a> Parser<'a> {
     fn check_identifier(&self, value: &str) -> bool {
         let peek = self.peek();
         peek.kind == TokenType::Identifier
-            && peek.literal.as_ref().unwrap().string_literal().unwrap() == value
+            && peek.literal.as_ref().unwrap().string_literal().unwrap().to_lowercase() == value
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> anyhow::Result<&Token> {
@@ -641,12 +654,12 @@ impl<'a> Parser<'a> {
     }
 
     // query -> query_statement (; query_statement [";"])*
-    fn parse_query(&mut self) -> anyhow::Result<Query> {
+    fn parse_query(&mut self) -> anyhow::Result<Ast> {
         let mut statements = vec![];
 
         if self.check_token_type(TokenType::Eof) {
             // Empty SQL
-            return Ok(Query { statements });
+            return Ok(Ast { statements });
         }
 
         loop {
@@ -663,7 +676,7 @@ impl<'a> Parser<'a> {
                     TokenLiteral::String(literal_str) => Some(literal_str),
                     TokenLiteral::Number(_) => None,
                 });
-                let statement = match peek_literal.as_deref() {
+                let statement = match peek_literal.map(|x| x.to_lowercase()).as_deref() {
                     Some("insert") => self.parse_insert_statement()?,
                     Some("delete") => self.parse_delete_statement()?,
                     Some("update") => self.parse_update_statement()?,
@@ -680,7 +693,7 @@ impl<'a> Parser<'a> {
         }
 
         self.consume(TokenType::Eof, "Expected `EOF`.")?;
-        Ok(Query { statements })
+        Ok(Ast { statements })
     }
 
     // TODO: add collate, partition, etc...
@@ -708,7 +721,6 @@ impl<'a> Parser<'a> {
         let schema = if self.match_token_type(TokenType::LeftParen) {
             let mut column_schema = vec![];
             loop {
-                println!("parsing col : {:?}", self.peek());
                 let col_name = self
                     .consume_one_of(
                         &[TokenType::Identifier, TokenType::QuotedIdentifier],
@@ -846,16 +858,11 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Set, "Expected `SET`.")?;
         let mut update_items = vec![];
         loop {
-            let column = self
-                .consume_one_of(
-                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
-                    "Expected `Identifier` or `QuotedIdentifier`.",
-                )?
-                .clone();
+            let column_path = self.parse_path()?.path; 
             self.consume(TokenType::Equal, "Expected `=`.")?;
             let expr = self.parse_expr()?;
             update_items.push(UpdateItem {
-                column: ParseToken::Single(column),
+                column_path,
                 expr,
             });
 
@@ -864,9 +871,9 @@ impl<'a> Parser<'a> {
             }
         }
         let from = if self.match_token_type(TokenType::From) {
-            vec![self.parse_from_expr()?]
+            Some(From { exprs: vec![self.parse_from_expr()?]})
         } else {
-            vec![]
+            None
         };
 
         self.consume(TokenType::Where, "Expected `WHERE`.")?;
@@ -876,7 +883,7 @@ impl<'a> Parser<'a> {
             target_table,
             alias,
             update_items,
-            from: From { exprs: from },
+            from,
             r#where: Where {
                 expr: Box::new(where_expr),
             },
@@ -990,16 +997,11 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Set, "Expected `SET`")?;
         let mut update_items = vec![];
         loop {
-            let column = self
-                .consume_one_of(
-                    &[TokenType::Identifier, TokenType::QuotedIdentifier],
-                    "Expected `Identifier` or `QuotedIdentifier`.",
-                )?
-                .clone();
+            let column_path = self.parse_path()?.path;
             self.consume(TokenType::Equal, "Expected `=`.")?;
             let expr = self.parse_expr()?;
             update_items.push(UpdateItem {
-                column: ParseToken::Single(column),
+                column_path,
                 expr,
             });
 
@@ -2509,4 +2511,25 @@ impl<'a> Parser<'a> {
 
         Ok(primary_expr)
     }
+}
+
+
+pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
+    println!("Parsing {}", &sql[..std::cmp::min(50, sql.len())]);
+
+    let mut scanner = Scanner::new(sql);
+    let tokens = scanner.scan();
+    
+    // TODO: just use a result also in the Scanner
+    if scanner.had_error {
+        println!("Exiting. Found error while scanning.");
+        return Err(anyhow!("scanner error"));
+    }
+
+    for token in &tokens {
+        println!("{:?}", token);
+    }
+
+    let mut parser = Parser::new(&tokens);
+    parser.parse()
 }

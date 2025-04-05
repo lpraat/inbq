@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut};
+use std::{ops::{Index, IndexMut}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArenaIndex {
@@ -33,8 +33,14 @@ impl<T> Arena<T> {
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
-
-
+    
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.nodes.iter()
+    }
+    
+    pub fn into_iter(self) -> std::vec::IntoIter<T> {
+        self.nodes.into_iter()
+    }
 }
 
 impl<T> Index<ArenaIndex> for Arena<T> {
