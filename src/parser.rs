@@ -120,10 +120,10 @@ pub struct QueryStatement {
 
 #[derive(Debug, Clone)]
 pub struct InsertStatement {
-    target_table: ParseToken,
-    columns: Option<Vec<ParseToken>>,
-    values: Option<Vec<Expr>>,
-    query_expr: Option<QueryExpr>,
+    pub target_table: ParseToken,
+    pub columns: Option<Vec<ParseToken>>,
+    pub values: Option<Vec<Expr>>,
+    pub query_expr: Option<QueryExpr>,
 }
 
 #[derive(Debug, Clone)]
