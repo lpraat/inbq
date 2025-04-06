@@ -1,9 +1,4 @@
-
-use anyhow::anyhow;
-use inbq::{
-    parser::{Parser, Ast, parse_sql},
-    scanner::Scanner,
-};
+use inbq::parser::parse_sql;
 
 #[test]
 fn test_should_parse() {

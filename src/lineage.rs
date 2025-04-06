@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Ok};
 use serde::Serialize;
 use std::{
-    collections::{HashMap, HashSet}, f32::consts::PI, fmt::{Debug, Display}, fs::create_dir_all, io::BufWriter
+    collections::{HashMap, HashSet}, fmt::{Debug, Display}, io::BufWriter
 };
 
 use std::io::Write;
@@ -9,7 +9,7 @@ use std::io::Write;
 use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
-        Ast, CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, InsertStatement, JoinCondition, JoinExpr, LiteralExpr, ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, Statement, UpdateStatement, With
+        Ast, CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, InsertStatement, JoinCondition, JoinExpr, LiteralExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, Statement, UpdateStatement, When, With
     },
     scanner::TokenLiteral,
 };
@@ -204,7 +204,7 @@ impl Context {
             for key in prev_ctx.keys() {
                 let ctx_obj = &self.arena_objects[prev_ctx[key]];
                 if !new_ctx.contains_key(key) {
-                    new_ctx.insert(ctx_obj.name.to_string(), prev_ctx[key]);
+                    new_ctx.insert(key.clone(), prev_ctx[key]);
                 }
                 for node_idx in &ctx_obj.lineage_nodes {
                     let node = &self.arena_lineage_nodes[*node_idx];
@@ -225,7 +225,7 @@ impl Context {
         self.columns_stack.pop();
     }
 
-    fn get_object(&self, key: &String) -> Option<ArenaIndex> {
+    fn get_object(&self, key: &str) -> Option<ArenaIndex> {
         for i in (0..self.objects_stack.len()).rev() {
             let obj = &self.arena_objects[self.objects_stack[i]];
             if obj.name == *key {
@@ -369,7 +369,7 @@ impl Lineage {
                 return Err(anyhow!(
                     "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
                     column,
-                    target_tables
+                    target_tables.iter().map(|source_idx| self.context.arena_objects[*source_idx].name.clone()).collect::<Vec<String>>()
                 ));
             }
             let target_table_idx = target_tables[0];
@@ -525,7 +525,7 @@ impl Lineage {
                 return Err(anyhow!(
                     "Column {} is ambiguous. It is contained in more than one table: {:?}.",
                     col_name,
-                    sources
+                    sources.iter().map(|source_idx| self.context.arena_objects[*source_idx].name.clone()).collect::<Vec<String>>()
                 ));
             }
             let col_source_idx = sources.first().unwrap();
@@ -720,20 +720,7 @@ impl Lineage {
             }
             FromExpr::Path(from_path_expr) => {
                 let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
-
-                // We first check whether it is a context object, otherwise we check for source tables
-                let table_like_obj_id = self
-                    .context
-                    .get_object(&table_name)
-                    .filter(|&obj_idx| {
-                        matches!(
-                            self.context.arena_objects[obj_idx].kind,
-                            ContextObjectKind::Cte
-                                | ContextObjectKind::TempTable
-                                | ContextObjectKind::Table
-                        )
-                    })
-                    .map_or(self.context.source_objects.get(&table_name).cloned(), Some);
+                let table_like_obj_id = self.get_table_id_from_context(&table_name);
 
                 if table_like_obj_id.is_none() {
                     return Err(anyhow!(
@@ -1041,18 +1028,13 @@ impl Lineage {
         self.context.push_new_ctx(ctx_objects);
         Ok(())
     }
-
-    fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
-        let target_table = update_statement.target_table.lexeme(None);
-        let updated_table = if let Some(ref alias) = update_statement.alias {
-            alias.lexeme(None)
-        } else {
-            target_table.clone()
-        };
-
-        let target_table_id = self
+    
+    // TODO: reorder methods
+    fn get_table_id_from_context(&self, table_name: &str) -> Option<ArenaIndex> {
+        // We first check whether it is a context object, otherwise we check for source tables
+        self
             .context
-            .get_object(&target_table)
+            .get_object(table_name)
             .filter(|&obj_idx| {
                 matches!(
                     self.context.arena_objects[obj_idx].kind,
@@ -1062,17 +1044,28 @@ impl Lineage {
                 )
             })
             .map_or(
-                self.context.source_objects.get(&target_table).cloned(),
+                self.context.source_objects.get(table_name).cloned(),
                 Some,
-            );
+            )
+    }
 
+    fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
+        let target_table = update_statement.target_table.lexeme(None);
+        let target_table_alias = if let Some(ref alias) = update_statement.alias {
+            alias.lexeme(None)
+        } else {
+            target_table.clone()
+        };
+        
+        
+        let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name {} not in context.",
                 target_table
             ));
         }
-
+        
         let pushed_context = if let Some(ref from) = update_statement.from {
             self.from_lin(from)?;
             true
@@ -1095,6 +1088,9 @@ impl Lineage {
             })
             .collect::<HashMap<String, ArenaIndex>>();
 
+        // NOTE: we push the target table after pushing the from context
+        self.context.push_new_ctx(HashMap::from([(target_table_alias.clone(), target_table_id.unwrap())]));
+
         for update_item in &update_statement.update_items {
             let column = match update_item.column_path {
                 // col = ...
@@ -1114,7 +1110,7 @@ impl Lineage {
             let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!(
                 "Cannot find column {} in table {}",
                 column,
-                updated_table
+                target_table_alias
             ))?;
 
             let start_pending_len = self.context.lineage_stack.len();
@@ -1128,6 +1124,8 @@ impl Lineage {
                 self.context.output.push(*col_source_idx);
             }
         }
+        
+        self.context.pop_curr_ctx();
 
         if pushed_context {
             self.context.pop_curr_ctx();
@@ -1135,38 +1133,10 @@ impl Lineage {
         Ok(())
     }
 
-    fn remove_consumed_nodes_duplicate(&self, consumed_nodes: Vec<ArenaIndex>) -> Vec<ArenaIndex> {
-        let mut set = HashSet::new();
-        let mut unique_consumed_nodes = vec![];
-        for node in consumed_nodes {
-            if !set.contains(&node) {
-                unique_consumed_nodes.push(node);
-                set.insert(node);
-            }
-        }
-        unique_consumed_nodes
-    }
-    
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
         let target_table = insert_statement.target_table.lexeme(None);
         
-        // TODO: refactor, this code is repeated (see update_statement_lin)
-        let target_table_id = self
-            .context
-            .get_object(&target_table)
-            .filter(|&obj_idx| {
-                matches!(
-                    self.context.arena_objects[obj_idx].kind,
-                    ContextObjectKind::Cte
-                        | ContextObjectKind::TempTable
-                        | ContextObjectKind::Table
-                )
-            })
-            .map_or(
-                self.context.source_objects.get(&target_table).cloned(),
-                Some,
-            );
-
+        let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name {} not in context.",
@@ -1232,6 +1202,224 @@ impl Lineage {
         
         Ok(())
     }
+    
+    fn merge_insert(&mut self, target_table_id: ArenaIndex, merge_insert: &MergeInsert) -> anyhow::Result<()> {        
+        let target_table_obj = &self.context.arena_objects[target_table_id];
+        
+        // TODO: this code is repeated (see insert and update statement)
+        let target_table_nodes = target_table_obj
+            .lineage_nodes
+            .iter()
+            .map(|idx| {
+                (
+                    self.context.arena_lineage_nodes[*idx]
+                        .name
+                        .string()
+                        .to_owned(),
+                    *idx,
+                )
+            })
+            .collect::<HashMap<String, ArenaIndex>>();
+    
+        let target_columns = if let Some(columns) = &merge_insert.columns {
+            let mut filtered_columns = vec![];
+            for col in columns {
+                let col_name = col.lexeme(None);
+                let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!("Cannot find column {} in table {}", col_name, target_table_obj.name))?;
+                filtered_columns.push(*col_idx);
+            }
+            filtered_columns
+        } else {
+            target_table_obj.lineage_nodes.clone()
+        };
+        for (target_col, value) in target_columns.iter().zip(&merge_insert.values) { 
+            let start_pending_len = self.context.lineage_stack.len();
+            self.select_expr_col_expr(value)?;
+            let curr_pending_len = self.context.lineage_stack.len();
+            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            
+            let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
+            target_lineage_node.input.extend(consumed_nodes.clone());
+            self.context.output.push(*target_col);
+        }
+        
+        Ok(())
+    }
+    
+    fn merge_update(&mut self, ctx: &HashMap<String, ArenaIndex>, target_table_alias: &str, target_table_id: ArenaIndex, merge_update: &MergeUpdate) -> anyhow::Result<()> {
+        self.context.push_new_ctx(ctx.clone());
+        let target_table_obj = &self.context.arena_objects[target_table_id];
+        
+        // TODO: this code is repeated (see insert and update statement)
+        let target_table_nodes = target_table_obj
+            .lineage_nodes
+            .iter()
+            .map(|idx| {
+                (
+                    self.context.arena_lineage_nodes[*idx]
+                        .name
+                        .string()
+                        .to_owned(),
+                    *idx,
+                )
+            })
+            .collect::<HashMap<String, ArenaIndex>>();
+        
+        for update_item in &merge_update.update_items {
+            let column = match update_item.column_path {
+                // col = ...
+                ParseToken::Single(_) => update_item.column_path.lexeme(None),
+                // table.col = ...
+                ParseToken::Multiple(ref vec) => vec
+                    .last()
+                    .unwrap()
+                    .literal
+                    .as_ref()
+                    .unwrap()
+                    .string_literal()?
+                    .to_owned(),
+            }
+            .to_lowercase();
+
+            let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!(
+                "Cannot find column {} in table {}",
+                column,
+                target_table_alias
+            ))?;
+
+            let start_pending_len = self.context.lineage_stack.len();
+            self.select_expr_col_expr(&update_item.expr)?;
+            let curr_pending_len = self.context.lineage_stack.len();
+            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            
+            if !consumed_nodes.is_empty() {
+                let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
+                col_lineage_node.input.extend(consumed_nodes);
+                self.context.output.push(*col_source_idx);
+            }
+        }
+        self.context.pop_curr_ctx();
+        
+        Ok(())
+    }
+    
+    fn merge_insert_row(&mut self, target_table_id: ArenaIndex, source_table_id: Option<ArenaIndex>, subquery_nodes: &Option<Vec<ArenaIndex>>) -> anyhow::Result<()> {
+        let nodes = if let Some(source_idx) = source_table_id {
+            let source_obj = &self.context.arena_objects[source_idx];
+            source_obj.lineage_nodes.clone()
+        } else {
+            subquery_nodes.as_ref().unwrap().clone()
+        };
+        
+        let target_table =  &self.context.arena_objects[target_table_id];
+        let target_nodes = &target_table.lineage_nodes;
+        
+        if target_nodes.len() != nodes.len() {
+            return Err(anyhow!("The number of merge insert columns is not equal to the number of columns in target table `{}`.", target_table.name));
+        }
+        
+        
+        for (target_node, source_node) in target_nodes.iter().zip(nodes) {
+            let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_node];
+            target_lineage_node.input.push(source_node);
+            self.context.output.push(*target_node);
+        }
+        
+        Ok(())
+    }
+    
+    fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
+        let target_table = merge_statement.target_table.lexeme(None);
+        let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
+            alias.lexeme(None)
+        } else {
+            target_table.clone()
+        };
+        
+        let target_table_id = self.get_table_id_from_context(&target_table);
+        if target_table_id.is_none() {
+            return Err(anyhow!(
+                "Table like obj name {} not in context.",
+                target_table
+            ));
+        }
+        let target_table_id = target_table_id.unwrap();        
+                
+        let source_table_id = if let MergeSource::Table(parse_token) = &merge_statement.source {
+            let source_table = parse_token.lexeme(None);
+            let source_table_id = self.get_table_id_from_context(&source_table);
+            if source_table_id.is_none() {
+                return Err(anyhow!(
+                    "Table like obj name {} not in context.",
+                    source_table
+                ));
+            }
+            let source_table_id = source_table_id.unwrap();
+            Some(source_table_id)
+        } else {None};
+        
+            
+        let (subquery_table_id, subquery_nodes) = if let MergeSource::Subquery(query_expr) = &merge_statement.source {
+            let start_pending_len = self.context.lineage_stack.len();
+            self.query_expr_lin(query_expr)?;
+            let curr_pending_len = self.context.lineage_stack.len();
+            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            
+            if let Some(alias) = &merge_statement.source_alias {
+                let new_source_name = alias.lexeme(None);
+                let source_idx = self.context.allocate_new_ctx_object(
+                    &new_source_name,
+                    ContextObjectKind::Query,
+                    consumed_nodes
+                        .iter()
+                        .cloned()
+                        .map(|idx| {
+                            let node = &self.context.arena_lineage_nodes[idx];
+                            (node.name.clone(), vec![idx])
+                        })
+                        .collect(),
+                );
+                self.context.update_output_lineage_with_object_nodes(source_idx);
+                (Some(source_idx), Some(consumed_nodes))
+            } else {(None, Some(consumed_nodes))}
+        } else {(None, None)};
+        
+        let source_table_id = source_table_id.or(subquery_table_id);
+        
+        let mut new_ctx = HashMap::from([(target_table_alias.clone(), target_table_id)]);
+        if let Some(alias) = &merge_statement.source_alias {
+            let source_alias = alias.lexeme(None);
+            new_ctx.insert(source_alias.clone(), source_table_id.unwrap());
+        }
+        
+        for when in &merge_statement.whens {
+            match when {
+                When::Matched(when_matched) => {
+                    match &when_matched.merge {
+                        Merge::Update(merge_update) => self.merge_update(&new_ctx, &target_table_alias, target_table_id, merge_update)?,
+                        Merge::Delete => {},
+                        _ => unreachable!()
+                    }
+                },
+                When::NotMatchedByTarget(when_not_matched_by_target) => {
+                    match &when_not_matched_by_target.merge {
+                        Merge::Insert(merge_insert) => self.merge_insert(target_table_id, merge_insert)?,
+                        Merge::InsertRow => self.merge_insert_row(target_table_id, source_table_id, &subquery_nodes)?,
+                        _ => unreachable!()
+                    }
+                },
+                When::NotMatchedBySource(when_not_matched_by_source) => {
+                    match &when_not_matched_by_source.merge {
+                        Merge::Update(merge_update) => self.merge_update(&new_ctx, &target_table_alias, target_table_id, merge_update)?,
+                        Merge::Delete => {},
+                        _ => unreachable!()
+                    }
+                },
+            }
+        }
+        
+        Ok(())
+    }
 
     fn ast_lin(&mut self, query: &Ast) -> anyhow::Result<()> {
         for statement in &query.statements {
@@ -1242,6 +1430,9 @@ impl Lineage {
                 }
                 Statement::Insert(insert_statement) => {
                     self.insert_statement_lin(insert_statement)?
+                }
+                Statement::Merge(merge_statement) => {
+                    self.merge_statement_lin(merge_statement)?
                 }
                 Statement::CreateTable(create_table_statement) => {
                     self.create_table_statement_lin(create_table_statement)?

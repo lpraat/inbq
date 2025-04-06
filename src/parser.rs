@@ -163,13 +163,13 @@ pub enum Merge {
 
 #[derive(Debug, Clone)]
 pub struct MergeUpdate {
-    update_items: Vec<UpdateItem>,
+    pub update_items: Vec<UpdateItem>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MergeInsert {
-    columns: Option<Vec<ParseToken>>,
-    values: Vec<Expr>,
+    pub columns: Option<Vec<ParseToken>>,
+    pub values: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -181,30 +181,30 @@ pub enum When {
 
 #[derive(Debug, Clone)]
 pub struct WhenMatched {
-    search_condition: Option<Expr>,
-    merge: Merge,
+    pub search_condition: Option<Expr>,
+    pub merge: Merge,
 }
 
 #[derive(Debug, Clone)]
 pub struct WhenNotMatchedByTarget {
-    search_condition: Option<Expr>,
-    merge: Merge,
+    pub search_condition: Option<Expr>,
+    pub merge: Merge,
 }
 
 #[derive(Debug, Clone)]
 pub struct WhenNotMatchedBySource {
-    search_condition: Option<Expr>,
-    merge: Merge,
+    pub search_condition: Option<Expr>,
+    pub merge: Merge,
 }
 
 #[derive(Debug, Clone)]
 pub struct MergeStatement {
-    target_table: ParseToken,
-    target_alias: Option<ParseToken>,
-    source: MergeSource,
-    source_alias: Option<ParseToken>,
-    condition: Expr,
-    whens: Vec<When>,
+    pub target_table: ParseToken,
+    pub target_alias: Option<ParseToken>,
+    pub source: MergeSource,
+    pub source_alias: Option<ParseToken>,
+    pub condition: Expr,
+    pub whens: Vec<When>,
 }
 
 #[derive(Debug, Clone)]
