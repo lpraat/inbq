@@ -1529,6 +1529,30 @@ struct OutputLineage {
     output_lineage: Vec<usize>,
 }
 
+#[derive(Serialize, Debug)]
+struct ExtractedInput {
+    obj_name: String,
+    node_name: String,
+}
+
+#[derive(Serialize, Debug)]
+struct ExtractedNode {
+    name: String,
+    input: Vec<ExtractedInput>
+}
+
+#[derive(Serialize, Debug)]
+struct ExtractedObject {
+    name: String,
+    kind: String,
+    nodes: Vec<ExtractedNode>
+}
+
+#[derive(Serialize, Debug)]
+struct ExtractedLineage {
+    objects: Vec<ExtractedObject>
+}
+
 pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
     // TODO: we should read this from a config file, the user must provide it in some way
     let mut ctx = Context::default();
@@ -1581,48 +1605,111 @@ pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
         //     node.compute_lineage(&lineage.context)
         // );
     }
+    
+    let mut objects: HashMap<ArenaIndex, HashMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> = HashMap::new();
+    
+    for output_node_idx in &lineage.context.output {
+        let output_node = &lineage.context.arena_lineage_nodes[*output_node_idx];
+        let output_source_idx = output_node.source_obj;
+        
+        let mut stack = output_node.input.clone();
+        loop {
+            if stack.is_empty() {
+                break;
+            }
+            let node_idx = stack.pop().unwrap();
+            let node = &lineage.context.arena_lineage_nodes[node_idx];
+            
+            let source_obj_idx = node.source_obj;
+            let source_obj = &lineage.context.arena_objects[source_obj_idx];
+            
+            if lineage.context.source_objects.contains_key(&source_obj.name) {
+                objects
+                    .entry(output_source_idx)
+                    .or_insert(HashMap::from([(output_source_idx, HashSet::default())]))
+                    .entry(*output_node_idx).and_modify(|s| {s.insert((source_obj_idx, node_idx));});
+            } else {
+                stack.extend(node.input.clone());
+            }
+        }
+    }
+        
+    let just_include_source_objects = true;
+    
+    let mut extracted_lineage = ExtractedLineage{ objects: vec![] };
+    for (obj_idx, obj_map) in objects {
+        let obj = &lineage.context.arena_objects[obj_idx];
+        if just_include_source_objects && !lineage.context.source_objects.contains_key(&obj.name) {
+            continue;
+        }
+        
+        let mut obj_nodes = vec![];
+        
+        for (node_idx, input) in obj_map {
+            let node = &lineage.context.arena_lineage_nodes[node_idx];
+            let mut node_input = vec![];
+            for (inp_obj_idx, inp_node_idx) in input {
+                let inp_obj = &lineage.context.arena_objects[inp_obj_idx];
+                let inp_node = &lineage.context.arena_lineage_nodes[inp_node_idx];
+                node_input.push(ExtractedInput{ obj_name: inp_obj.name.clone(), node_name: inp_node.name.string().to_owned() });
+            }
+            
+            obj_nodes.push(ExtractedNode{ name: node.name.string().to_owned(), input: node_input});
+        }
+        
+        extracted_lineage.objects.push(ExtractedObject{ name: obj.name.clone(), kind: obj.kind.into(), nodes: obj_nodes });
+    }
+    
+    let extracted_lineage = serde_json::to_string_pretty(&extracted_lineage)?;
+    println!("JSON: {}", extracted_lineage);
+    
+    // println!("{:?}", objects);
+    // let j = serde_json::to_string(&objects);
+    // println!("{:?}",j);
 
-    let output_lineage = OutputLineage {
-        objects: lineage
-            .context
-            .arena_objects
-            .into_iter()
-            .enumerate()
-            .map(|(idx, obj)| OutputObject {
-                id: idx,
-                name: obj.name,
-                kind: obj.kind.into(),
-                nodes: obj
-                    .lineage_nodes
-                    .into_iter()
-                    .map(|aidx| aidx.index)
-                    .collect(),
-            })
-            .collect(),
-        lineage_nodes: lineage
-            .context
-            .arena_lineage_nodes
-            .into_iter()
-            .enumerate()
-            .map(|(idx, node)| OutputNode {
-                id: idx,
-                name: node.name.into(),
-                source_object: node.source_obj.index,
-                input: node.input.into_iter().map(|aidx| aidx.index).collect(),
-            })
-            .collect(),
-        output_lineage: lineage
-            .context
-            .output
-            .into_iter()
-            .map(|aidx| aidx.index)
-            .collect(),
-    };
+    // let output_lineage = OutputLineage {
+    //     objects: lineage
+    //         .context
+    //         .arena_objects
+    //         .into_iter()
+    //         .enumerate()
+    //         .map(|(idx, obj)| OutputObject {
+    //             id: idx,
+    //             name: obj.name,
+    //             kind: obj.kind.into(),
+    //             nodes: obj
+    //                 .lineage_nodes
+    //                 .into_iter()
+    //                 .map(|aidx| aidx.index)
+    //                 .collect(),
+    //         })
+    //         .collect(),
+    //     lineage_nodes: lineage
+    //         .context
+    //         .arena_lineage_nodes
+    //         .into_iter()
+    //         .enumerate()
+    //         .map(|(idx, node)| OutputNode {
+    //             id: idx,
+    //             name: node.name.into(),
+    //             source_object: node.source_obj.index,
+    //             input: node.input.into_iter().map(|aidx| aidx.index).collect(),
+    //         })
+    //         .collect(),
+    //     output_lineage: lineage
+    //         .context
+    //         .output
+    //         .into_iter()
+    //         .map(|aidx| aidx.index)
+    //         .collect(),
+    // };
+    // 
+
 
     // let file = std::fs::File::create("./out.json")?;
     // let mut writer = BufWriter::new(file);
-    // serde_json::to_writer(&mut writer, &output_lineage)?;
-    // println!("{:?}", output_lineage);
+    // serde_json::to_writer(&mut writer, &extracted_lineage)?;
+    // println!("{:?}", extracted_lineage);
 
     // TODO: pop all the remaining contexts and return the final lineage
     Ok(())
