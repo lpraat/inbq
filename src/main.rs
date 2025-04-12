@@ -1,10 +1,9 @@
 use std::{env, fs, time::Instant};
 
 use anyhow::anyhow;
-use inbq::lineage::compute_lineage;
+use inbq::lineage::{lineage, SchemaObject, SchemaObjectKind};
 use inbq::parser::{parse_sql, Ast, Parser};
 use inbq::scanner::Scanner;
-
 
 // interface:
 // lib:
@@ -25,8 +24,23 @@ fn main() -> anyhow::Result<()> {
             let sql_str = fs::read_to_string(sql_path)?;
             let ast = parse_sql(&sql_str)?;
             println!("Parsed AST: {:?}\n\n", ast);
-            let output_lineage = compute_lineage(&ast);
-            println!("Output lineage: {:?}.", output_lineage);
+
+            // TODO: read schema objects from file
+            let schema_objects = vec![
+                SchemaObject {
+                    name: "tmp".to_owned(),
+                    kind: SchemaObjectKind::Table,
+                    columns: vec!["z".to_owned()],
+                },
+                SchemaObject {
+                    name: "D".to_owned(),
+                    kind: SchemaObjectKind::Table,
+                    columns: vec!["z".to_owned()],
+                },
+            ];
+
+            let output_lineage = lineage(&ast, &schema_objects);
+            // println!("Output lineage: {:?}.", output_lineage);
         }
         _ => println!("Usage: inbq [sql_file_path]"),
     }

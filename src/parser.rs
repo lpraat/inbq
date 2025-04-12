@@ -32,7 +32,7 @@ impl ParseToken {
                 .join(join_char.map_or(" ", |c| c)),
         }
     }
-    
+
     pub fn literal_str(&self, join_char: Option<&str>) -> String {
         match self {
             ParseToken::Single(token) => {
@@ -42,9 +42,9 @@ impl ParseToken {
             ParseToken::Multiple(vec) => {
                 vec.iter().map(|tok|tok.literal.as_ref().unwrap().string_literal().unwrap().to_owned()).collect::<Vec<String>>().join(join_char.map_or(" ", |c| c))
             },
-        }   
+        }
     }
-    
+
     pub fn literal(&self) -> Vec<&Option<TokenLiteral>> {
         match self {
             ParseToken::Single(token) => vec![&token.literal],
@@ -858,7 +858,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Set, "Expected `SET`.")?;
         let mut update_items = vec![];
         loop {
-            let column_path = self.parse_path()?.path; 
+            let column_path = self.parse_path()?.path;
             self.consume(TokenType::Equal, "Expected `=`.")?;
             let expr = self.parse_expr()?;
             update_items.push(UpdateItem {
@@ -2519,7 +2519,7 @@ pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
 
     let mut scanner = Scanner::new(sql);
     let tokens = scanner.scan();
-    
+
     // TODO: just use a result also in the Scanner
     if scanner.had_error {
         println!("Exiting. Found error while scanning.");

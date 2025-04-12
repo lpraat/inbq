@@ -1,12 +1,10 @@
 use anyhow::{anyhow, Ok};
+use indexmap::IndexMap;
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
-    io::BufWriter,
 };
-
-use std::io::Write;
 
 use crate::{
     arena::{Arena, ArenaIndex},
@@ -16,7 +14,6 @@ use crate::{
         MergeUpdate, ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
         SelectColExpr, SelectExpr, SelectQueryExpr, Statement, UpdateStatement, When, With,
     },
-    scanner::TokenLiteral,
 };
 
 #[derive(Debug, Clone)]
@@ -132,10 +129,10 @@ impl From<ContextObjectKind> for String {
 struct Context {
     arena_objects: Arena<ContextObject>,
     arena_lineage_nodes: Arena<LineageNode>,
-    source_objects: HashMap<String, ArenaIndex>,
+    source_objects: IndexMap<String, ArenaIndex>,
     objects_stack: Vec<ArenaIndex>,
-    stack: Vec<HashMap<String, ArenaIndex>>,
-    columns_stack: Vec<HashMap<String, Vec<ArenaIndex>>>,
+    stack: Vec<IndexMap<String, ArenaIndex>>,
+    columns_stack: Vec<IndexMap<String, Vec<ArenaIndex>>>,
     lineage_stack: Vec<ArenaIndex>,
     output: Vec<ArenaIndex>,
 }
@@ -182,16 +179,17 @@ impl Context {
         self.arena_lineage_nodes.allocate(new_lineage_node)
     }
 
-    fn curr_stack(&self) -> Option<&HashMap<String, ArenaIndex>> {
+    fn curr_stack(&self) -> Option<&IndexMap<String, ArenaIndex>> {
         self.stack.last()
     }
-    fn curr_columns_stack(&self) -> Option<&HashMap<String, Vec<ArenaIndex>>> {
+
+    fn curr_columns_stack(&self) -> Option<&IndexMap<String, Vec<ArenaIndex>>> {
         self.columns_stack.last()
     }
 
-    fn push_new_ctx(&mut self, ctx_objects: HashMap<String, ArenaIndex>) {
-        let mut new_ctx: HashMap<String, ArenaIndex> = ctx_objects;
-        let mut new_columns: HashMap<String, Vec<ArenaIndex>> = HashMap::new();
+    fn push_new_ctx(&mut self, ctx_objects: IndexMap<String, ArenaIndex>) {
+        let mut new_ctx: IndexMap<String, ArenaIndex> = ctx_objects;
+        let mut new_columns: IndexMap<String, Vec<ArenaIndex>> = IndexMap::new();
 
         for key in new_ctx.keys() {
             let ctx_obj = &self.arena_objects[new_ctx[key]];
@@ -259,12 +257,12 @@ impl Context {
     }
 }
 
-struct Lineage {
+struct LineageExtractor {
     anon_id: u64,
     context: Context,
 }
 
-impl Lineage {
+impl LineageExtractor {
     fn get_anon_id(&mut self) -> u64 {
         let curr = self.anon_id;
         self.anon_id += 1;
@@ -380,7 +378,12 @@ impl Lineage {
                         .collect::<Vec<String>>()
                 ));
             }
-            let target_table_idx = target_tables[0];
+            let target_table_idx = if target_tables.len() > 1 {
+                // Pick the last using_table
+                *target_tables.last().unwrap()
+            } else {
+                target_tables[0]
+            };
             let target_table_name = &self.context.arena_objects[target_table_idx].name;
             let ctx_table = self
                 .context
@@ -539,12 +542,17 @@ impl Lineage {
                         .collect::<Vec<String>>()
                 ));
             }
-            let col_source_idx = sources.first().unwrap();
+            let col_source_idx = if sources.len() > 1 {
+                // Pick the last using_table
+                *sources.last().unwrap()
+            } else {
+                sources[0]
+            };
             let table = self
                 .context
                 .curr_stack()
                 .unwrap()
-                .get(&self.context.arena_objects[*col_source_idx].name)
+                .get(&self.context.arena_objects[col_source_idx].name)
                 .map(|idx| &self.context.arena_objects[*idx])
                 .unwrap();
 
@@ -856,6 +864,7 @@ impl Lineage {
                 &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
             joined_table_names.push(right_join_table.name.clone());
 
+            let mut added_columns = HashSet::new();
             for col in using_columns {
                 let col_name = col.lexeme(None).to_lowercase();
                 let left_lineage_node_idx = left_join_table
@@ -886,12 +895,38 @@ impl Lineage {
                     NodeName::Defined(col.lexeme(None)),
                     vec![left_lineage_node_idx, right_lineage_node_idx],
                 ));
+                added_columns.insert(col.lexeme(None));
             }
-            let joined_table_name = joined_table_names
-                .into_iter()
-                .fold(String::from("join"), |acc, name| {
-                    format!("{}_{}", acc, name)
-                });
+
+            // Add remaning columns not in using clause
+            lineage_nodes.extend(
+                left_join_table
+                    .lineage_nodes
+                    .iter()
+                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                    .filter(|(node, _)| !added_columns.contains(node.name.string()))
+                    .map(|(node, idx)| (node.name.clone(), vec![*idx])),
+            );
+
+            lineage_nodes.extend(
+                right_join_table
+                    .lineage_nodes
+                    .iter()
+                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                    .filter(|(node, _)| !added_columns.contains(node.name.string()))
+                    .map(|(node, idx)| (node.name.clone(), vec![*idx])),
+            );
+
+            let joined_table_name = format!(
+                // Create a new name for the using_table.
+                // This name is not a valid bq table name (we use {})
+                "{{{}}}",
+                joined_table_names
+                    .into_iter()
+                    .fold(String::from("join"), |acc, name| {
+                        format!("{}_{}", acc, name)
+                    })
+            );
 
             let table_like_idx = self.context.allocate_new_ctx_object(
                 &joined_table_name,
@@ -1031,7 +1066,7 @@ impl Lineage {
         let mut ctx_objects = from_tables
             .into_iter()
             .map(|idx| (self.context.arena_objects[idx].name.clone(), idx))
-            .collect::<HashMap<String, ArenaIndex>>();
+            .collect::<IndexMap<String, ArenaIndex>>();
         ctx_objects.extend(
             joined_tables
                 .into_iter()
@@ -1096,7 +1131,7 @@ impl Lineage {
             .collect::<HashMap<String, ArenaIndex>>();
 
         // NOTE: we push the target table after pushing the from context
-        self.context.push_new_ctx(HashMap::from([(
+        self.context.push_new_ctx(IndexMap::from([(
             target_table_alias.clone(),
             target_table_id.unwrap(),
         )]));
@@ -1278,7 +1313,7 @@ impl Lineage {
 
     fn merge_update(
         &mut self,
-        ctx: &HashMap<String, ArenaIndex>,
+        ctx: &IndexMap<String, ArenaIndex>,
         target_table_alias: &str,
         target_table_id: ArenaIndex,
         merge_update: &MergeUpdate,
@@ -1434,7 +1469,7 @@ impl Lineage {
 
         let source_table_id = source_table_id.or(subquery_table_id);
 
-        let mut new_ctx = HashMap::from([(target_table_alias.clone(), target_table_id)]);
+        let mut new_ctx = IndexMap::from([(target_table_alias.clone(), target_table_id)]);
         if let Some(alias) = &merge_statement.source_alias {
             let source_alias = alias.lexeme(None);
             new_ctx.insert(source_alias.clone(), source_table_id.unwrap());
@@ -1506,73 +1541,103 @@ impl Lineage {
 
 // TODO: add line in errors
 
-#[derive(Serialize, Debug)]
-struct OutputObject {
+#[derive(Serialize, Debug, Clone)]
+pub struct RawLineageObject {
     id: usize,
     name: String,
     kind: String,
     nodes: Vec<usize>,
 }
 
-#[derive(Serialize, Debug)]
-struct OutputNode {
+#[derive(Serialize, Debug, Clone)]
+pub struct RawLineageNode {
     id: usize,
     name: String,
     source_object: usize,
     input: Vec<usize>,
 }
 
-#[derive(Serialize, Debug)]
-struct OutputLineage {
-    objects: Vec<OutputObject>,
-    lineage_nodes: Vec<OutputNode>,
+#[derive(Serialize, Debug, Clone)]
+pub struct RawLineage {
+    objects: Vec<RawLineageObject>,
+    lineage_nodes: Vec<RawLineageNode>,
     output_lineage: Vec<usize>,
 }
 
-#[derive(Serialize, Debug)]
-struct ExtractedInput {
+#[derive(Serialize, Debug, Clone)]
+pub struct ReadyLineageNodeInput {
     obj_name: String,
     node_name: String,
 }
 
-#[derive(Serialize, Debug)]
-struct ExtractedNode {
+#[derive(Serialize, Debug, Clone)]
+pub struct ReadyLineageNode {
     name: String,
-    input: Vec<ExtractedInput>
+    input: Vec<ReadyLineageNodeInput>,
 }
 
-#[derive(Serialize, Debug)]
-struct ExtractedObject {
-    name: String,
-    kind: String,
-    nodes: Vec<ExtractedNode>
+#[derive(Serialize, Debug, Clone)]
+pub struct ReadyLineageObject {
+    pub name: String,
+    pub kind: String,
+    pub nodes: Vec<ReadyLineageNode>,
 }
 
-#[derive(Serialize, Debug)]
-struct ExtractedLineage {
-    objects: Vec<ExtractedObject>
+#[derive(Serialize, Debug, Clone)]
+pub struct ReadyLineage {
+    pub objects: Vec<ReadyLineageObject>,
 }
 
-pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
-    // TODO: we should read this from a config file, the user must provide it in some way
+#[derive(Debug, Clone)]
+pub struct SchemaObject {
+    pub name: String,
+    pub kind: SchemaObjectKind,
+    pub columns: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SchemaObjectKind {
+    Table,
+    View,
+}
+
+#[derive(Debug, Clone)]
+pub struct Lineage {
+    pub raw: RawLineage,
+    pub ready: ReadyLineage,
+}
+
+pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lineage> {
     let mut ctx = Context::default();
 
-    // TODO: force all columns provided by user schema to be lowercase
+    let mut source_objects = IndexMap::new();
+    for schema_object in schema_objects {
+        if source_objects.contains_key(&schema_object.name) {
+            return Err(anyhow!(
+                "Found duplicate definition of schema object `{}`.",
+                schema_object.name
+            ));
+        }
+        let context_object_kind = match schema_object.kind {
+            SchemaObjectKind::Table => ContextObjectKind::Table,
+            SchemaObjectKind::View => ContextObjectKind::Table,
+        };
+        let table_idx = ctx.allocate_new_ctx_object(
+            &schema_object.name,
+            context_object_kind,
+            schema_object
+                .columns
+                .iter()
+                .map(|col|
+                // columns are case insensitive, we lowercase them
+                (NodeName::Defined(col.to_lowercase()), vec![]))
+                .collect(),
+        );
+        source_objects.insert(schema_object.name.clone(), table_idx);
+    }
+    ctx.source_objects = source_objects;
 
-    let tmp_idx = ctx.allocate_new_ctx_object(
-        "tmp",
-        ContextObjectKind::Table,
-        vec![(NodeName::Defined("z".to_owned()), vec![])],
-    );
-    let d_idx = ctx.allocate_new_ctx_object(
-        "D",
-        ContextObjectKind::Table,
-        vec![(NodeName::Defined("z".to_owned()), vec![])],
-    );
-    ctx.source_objects =
-        HashMap::from([(String::from("tmp"), tmp_idx), (String::from("D"), d_idx)]);
-
-    let mut lineage = Lineage {
+    let mut lineage = LineageExtractor {
         anon_id: 0,
         context: ctx,
     };
@@ -1605,13 +1670,14 @@ pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
         //     node.compute_lineage(&lineage.context)
         // );
     }
-    
-    let mut objects: HashMap<ArenaIndex, HashMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> = HashMap::new();
-    
+
+    let mut objects: HashMap<ArenaIndex, HashMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
+        HashMap::new();
+
     for output_node_idx in &lineage.context.output {
         let output_node = &lineage.context.arena_lineage_nodes[*output_node_idx];
         let output_source_idx = output_node.source_obj;
-        
+
         let mut stack = output_node.input.clone();
         loop {
             if stack.is_empty() {
@@ -1619,92 +1685,118 @@ pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
             }
             let node_idx = stack.pop().unwrap();
             let node = &lineage.context.arena_lineage_nodes[node_idx];
-            
+
             let source_obj_idx = node.source_obj;
             let source_obj = &lineage.context.arena_objects[source_obj_idx];
-            
-            if lineage.context.source_objects.contains_key(&source_obj.name) {
+
+            if lineage
+                .context
+                .source_objects
+                .contains_key(&source_obj.name)
+            {
                 objects
                     .entry(output_source_idx)
                     .or_insert(HashMap::from([(output_source_idx, HashSet::default())]))
-                    .entry(*output_node_idx).and_modify(|s| {s.insert((source_obj_idx, node_idx));});
+                    .entry(*output_node_idx)
+                    .and_modify(|s| {
+                        s.insert((source_obj_idx, node_idx));
+                    });
             } else {
                 stack.extend(node.input.clone());
             }
         }
     }
-        
-    let just_include_source_objects = true;
-    
-    let mut extracted_lineage = ExtractedLineage{ objects: vec![] };
+
+    let just_include_source_objects = false;
+
+    let mut ready_lineage = ReadyLineage { objects: vec![] };
     for (obj_idx, obj_map) in objects {
         let obj = &lineage.context.arena_objects[obj_idx];
         if just_include_source_objects && !lineage.context.source_objects.contains_key(&obj.name) {
             continue;
         }
-        
+
         let mut obj_nodes = vec![];
-        
+
         for (node_idx, input) in obj_map {
             let node = &lineage.context.arena_lineage_nodes[node_idx];
             let mut node_input = vec![];
             for (inp_obj_idx, inp_node_idx) in input {
                 let inp_obj = &lineage.context.arena_objects[inp_obj_idx];
+                if just_include_source_objects
+                    && !lineage.context.source_objects.contains_key(&inp_obj.name)
+                {
+                    continue;
+                }
                 let inp_node = &lineage.context.arena_lineage_nodes[inp_node_idx];
-                node_input.push(ExtractedInput{ obj_name: inp_obj.name.clone(), node_name: inp_node.name.string().to_owned() });
+                node_input.push(ReadyLineageNodeInput {
+                    obj_name: inp_obj.name.clone(),
+                    node_name: inp_node.name.string().to_owned(),
+                });
             }
-            
-            obj_nodes.push(ExtractedNode{ name: node.name.string().to_owned(), input: node_input});
+
+            obj_nodes.push(ReadyLineageNode {
+                name: node.name.string().to_owned(),
+                input: node_input,
+            });
         }
-        
-        extracted_lineage.objects.push(ExtractedObject{ name: obj.name.clone(), kind: obj.kind.into(), nodes: obj_nodes });
+        ready_lineage.objects.push(ReadyLineageObject {
+            name: obj.name.clone(),
+            kind: obj.kind.into(),
+            nodes: obj_nodes,
+        });
     }
-    
-    let extracted_lineage = serde_json::to_string_pretty(&extracted_lineage)?;
-    println!("JSON: {}", extracted_lineage);
-    
+
+    println!("JSON: {}", serde_json::to_string_pretty(&ready_lineage)?);
+
     // println!("{:?}", objects);
     // let j = serde_json::to_string(&objects);
     // println!("{:?}",j);
 
-    // let output_lineage = OutputLineage {
-    //     objects: lineage
-    //         .context
-    //         .arena_objects
-    //         .into_iter()
-    //         .enumerate()
-    //         .map(|(idx, obj)| OutputObject {
-    //             id: idx,
-    //             name: obj.name,
-    //             kind: obj.kind.into(),
-    //             nodes: obj
-    //                 .lineage_nodes
-    //                 .into_iter()
-    //                 .map(|aidx| aidx.index)
-    //                 .collect(),
-    //         })
-    //         .collect(),
-    //     lineage_nodes: lineage
-    //         .context
-    //         .arena_lineage_nodes
-    //         .into_iter()
-    //         .enumerate()
-    //         .map(|(idx, node)| OutputNode {
-    //             id: idx,
-    //             name: node.name.into(),
-    //             source_object: node.source_obj.index,
-    //             input: node.input.into_iter().map(|aidx| aidx.index).collect(),
-    //         })
-    //         .collect(),
-    //     output_lineage: lineage
-    //         .context
-    //         .output
-    //         .into_iter()
-    //         .map(|aidx| aidx.index)
-    //         .collect(),
-    // };
-    // 
+    let raw_lineage = RawLineage {
+        objects: lineage
+            .context
+            .arena_objects
+            .into_iter()
+            .enumerate()
+            .map(|(idx, obj)| RawLineageObject {
+                id: idx,
+                name: obj.name,
+                kind: obj.kind.into(),
+                nodes: obj
+                    .lineage_nodes
+                    .into_iter()
+                    .map(|aidx| aidx.index)
+                    .collect(),
+            })
+            .collect(),
+        lineage_nodes: lineage
+            .context
+            .arena_lineage_nodes
+            .into_iter()
+            .enumerate()
+            .map(|(idx, node)| RawLineageNode {
+                id: idx,
+                name: node.name.into(),
+                source_object: node.source_obj.index,
+                input: node.input.into_iter().map(|aidx| aidx.index).collect(),
+            })
+            .collect(),
+        output_lineage: lineage
+            .context
+            .output
+            .into_iter()
+            .map(|aidx| aidx.index)
+            .collect(),
+    };
 
+    let lineage = Lineage {
+        raw: raw_lineage,
+        ready: ready_lineage,
+    };
+
+    // let output_lineage = serde_json::to_string_pretty(&output_lineage)?;
+    // println!("JSON: {}", output_lineage);
 
     // let file = std::fs::File::create("./out.json")?;
     // let mut writer = BufWriter::new(file);
@@ -1712,5 +1804,5 @@ pub fn compute_lineage(ast: &Ast) -> anyhow::Result<()> {
     // println!("{:?}", extracted_lineage);
 
     // TODO: pop all the remaining contexts and return the final lineage
-    Ok(())
+    Ok(lineage)
 }
