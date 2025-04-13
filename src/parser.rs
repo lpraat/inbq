@@ -22,33 +22,21 @@ pub enum ParseToken {
 }
 
 impl ParseToken {
-    pub fn lexeme(&self, join_char: Option<&str>) -> String {
-        match self {
-            ParseToken::Single(token) => token.lexeme.clone(),
-            ParseToken::Multiple(vec) => vec
-                .iter()
-                .map(|tok| tok.lexeme.clone())
-                .collect::<Vec<String>>()
-                .join(join_char.map_or(" ", |c| c)),
-        }
-    }
-
-    pub fn literal_str(&self, join_char: Option<&str>) -> String {
+    pub fn get_identifier(&self) -> String {
         match self {
             ParseToken::Single(token) => {
-                println!("{:?}", token);
                 token.literal.as_ref().unwrap().string_literal().unwrap().to_owned()
             },
             ParseToken::Multiple(vec) => {
-                vec.iter().map(|tok|tok.literal.as_ref().unwrap().string_literal().unwrap().to_owned()).collect::<Vec<String>>().join(join_char.map_or(" ", |c| c))
+                vec.iter()
+                    .map(|tok| if let Some(literal) = &tok.literal {
+                        literal.string_literal().unwrap().to_owned()
+                    } else {
+                        tok.lexeme.to_owned()
+                    })
+                    .collect::<Vec<String>>()
+                    .join("")
             },
-        }
-    }
-
-    pub fn literal(&self) -> Vec<&Option<TokenLiteral>> {
-        match self {
-            ParseToken::Single(token) => vec![&token.literal],
-            ParseToken::Multiple(vec) => vec.iter().map(|el| &el.literal).collect(),
         }
     }
 }

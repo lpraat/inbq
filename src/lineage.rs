@@ -287,7 +287,7 @@ impl LineageExtractor {
     fn cte_lin(&mut self, cte: &Cte) -> anyhow::Result<()> {
         match cte {
             Cte::NonRecursive(non_recursive_cte) => {
-                let cte_name = non_recursive_cte.name.lexeme(None);
+                let cte_name = non_recursive_cte.name.get_identifier();
 
                 let start_lineage_len = self.context.lineage_stack.len();
                 self.query_expr_lin(&non_recursive_cte.query)?;
@@ -410,7 +410,7 @@ impl LineageExtractor {
                 let source: String;
                 let col_name: String;
 
-                let operator = binary_expr.operator.lexeme(None);
+                let operator = binary_expr.operator.get_identifier();
                 if operator == "." {
                     let left_expr = binary_expr.left.as_ref();
                     let right_expr = binary_expr.right.as_ref();
@@ -515,7 +515,7 @@ impl LineageExtractor {
             .clone()
             .map_or(HashSet::default(), |cols| {
                 cols.into_iter()
-                    .map(|c| c.lexeme(None).to_lowercase())
+                    .map(|c| c.get_identifier().to_lowercase())
                     .collect::<HashSet<String>>()
             });
         for (col_name, sources) in self.context.curr_columns_stack().unwrap().iter() {
@@ -590,7 +590,7 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
             cols.into_iter()
-                .map(|c| c.lexeme(None).to_lowercase())
+                .map(|c| c.get_identifier().to_lowercase())
                 .collect::<HashSet<String>>()
         });
         match &col_expr.expr {
@@ -682,7 +682,7 @@ impl LineageExtractor {
         pending_node.input.extend(consumed_nodes);
 
         if let Some(alias) = &col_expr.alias {
-            pending_node.name = NodeName::Defined(alias.lexeme(None).to_lowercase());
+            pending_node.name = NodeName::Defined(alias.get_identifier().to_lowercase());
         }
 
         if pending_node.input.len() == 1 {
@@ -738,19 +738,19 @@ impl LineageExtractor {
                 self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?;
             }
             FromExpr::Path(from_path_expr) => {
-                let table_name = from_path_expr.path_expr.path.lexeme(Some(""));
+                let table_name = from_path_expr.path_expr.path.get_identifier();
                 let table_like_obj_id = self.get_table_id_from_context(&table_name);
 
                 if table_like_obj_id.is_none() {
                     return Err(anyhow!(
-                        "Table like obj name {} not in context.",
+                        "Table like obj name `{}` not in context.",
                         table_name
                     ));
                 }
 
                 let contains_alias = from_path_expr.alias.is_some();
                 let table_like_name = if contains_alias {
-                    from_path_expr.alias.as_ref().unwrap().lexeme(None)
+                    from_path_expr.alias.as_ref().unwrap().get_identifier()
                 } else {
                     table_name.clone()
                 };
@@ -800,7 +800,7 @@ impl LineageExtractor {
                 let source_name = &from_grouping_query_expr
                     .alias
                     .as_ref()
-                    .map(|alias| alias.lexeme(None));
+                    .map(|alias| alias.get_identifier());
 
                 let consumed_lineage_nodes =
                     self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
@@ -864,9 +864,9 @@ impl LineageExtractor {
                 &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
             joined_table_names.push(right_join_table.name.clone());
 
-            let mut added_columns = HashSet::new();
+            let mut using_columns_added = HashSet::new();
             for col in using_columns {
-                let col_name = col.lexeme(None).to_lowercase();
+                let col_name = col.get_identifier().to_lowercase();
                 let left_lineage_node_idx = left_join_table
                     .lineage_nodes
                     .iter()
@@ -892,10 +892,10 @@ impl LineageExtractor {
                     .1;
 
                 lineage_nodes.push((
-                    NodeName::Defined(col.lexeme(None)),
+                    NodeName::Defined(col_name.clone()),
                     vec![left_lineage_node_idx, right_lineage_node_idx],
                 ));
-                added_columns.insert(col.lexeme(None));
+                using_columns_added.insert(col_name);
             }
 
             // Add remaning columns not in using clause
@@ -904,7 +904,7 @@ impl LineageExtractor {
                     .lineage_nodes
                     .iter()
                     .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                    .filter(|(node, _)| !added_columns.contains(node.name.string()))
+                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
                     .map(|(node, idx)| (node.name.clone(), vec![*idx])),
             );
 
@@ -913,9 +913,20 @@ impl LineageExtractor {
                     .lineage_nodes
                     .iter()
                     .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                    .filter(|(node, _)| !added_columns.contains(node.name.string()))
+                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
                     .map(|(node, idx)| (node.name.clone(), vec![*idx])),
             );
+
+            let mut added_columns = HashSet::new();
+            for (node, _) in &lineage_nodes {
+                let is_new_column = added_columns.insert(node.string());
+                if !is_new_column {
+                    return Err(anyhow!(
+                        "Column `{}` is ambiguous. It is contained in more than one table.",
+                        node.string()
+                    ));
+                }
+            }
 
             let joined_table_name = format!(
                 // Create a new name for the using_table.
@@ -1010,7 +1021,7 @@ impl LineageExtractor {
         &mut self,
         create_table_statement: &CreateTableStatement,
     ) -> anyhow::Result<()> {
-        let table_name = create_table_statement.name.lexeme(None);
+        let table_name = create_table_statement.name.get_identifier();
         let table_kind = if create_table_statement.is_temporary {
             ContextObjectKind::TempTable
         } else {
@@ -1045,7 +1056,7 @@ impl LineageExtractor {
                 table_kind,
                 schema
                     .iter()
-                    .map(|col_schema| (NodeName::Defined(col_schema.name.lexeme(None)), vec![]))
+                    .map(|col_schema| (NodeName::Defined(col_schema.name.get_identifier()), vec![]))
                     .collect(),
             )
         };
@@ -1093,9 +1104,9 @@ impl LineageExtractor {
     }
 
     fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
-        let target_table = update_statement.target_table.lexeme(None);
+        let target_table = update_statement.target_table.get_identifier();
         let target_table_alias = if let Some(ref alias) = update_statement.alias {
-            alias.lexeme(None)
+            alias.get_identifier()
         } else {
             target_table.clone()
         };
@@ -1103,7 +1114,7 @@ impl LineageExtractor {
         let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
-                "Table like obj name {} not in context.",
+                "Table like obj name `{}` not in context.",
                 target_table
             ));
         }
@@ -1139,7 +1150,7 @@ impl LineageExtractor {
         for update_item in &update_statement.update_items {
             let column = match update_item.column_path {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.lexeme(None),
+                ParseToken::Single(_) => update_item.column_path.get_identifier(),
                 // table.col = ...
                 ParseToken::Multiple(ref vec) => vec
                     .last()
@@ -1179,12 +1190,12 @@ impl LineageExtractor {
     }
 
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
-        let target_table = insert_statement.target_table.lexeme(None);
+        let target_table = insert_statement.target_table.get_identifier();
 
         let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
-                "Table like obj name {} not in context.",
+                "Table like obj name `{}` not in context.",
                 target_table
             ));
         }
@@ -1207,7 +1218,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &insert_statement.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.lexeme(None);
+                let col_name = col.get_identifier();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -1285,7 +1296,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &merge_insert.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.lexeme(None);
+                let col_name = col.get_identifier();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -1339,7 +1350,7 @@ impl LineageExtractor {
         for update_item in &merge_update.update_items {
             let column = match update_item.column_path {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.lexeme(None),
+                ParseToken::Single(_) => update_item.column_path.get_identifier(),
                 // table.col = ...
                 ParseToken::Multiple(ref vec) => vec
                     .last()
@@ -1404,9 +1415,9 @@ impl LineageExtractor {
     }
 
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
-        let target_table = merge_statement.target_table.lexeme(None);
+        let target_table = merge_statement.target_table.get_identifier();
         let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
-            alias.lexeme(None)
+            alias.get_identifier()
         } else {
             target_table.clone()
         };
@@ -1414,18 +1425,18 @@ impl LineageExtractor {
         let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
-                "Table like obj name {} not in context.",
+                "Table like obj name `{}` not in context.",
                 target_table
             ));
         }
         let target_table_id = target_table_id.unwrap();
 
         let source_table_id = if let MergeSource::Table(parse_token) = &merge_statement.source {
-            let source_table = parse_token.lexeme(None);
+            let source_table = parse_token.get_identifier();
             let source_table_id = self.get_table_id_from_context(&source_table);
             if source_table_id.is_none() {
                 return Err(anyhow!(
-                    "Table like obj name {} not in context.",
+                    "Table like obj name `{}` not in context.",
                     source_table
                 ));
             }
@@ -1444,7 +1455,7 @@ impl LineageExtractor {
             let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
 
             if let Some(alias) = &merge_statement.source_alias {
-                let new_source_name = alias.lexeme(None);
+                let new_source_name = alias.get_identifier();
                 let source_idx = self.context.allocate_new_ctx_object(
                     &new_source_name,
                     ContextObjectKind::Query,
@@ -1471,7 +1482,7 @@ impl LineageExtractor {
 
         let mut new_ctx = IndexMap::from([(target_table_alias.clone(), target_table_id)]);
         if let Some(alias) = &merge_statement.source_alias {
-            let source_alias = alias.lexeme(None);
+            let source_alias = alias.get_identifier();
             new_ctx.insert(source_alias.clone(), source_table_id.unwrap());
         }
 
@@ -1543,37 +1554,37 @@ impl LineageExtractor {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RawLineageObject {
-    id: usize,
-    name: String,
-    kind: String,
-    nodes: Vec<usize>,
+    pub id: usize,
+    pub name: String,
+    pub kind: String,
+    pub nodes: Vec<usize>,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RawLineageNode {
-    id: usize,
-    name: String,
-    source_object: usize,
-    input: Vec<usize>,
+    pub id: usize,
+    pub name: String,
+    pub source_object: usize,
+    pub input: Vec<usize>,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RawLineage {
-    objects: Vec<RawLineageObject>,
-    lineage_nodes: Vec<RawLineageNode>,
-    output_lineage: Vec<usize>,
+    pub objects: Vec<RawLineageObject>,
+    pub lineage_nodes: Vec<RawLineageNode>,
+    pub output_lineage: Vec<usize>,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ReadyLineageNodeInput {
-    obj_name: String,
-    node_name: String,
+    pub obj_name: String,
+    pub node_name: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
 pub struct ReadyLineageNode {
-    name: String,
-    input: Vec<ReadyLineageNodeInput>,
+    pub name: String,
+    pub input: Vec<ReadyLineageNodeInput>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -1609,7 +1620,6 @@ pub struct Lineage {
 
 pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lineage> {
     let mut ctx = Context::default();
-
     let mut source_objects = IndexMap::new();
     for schema_object in schema_objects {
         if source_objects.contains_key(&schema_object.name) {
@@ -1622,6 +1632,24 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
             SchemaObjectKind::Table => ContextObjectKind::Table,
             SchemaObjectKind::View => ContextObjectKind::Table,
         };
+
+        let mut unique_columns = HashSet::new();
+        let mut duplicate_columns = vec![];
+        let are_columns_unique = schema_object.columns.iter().all(|col| {
+            let is_unique = unique_columns.insert(col);
+            if !is_unique {
+                duplicate_columns.push(col);
+            }
+            is_unique
+        });
+        if !are_columns_unique {
+            return Err(anyhow!(
+                "Found duplicate columns in schema object `{}`: `{:?}`.",
+                schema_object.name,
+                duplicate_columns
+            ));
+        }
+
         let table_idx = ctx.allocate_new_ctx_object(
             &schema_object.name,
             context_object_kind,
@@ -1671,8 +1699,8 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
         // );
     }
 
-    let mut objects: HashMap<ArenaIndex, HashMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
-        HashMap::new();
+    let mut objects: IndexMap<ArenaIndex, IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
+        IndexMap::new();
 
     for output_node_idx in &lineage.context.output {
         let output_node = &lineage.context.arena_lineage_nodes[*output_node_idx];
@@ -1696,18 +1724,19 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
             {
                 objects
                     .entry(output_source_idx)
-                    .or_insert(HashMap::from([(output_source_idx, HashSet::default())]))
+                    .or_default()
                     .entry(*output_node_idx)
                     .and_modify(|s| {
                         s.insert((source_obj_idx, node_idx));
-                    });
+                    })
+                    .or_insert(HashSet::from([(source_obj_idx, node_idx)]));
             } else {
                 stack.extend(node.input.clone());
             }
         }
     }
 
-    let just_include_source_objects = false;
+    let just_include_source_objects = true;
 
     let mut ready_lineage = ReadyLineage { objects: vec![] };
     for (obj_idx, obj_map) in objects {

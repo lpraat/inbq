@@ -1,0 +1,85 @@
+# Test Case
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select * except (c)
+from proj.dat.in_table
+"""
+
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = ["a", "b"]
+
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b"]
+
+
+# Test Case
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select *
+from proj.dat.in_table
+"""
+
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b"]
+c = ["proj.dat.in_table->c"]
+
+# Test Case
+[[tests]]
+sql = """
+insert into `proj.dat.out_table`
+with tmp as (
+    select * except (c)
+    from proj.dat.t1
+),
+
+tmp2 as (
+    select a, b, `c`
+    from proj.dat.t2
+)
+
+select
+    *
+from tmp inner join tmp2 using (a,b)
+"""
+
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[[tests.schema_objects]]
+name = "proj.dat.t2"
+kind = "table"
+columns = ["a", "b", "c"]
+
+
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.t1->a", "proj.dat.t2->a"]
+b = ["proj.dat.t1->b", "proj.dat.t2->b"]
+c = ["proj.dat.t2->c"]
