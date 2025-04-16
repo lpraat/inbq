@@ -125,6 +125,7 @@ pub struct Token {
     pub lexeme: String,
     pub literal: Option<TokenLiteral>,
     pub line: i32,
+    pub col: i32,
 }
 
 pub struct Scanner {
@@ -133,6 +134,7 @@ pub struct Scanner {
     start: i32,
     current: i32,
     line: i32,
+    col: i32,
     pub had_error: bool,
     open_type_brackets: Option<i32>,
 }
@@ -145,6 +147,7 @@ impl Scanner {
             start: 0,
             current: 0,
             line: 1,
+            col: 0,
             had_error: false,
             open_type_brackets: None,
         }
@@ -153,6 +156,7 @@ impl Scanner {
     fn advance(&mut self) -> char {
         let c = self.source_chars[self.current as usize];
         self.current += 1;
+        self.col += 1;
         c
     }
 
@@ -207,6 +211,7 @@ impl Scanner {
                 .collect(),
             literal,
             line: self.line,
+            col: self.col,
         });
     }
 
@@ -228,8 +233,14 @@ impl Scanner {
         self.tokens.clear();
         self.start = 0;
         self.current = 0;
+        self.col = 1;
         self.line = 1;
         self.had_error = false;
+    }
+
+    fn new_line(&mut self) {
+        self.line += 1;
+        self.col = 1;
     }
 
     pub fn scan(&mut self) -> Vec<Token> {
@@ -243,6 +254,7 @@ impl Scanner {
             lexeme: String::from("eof"),
             literal: None,
             line: self.line,
+            col: self.col,
         });
         self.tokens.clone()
     }
@@ -325,13 +337,13 @@ impl Scanner {
                     TokenLiteral::String(
                         self.source_chars[self.start as usize + 1..self.current as usize - 1]
                             .iter()
-                            .collect::<String>()
+                            .collect::<String>(),
                     ),
                 );
                 break;
             }
             if peek_char == '\n' {
-                self.line += 1;
+                self.new_line();
             }
             self.advance();
         }
@@ -442,7 +454,7 @@ impl Scanner {
                 if self.match_char('*') {
                     loop {
                         if self.peek() == '\n' {
-                            self.line += 1;
+                            self.new_line();
                         }
                         let peek_chars = self.n_peek(2);
                         if peek_chars.is_none()
@@ -544,7 +556,7 @@ impl Scanner {
                 self.add_token(TokenType::BitwiseXor);
             }
             '\n' => {
-                self.line += 1;
+                self.new_line();
             }
             '\r' | ' ' | '\t' => {}
 
@@ -580,7 +592,7 @@ impl Scanner {
                                 self.source_chars[(quoted_ident_start_idx + 1) as usize
                                     ..quoted_ident_end_idx as usize]
                                     .iter()
-                                    .collect::<String>()
+                                    .collect::<String>(),
                             ),
                         );
                         break;
@@ -603,6 +615,6 @@ impl Scanner {
 
     fn error(&mut self, error: &str) {
         self.had_error = true;
-        println!("[line: {}] {}", self.line, error)
+        println!("[line: {}, col: {}] {}", self.line, self.col, error)
     }
 }

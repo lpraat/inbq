@@ -37,7 +37,7 @@ impl<T> Arena<T> {
 
 pub struct ArenaIter<'a, T> {
     arena: &'a Arena<T>,
-    i: usize
+    i: usize,
 }
 
 impl<'a, T> Iterator for ArenaIter<'a, T> {
@@ -60,10 +60,7 @@ impl<'a, T> IntoIterator for &'a Arena<T> {
     type IntoIter = ArenaIter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        ArenaIter {
-            arena: self,
-            i: 0
-        }
+        ArenaIter { arena: self, i: 0 }
     }
 }
 
@@ -76,7 +73,6 @@ impl<T> IntoIterator for Arena<T> {
         self.nodes.into_iter()
     }
 }
-
 
 impl<T> Index<ArenaIndex> for Arena<T> {
     type Output = T;

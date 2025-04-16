@@ -24,19 +24,24 @@ pub enum ParseToken {
 impl ParseToken {
     pub fn get_identifier(&self) -> String {
         match self {
-            ParseToken::Single(token) => {
-                token.literal.as_ref().unwrap().string_literal().unwrap().to_owned()
-            },
-            ParseToken::Multiple(vec) => {
-                vec.iter()
-                    .map(|tok| if let Some(literal) = &tok.literal {
+            ParseToken::Single(token) => token
+                .literal
+                .as_ref()
+                .unwrap()
+                .string_literal()
+                .unwrap()
+                .to_owned(),
+            ParseToken::Multiple(vec) => vec
+                .iter()
+                .map(|tok| {
+                    if let Some(literal) = &tok.literal {
                         literal.string_literal().unwrap().to_owned()
                     } else {
                         tok.lexeme.to_owned()
-                    })
-                    .collect::<Vec<String>>()
-                    .join("")
-            },
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(""),
         }
     }
 }
@@ -603,7 +608,14 @@ impl<'a> Parser<'a> {
     fn check_identifier(&self, value: &str) -> bool {
         let peek = self.peek();
         peek.kind == TokenType::Identifier
-            && peek.literal.as_ref().unwrap().string_literal().unwrap().to_lowercase() == value
+            && peek
+                .literal
+                .as_ref()
+                .unwrap()
+                .string_literal()
+                .unwrap()
+                .to_lowercase()
+                == value
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> anyhow::Result<&Token> {
@@ -631,14 +643,22 @@ impl<'a> Parser<'a> {
 
     fn error(&self, token: &Token, message: &str) {
         if token.kind == TokenType::Eof {
-            self.report(token.line, "at end", message);
+            self.report(token.line, token.col, "at end", message);
         } else {
-            self.report(token.line, &format!("at '{}'", token.lexeme), message);
+            self.report(
+                token.line,
+                token.col,
+                &format!("at '{}'", token.lexeme),
+                message,
+            );
         }
     }
 
-    fn report(&self, line: i32, location: &str, message: &str) {
-        println!("[line {}] Error {}: {}", line, location, message);
+    fn report(&self, line: i32, col: i32, location: &str, message: &str) {
+        println!(
+            "[line {}, col {}] Error {}: {}",
+            line, col, location, message
+        );
     }
 
     // query -> query_statement (; query_statement [";"])*
@@ -721,7 +741,6 @@ impl<'a> Parser<'a> {
                     r#type: col_type,
                 });
 
-                println!("parsing : {:?}", self.peek());
                 if !self.match_token_type(TokenType::Comma) {
                     break;
                 }
@@ -849,17 +868,16 @@ impl<'a> Parser<'a> {
             let column_path = self.parse_path()?.path;
             self.consume(TokenType::Equal, "Expected `=`.")?;
             let expr = self.parse_expr()?;
-            update_items.push(UpdateItem {
-                column_path,
-                expr,
-            });
+            update_items.push(UpdateItem { column_path, expr });
 
             if !self.match_token_type(TokenType::Comma) {
                 break;
             }
         }
         let from = if self.match_token_type(TokenType::From) {
-            Some(From { exprs: vec![self.parse_from_expr()?]})
+            Some(From {
+                exprs: vec![self.parse_from_expr()?],
+            })
         } else {
             None
         };
@@ -988,10 +1006,7 @@ impl<'a> Parser<'a> {
             let column_path = self.parse_path()?.path;
             self.consume(TokenType::Equal, "Expected `=`.")?;
             let expr = self.parse_expr()?;
-            update_items.push(UpdateItem {
-                column_path,
-                expr,
-            });
+            update_items.push(UpdateItem { column_path, expr });
 
             if !self.match_token_type(TokenType::Comma) {
                 break;
@@ -2500,7 +2515,6 @@ impl<'a> Parser<'a> {
         Ok(primary_expr)
     }
 }
-
 
 pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
     println!("Parsing {}", &sql[..std::cmp::min(50, sql.len())]);

@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
                 },
             ];
 
-            let output_lineage = lineage(&ast, &schema_objects);
+            let output_lineage = lineage(&ast, &schema_objects)?;
             // println!("Output lineage: {:?}.", output_lineage);
         }
         _ => println!("Usage: inbq [sql_file_path]"),
