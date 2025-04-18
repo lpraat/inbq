@@ -1,51 +1,165 @@
-use std::{env, fs, time::Instant};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use anyhow::anyhow;
-use inbq::lineage::{lineage, SchemaObject, SchemaObjectKind};
-use inbq::parser::{parse_sql, Ast, Parser};
-use inbq::scanner::Scanner;
+use clap::Parser as ClapParser;
+use clap::Subcommand;
+use inbq::lineage::{lineage, Catalog, Lineage, RawLineage, ReadyLineage};
+use inbq::parser::parse_sql;
+use serde::Serialize;
 
-// interface:
-// lib:
-// - parse_sql
-// - sql_lineage
-// main:
-// - parse from file/files
-// - lineage from file/files
+#[derive(clap::Parser)]
+#[command(name = "inbq")]
+#[command(about = "BigQuery parser and lineage extractor", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Extract lineage from one or more SQL files.
+    Lineage(LineageCommand),
+}
+
+#[derive(clap::Args)]
+struct LineageCommand {
+    /// Path to the input file containing schema objects.
+    #[arg(short, long)]
+    catalog: PathBuf,
+    /// Path to the SQL file or directory containing SQL files.
+    #[arg(value_name = "SQL_[FILE|DIR]")]
+    sql: PathBuf,
+    /// Include raw lineage objects in the output.
+    #[arg(long)]
+    include_raw: bool,
+    /// Pretty-print the output lineage.
+    #[arg(long)]
+    pretty: bool,
+}
+
+fn extract_lineage(catalog: &Catalog, sql: &str) -> anyhow::Result<Lineage> {
+    let ast = parse_sql(sql)?;
+    lineage(&ast, catalog)
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum OutLineage {
+    Ok(OkLineage),
+    ErrLineage { error: String },
+}
+
+#[derive(Serialize)]
+struct OkLineage {
+    lineage: ReadyLineage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    raw: Option<RawLineage>,
+}
+
+#[derive(Serialize)]
+struct FileLineage {
+    file: String,
+    lineage: OutLineage,
+}
+
+#[derive(Serialize)]
+struct Output {
+    files: Vec<FileLineage>,
+}
+
+fn output_lineage(
+    lineage_command: &LineageCommand,
+    catalog: &Catalog,
+    sql_file_path: &PathBuf,
+) -> anyhow::Result<OutLineage> {
+    let sql = std::fs::read_to_string(sql_file_path).map_err(|_| {
+        anyhow!(
+            "Failed to read sql file {}",
+            sql_file_path.display().to_string()
+        )
+    })?;
+    let lineage = extract_lineage(catalog, &sql);
+    let out_lineage = match lineage {
+        Ok(lineage) => OutLineage::Ok(OkLineage {
+            lineage: lineage.ready,
+            raw: if lineage_command.include_raw {
+                Some(lineage.raw)
+            } else {
+                None
+            },
+        }),
+        Err(err) => OutLineage::ErrLineage {
+            error: format!(
+                "Could not extract lineage from SQL in file {} due to error: {}",
+                sql_file_path.display(),
+                err
+            ),
+        },
+    };
+    Ok(out_lineage)
+}
 
 fn main() -> anyhow::Result<()> {
-    let input_args = env::args().collect::<Vec<String>>();
+    env_logger::init();
+    let cli = Cli::parse();
 
-    let now = Instant::now();
+    match &cli.command {
+        Commands::Lineage(lineage_command) => {
+            let sql_file_or_dir = &lineage_command.sql;
+            let catalog = serde_json::from_str(
+                &std::fs::read_to_string(&lineage_command.catalog).map_err(|_| {
+                    anyhow!(
+                        "Failed to read catalog file: {}",
+                        lineage_command.catalog.display().to_string()
+                    )
+                })?,
+            )
+            .map_err(|err| {
+                anyhow!(
+                    "Failed to parse JSON catalog in file {} due to error: {}",
+                    lineage_command.catalog.display().to_string(),
+                    err
+                )
+            })?;
+            let out_str = if sql_file_or_dir.is_dir() {
+                let mut file_lineages: HashMap<String, OutLineage> = HashMap::new();
+                let sql_in_dir: Vec<_> = std::fs::read_dir(sql_file_or_dir)?
+                    .filter_map(|res| res.ok())
+                    .map(|entry| entry.path())
+                    .filter_map(|file| {
+                        if file.extension().map_or(false, |ext| ext == "sql") {
+                            Some(file)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
-    match input_args.len() {
-        2 => {
-            let sql_path = env::current_dir()?.join(input_args[1].clone());
-            let sql_str = fs::read_to_string(sql_path)?;
-            let ast = parse_sql(&sql_str)?;
-            println!("Parsed AST: {:?}\n\n", ast);
+                for sql_file in sql_in_dir {
+                    let output_lineage = output_lineage(lineage_command, &catalog, &sql_file)?;
+                    file_lineages.insert(
+                        std::path::absolute(sql_file)?.display().to_string(),
+                        output_lineage,
+                    );
+                }
 
-            // TODO: read schema objects from file
-            let schema_objects = vec![
-                SchemaObject {
-                    name: "tmp".to_owned(),
-                    kind: SchemaObjectKind::Table,
-                    columns: vec!["z".to_owned()],
-                },
-                SchemaObject {
-                    name: "D".to_owned(),
-                    kind: SchemaObjectKind::Table,
-                    columns: vec!["z".to_owned()],
-                },
-            ];
-
-            let output_lineage = lineage(&ast, &schema_objects)?;
-            // println!("Output lineage: {:?}.", output_lineage);
+                if lineage_command.pretty {
+                    serde_json::to_string_pretty(&file_lineages)?
+                } else {
+                    serde_json::to_string(&file_lineages)?
+                }
+            } else {
+                let output_lineage = output_lineage(lineage_command, &catalog, sql_file_or_dir)?;
+                if lineage_command.pretty {
+                    serde_json::to_string_pretty(&output_lineage)?
+                } else {
+                    serde_json::to_string(&output_lineage)?
+                }
+            };
+            println!("{}", out_str);
         }
-        _ => println!("Usage: inbq [sql_file_path]"),
     }
 
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
     Ok(())
 }

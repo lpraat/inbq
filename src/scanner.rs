@@ -123,7 +123,7 @@ impl TokenLiteral {
 pub struct Token {
     pub kind: TokenType,
     pub lexeme: String,
-    pub literal: Option<TokenLiteral>,
+    pub literal: Option<TokenLiteral>, // TODO: include this in kind? e.g., TokenKind::QuotedIdentifier(String), Token::String(String)
     pub line: i32,
     pub col: i32,
 }
@@ -615,6 +615,6 @@ impl Scanner {
 
     fn error(&mut self, error: &str) {
         self.had_error = true;
-        println!("[line: {}, col: {}] {}", self.line, self.col, error)
+        log::debug!("[line: {}, col: {}] {}", self.line, self.col, error)
     }
 }

@@ -23,8 +23,8 @@ fn test_should_parse() {
         r#"
       select
           --this is a comment
-          'pippo' as pippo,
-          "zippo" as zippo,
+          'foo' as foo,
+          "bar" as bar,
           32.1E4+5 as pi,
           123.456e-67 as b,
           .1E4 as c,
@@ -61,6 +61,16 @@ fn test_should_parse() {
       with tmp as (select 1 as x), tmp2 as (select 2 as y union all (select 2 as y))
       select *
       from tmp inner join tmp d using (x) left join tmp as dd on dd.x = d.x
+      "#,
+        r#"
+      with tmp as (select 1 as x), tmp2 as (select 2 as x)
+      select (select tmp.x from tmp2) from tmp
+      "#,
+        r#"
+      with tmp as (select 1 as x), tmp2 as (select 2 as x)
+      select
+        (with tmp3 as (select x from tmp2) select * from tmp3)
+      from tmp
       "#,
         r#"
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
@@ -230,10 +240,12 @@ fn test_should_parse() {
 
 #[test]
 fn test_should_not_parse() {
-    let sqls = ["
+    let sqls = [
+        r#"
       select
         array<struct<int64, `array`<int64>>>[struct(1, [1,2,3])],
-      "];
+      "#,
+    ];
     for sql in sqls {
         println!("Testing parsing error for SQL: {}", sql);
         assert!(parse_sql(sql).is_err())

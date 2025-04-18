@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Ok};
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
@@ -51,7 +51,7 @@ struct LineageNode {
 }
 
 impl LineageNode {
-    fn compute_lineage(&self, ctx: &Context) -> Vec<String> {
+    fn compute_deep_lineage(&self, ctx: &Context) -> Vec<String> {
         let mut input_cols = vec![];
         let mut stack = self.input.clone();
         while let Some(popped) = stack.pop() {
@@ -65,7 +65,7 @@ impl LineageNode {
         input_cols
     }
 
-    fn pretty_print_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
+    fn pretty_log_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
         let node = &ctx.arena_lineage_nodes[node_idx];
         let node_source_name = &ctx.arena_objects[node.source_obj].name;
         let in_str = node
@@ -88,9 +88,12 @@ impl LineageNode {
                 }
             })
             .1;
-        println!(
+        log::debug!(
             "[{}]{}->{} <-[{}]",
-            node.source_obj.index, node_source_name, node.name, in_str
+            node.source_obj.index,
+            node_source_name,
+            node.name,
+            in_str
         )
     }
 }
@@ -187,7 +190,11 @@ impl Context {
         self.columns_stack.last()
     }
 
-    fn push_new_ctx(&mut self, ctx_objects: IndexMap<String, ArenaIndex>) {
+    fn push_new_ctx(
+        &mut self,
+        ctx_objects: IndexMap<String, ArenaIndex>,
+        include_outer_context: bool,
+    ) {
         let mut new_ctx: IndexMap<String, ArenaIndex> = ctx_objects;
         let mut new_columns: IndexMap<String, Vec<ArenaIndex>> = IndexMap::new();
 
@@ -202,7 +209,7 @@ impl Context {
             }
         }
 
-        if !self.stack.is_empty() {
+        if include_outer_context && !self.stack.is_empty() {
             let prev_ctx = self.stack.last().unwrap();
             for key in prev_ctx.keys() {
                 let ctx_obj = &self.arena_objects[prev_ctx[key]];
@@ -287,7 +294,7 @@ impl LineageExtractor {
     fn cte_lin(&mut self, cte: &Cte) -> anyhow::Result<()> {
         match cte {
             Cte::NonRecursive(non_recursive_cte) => {
-                let cte_name = non_recursive_cte.name.get_identifier();
+                let cte_name = non_recursive_cte.name.identifier();
 
                 let start_lineage_len = self.context.lineage_stack.len();
                 self.query_expr_lin(&non_recursive_cte.query)?;
@@ -410,7 +417,7 @@ impl LineageExtractor {
                 let source: String;
                 let col_name: String;
 
-                let operator = binary_expr.operator.get_identifier();
+                let operator = binary_expr.operator.lexeme(None);
                 if operator == "." {
                     let left_expr = binary_expr.left.as_ref();
                     let right_expr = binary_expr.right.as_ref();
@@ -496,10 +503,18 @@ impl LineageExtractor {
         &mut self,
         grouping_query_expr: &GroupingQueryExpr,
     ) -> anyhow::Result<()> {
-        if let Some(with) = grouping_query_expr.with.as_ref() {
+        let pushed_empty_cte_ctx = if let Some(with) = grouping_query_expr.with.as_ref() {
+            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
-        }
+            true
+        } else {
+            false
+        };
         self.query_expr_lin(&grouping_query_expr.query_expr)?;
+        if pushed_empty_cte_ctx {
+            self.context.pop_curr_ctx();
+        }
         Ok(())
     }
 
@@ -515,7 +530,7 @@ impl LineageExtractor {
             .clone()
             .map_or(HashSet::default(), |cols| {
                 cols.into_iter()
-                    .map(|c| c.get_identifier().to_lowercase())
+                    .map(|c| c.identifier().to_lowercase())
                     .collect::<HashSet<String>>()
             });
         for (col_name, sources) in self.context.curr_columns_stack().unwrap().iter() {
@@ -590,7 +605,7 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
             cols.into_iter()
-                .map(|c| c.get_identifier().to_lowercase())
+                .map(|c| c.identifier().to_lowercase())
                 .collect::<HashSet<String>>()
         });
         match &col_expr.expr {
@@ -682,7 +697,7 @@ impl LineageExtractor {
         pending_node.input.extend(consumed_nodes);
 
         if let Some(alias) = &col_expr.alias {
-            pending_node.name = NodeName::Defined(alias.get_identifier().to_lowercase());
+            pending_node.name = NodeName::Defined(alias.identifier().to_lowercase());
         }
 
         if pending_node.input.len() == 1 {
@@ -738,7 +753,7 @@ impl LineageExtractor {
                 self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?;
             }
             FromExpr::Path(from_path_expr) => {
-                let table_name = from_path_expr.path_expr.path.get_identifier();
+                let table_name = from_path_expr.path_expr.path.identifier();
                 let table_like_obj_id = self.get_table_id_from_context(&table_name);
 
                 if table_like_obj_id.is_none() {
@@ -750,7 +765,7 @@ impl LineageExtractor {
 
                 let contains_alias = from_path_expr.alias.is_some();
                 let table_like_name = if contains_alias {
-                    from_path_expr.alias.as_ref().unwrap().get_identifier()
+                    from_path_expr.alias.as_ref().unwrap().identifier()
                 } else {
                     table_name.clone()
                 };
@@ -800,7 +815,7 @@ impl LineageExtractor {
                 let source_name = &from_grouping_query_expr
                     .alias
                     .as_ref()
-                    .map(|alias| alias.get_identifier());
+                    .map(|alias| alias.identifier());
 
                 let consumed_lineage_nodes =
                     self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
@@ -866,7 +881,7 @@ impl LineageExtractor {
 
             let mut using_columns_added = HashSet::new();
             for col in using_columns {
-                let col_name = col.get_identifier().to_lowercase();
+                let col_name = col.identifier().to_lowercase();
                 let left_lineage_node_idx = left_join_table
                     .lineage_nodes
                     .iter()
@@ -955,9 +970,14 @@ impl LineageExtractor {
     fn select_query_expr_lin(&mut self, select_query_expr: &SelectQueryExpr) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
-        if let Some(with) = select_query_expr.with.as_ref() {
+        let pushed_empty_cte_ctx = if let Some(with) = select_query_expr.with.as_ref() {
+            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
-        }
+            true
+        } else {
+            false
+        };
 
         let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
             self.from_lin(from)?;
@@ -996,6 +1016,9 @@ impl LineageExtractor {
         if pushed_context {
             self.context.pop_curr_ctx();
         }
+        if pushed_empty_cte_ctx {
+            self.context.pop_curr_ctx();
+        }
         Ok(())
     }
 
@@ -1021,7 +1044,7 @@ impl LineageExtractor {
         &mut self,
         create_table_statement: &CreateTableStatement,
     ) -> anyhow::Result<()> {
-        let table_name = create_table_statement.name.get_identifier();
+        let table_name = create_table_statement.name.identifier();
         let table_kind = if create_table_statement.is_temporary {
             ContextObjectKind::TempTable
         } else {
@@ -1056,7 +1079,7 @@ impl LineageExtractor {
                 table_kind,
                 schema
                     .iter()
-                    .map(|col_schema| (NodeName::Defined(col_schema.name.get_identifier()), vec![]))
+                    .map(|col_schema| (NodeName::Defined(col_schema.name.identifier()), vec![]))
                     .collect(),
             )
         };
@@ -1083,7 +1106,7 @@ impl LineageExtractor {
                 .into_iter()
                 .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
         );
-        self.context.push_new_ctx(ctx_objects);
+        self.context.push_new_ctx(ctx_objects, true);
         Ok(())
     }
 
@@ -1104,9 +1127,9 @@ impl LineageExtractor {
     }
 
     fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
-        let target_table = update_statement.target_table.get_identifier();
+        let target_table = update_statement.target_table.identifier();
         let target_table_alias = if let Some(ref alias) = update_statement.alias {
-            alias.get_identifier()
+            alias.identifier()
         } else {
             target_table.clone()
         };
@@ -1142,15 +1165,15 @@ impl LineageExtractor {
             .collect::<HashMap<String, ArenaIndex>>();
 
         // NOTE: we push the target table after pushing the from context
-        self.context.push_new_ctx(IndexMap::from([(
-            target_table_alias.clone(),
-            target_table_id.unwrap(),
-        )]));
+        self.context.push_new_ctx(
+            IndexMap::from([(target_table_alias.clone(), target_table_id.unwrap())]),
+            true,
+        );
 
         for update_item in &update_statement.update_items {
             let column = match update_item.column_path {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.get_identifier(),
+                ParseToken::Single(_) => update_item.column_path.identifier(),
                 // table.col = ...
                 ParseToken::Multiple(ref vec) => vec
                     .last()
@@ -1190,7 +1213,7 @@ impl LineageExtractor {
     }
 
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
-        let target_table = insert_statement.target_table.get_identifier();
+        let target_table = insert_statement.target_table.identifier();
 
         let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
@@ -1218,7 +1241,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &insert_statement.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.get_identifier();
+                let col_name = col.identifier();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -1296,7 +1319,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &merge_insert.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.get_identifier();
+                let col_name = col.identifier();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -1329,7 +1352,7 @@ impl LineageExtractor {
         target_table_id: ArenaIndex,
         merge_update: &MergeUpdate,
     ) -> anyhow::Result<()> {
-        self.context.push_new_ctx(ctx.clone());
+        self.context.push_new_ctx(ctx.clone(), true);
         let target_table_obj = &self.context.arena_objects[target_table_id];
 
         // TODO: this code is repeated (see insert and update statement)
@@ -1350,7 +1373,7 @@ impl LineageExtractor {
         for update_item in &merge_update.update_items {
             let column = match update_item.column_path {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.get_identifier(),
+                ParseToken::Single(_) => update_item.column_path.identifier(),
                 // table.col = ...
                 ParseToken::Multiple(ref vec) => vec
                     .last()
@@ -1415,9 +1438,9 @@ impl LineageExtractor {
     }
 
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
-        let target_table = merge_statement.target_table.get_identifier();
+        let target_table = merge_statement.target_table.identifier();
         let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
-            alias.get_identifier()
+            alias.identifier()
         } else {
             target_table.clone()
         };
@@ -1432,7 +1455,7 @@ impl LineageExtractor {
         let target_table_id = target_table_id.unwrap();
 
         let source_table_id = if let MergeSource::Table(parse_token) = &merge_statement.source {
-            let source_table = parse_token.get_identifier();
+            let source_table = parse_token.identifier();
             let source_table_id = self.get_table_id_from_context(&source_table);
             if source_table_id.is_none() {
                 return Err(anyhow!(
@@ -1455,7 +1478,7 @@ impl LineageExtractor {
             let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
 
             if let Some(alias) = &merge_statement.source_alias {
-                let new_source_name = alias.get_identifier();
+                let new_source_name = alias.identifier();
                 let source_idx = self.context.allocate_new_ctx_object(
                     &new_source_name,
                     ContextObjectKind::Query,
@@ -1482,7 +1505,7 @@ impl LineageExtractor {
 
         let mut new_ctx = IndexMap::from([(target_table_alias.clone(), target_table_id)]);
         if let Some(alias) = &merge_statement.source_alias {
-            let source_alias = alias.get_identifier();
+            let source_alias = alias.identifier();
             new_ctx.insert(source_alias.clone(), source_table_id.unwrap());
         }
 
@@ -1543,14 +1566,13 @@ impl LineageExtractor {
                 Statement::CreateTable(create_table_statement) => {
                     self.create_table_statement_lin(create_table_statement)?
                 }
-                _ => todo!(),
+                Statement::Delete(_) => {}
+                Statement::Truncate(_) => {}
             }
         }
         Ok(())
     }
 }
-
-// TODO: add line in errors
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RawLineageObject {
@@ -1599,14 +1621,20 @@ pub struct ReadyLineage {
     pub objects: Vec<ReadyLineageObject>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct SchemaObject {
     pub name: String,
     pub kind: SchemaObjectKind,
     pub columns: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct Catalog {
+    pub schema_objects: Vec<SchemaObject>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
 pub enum SchemaObjectKind {
     Table,
     View,
@@ -1618,10 +1646,10 @@ pub struct Lineage {
     pub ready: ReadyLineage,
 }
 
-pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lineage> {
+pub fn lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
     let mut ctx = Context::default();
     let mut source_objects = IndexMap::new();
-    for schema_object in schema_objects {
+    for schema_object in &catalog.schema_objects {
         if source_objects.contains_key(&schema_object.name) {
             return Err(anyhow!(
                 "Found duplicate definition of schema object `{}`.",
@@ -1687,16 +1715,10 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
         }
     }
 
-    // TODO: we should place this code in the Lineage class, save all the lineage in one place
     let output_lineage_nodes = lineage.context.output.clone();
+    log::debug!("Output Lineage Nodes:");
     for pending_node in output_lineage_nodes {
-        LineageNode::pretty_print_lineage_node(pending_node, &lineage.context);
-        let node = &lineage.context.arena_lineage_nodes[pending_node];
-        // println!(
-        //     "Lineage for {:?} is: {:?}",
-        //     node.name.string(),
-        //     node.compute_lineage(&lineage.context)
-        // );
+        LineageNode::pretty_log_lineage_node(pending_node, &lineage.context);
     }
 
     let mut objects: IndexMap<ArenaIndex, IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
@@ -1776,12 +1798,6 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
         });
     }
 
-    println!("JSON: {}", serde_json::to_string_pretty(&ready_lineage)?);
-
-    // println!("{:?}", objects);
-    // let j = serde_json::to_string(&objects);
-    // println!("{:?}",j);
-
     let raw_lineage = RawLineage {
         objects: lineage
             .context
@@ -1824,14 +1840,5 @@ pub fn lineage(ast: &Ast, schema_objects: &[SchemaObject]) -> anyhow::Result<Lin
         ready: ready_lineage,
     };
 
-    // let output_lineage = serde_json::to_string_pretty(&output_lineage)?;
-    // println!("JSON: {}", output_lineage);
-
-    // let file = std::fs::File::create("./out.json")?;
-    // let mut writer = BufWriter::new(file);
-    // serde_json::to_writer(&mut writer, &extracted_lineage)?;
-    // println!("{:?}", extracted_lineage);
-
-    // TODO: pop all the remaining contexts and return the final lineage
     Ok(lineage)
 }

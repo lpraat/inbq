@@ -1,10 +1,9 @@
-- Modify error handling (right now we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
+- Modify error handling (we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
 - We are currently considering comparison operators as left associative but they are not. In bigquery this is a valid expression only if you add parentheses (x < y) is False (maybe fix after implementing pratt parsing in expressions)
 - Implement Pratt Parsing for operators
 - We have a vec in from exprs (we dont need it)
-- Adjust parsing for table names without quoted identifiers (e.g., project-id.dataset-id.table-id)
+- Add "from unnest"
 - Add window functions
-- Deterministic/better join table association
-- Finalize lineage module
+- Add literals in parse primary expr
+- Extract lineage from arrays and structs
 - Extract lineage from generic function exprs
-- Setup logging

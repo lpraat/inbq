@@ -1,5 +1,5 @@
 use core::panic;
-use std::{fmt::Display, thread::current};
+use std::fmt::Display;
 
 use anyhow::anyhow;
 
@@ -22,7 +22,17 @@ pub enum ParseToken {
 }
 
 impl ParseToken {
-    pub fn get_identifier(&self) -> String {
+    pub fn lexeme(&self, join_char: Option<&str>) -> String {
+        match self {
+            ParseToken::Single(token) => token.lexeme.clone(),
+            ParseToken::Multiple(vec) => vec
+                .iter()
+                .map(|tok| tok.lexeme.clone())
+                .collect::<Vec<String>>()
+                .join(join_char.map_or(" ", |c| c)),
+        }
+    }
+    pub fn identifier(&self) -> String {
         match self {
             ParseToken::Single(token) => token
                 .literal
@@ -655,9 +665,12 @@ impl<'a> Parser<'a> {
     }
 
     fn report(&self, line: i32, col: i32, location: &str, message: &str) {
-        println!(
+        log::debug!(
             "[line {}, col {}] Error {}: {}",
-            line, col, location, message
+            line,
+            col,
+            location,
+            message
         );
     }
 
@@ -2517,21 +2530,23 @@ impl<'a> Parser<'a> {
 }
 
 pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
-    println!("Parsing {}", &sql[..std::cmp::min(50, sql.len())]);
+    log::debug!("Parsing {}", &sql[..std::cmp::min(50, sql.len())]);
 
     let mut scanner = Scanner::new(sql);
+
     let tokens = scanner.scan();
 
     // TODO: just use a result also in the Scanner
     if scanner.had_error {
-        println!("Exiting. Found error while scanning.");
+        log::debug!("Exiting. Found error while scanning.");
         return Err(anyhow!("scanner error"));
     }
 
-    for token in &tokens {
-        println!("{:?}", token);
-    }
+    log::debug!("Tokens:");
+    tokens.iter().for_each(|tok| log::debug!("{:?}", tok));
 
     let mut parser = Parser::new(&tokens);
-    parser.parse()
+    let ast = parser.parse()?;
+    log::debug!("AST: {:?}", ast);
+    Ok(ast)
 }

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use inbq::lineage::Catalog;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -49,7 +50,7 @@ fn test_lineage() {
         let ast =
             parse_sql(&test.sql).unwrap_or_else(|_| panic!("Could not parse sql: {:?}", &test.sql));
 
-        let lineage = lineage(&ast, &schema_objects);
+        let lineage = lineage(&ast, &Catalog{ schema_objects });
         if let Err(err) = &lineage {
             println!("Could not extract lineage due to: {}", err);
         }

@@ -1,4 +1,4 @@
-# Test Case
+### Test case
 [[tests]]
 sql = """
 insert into proj.dat.out_table
@@ -21,7 +21,7 @@ a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 
 
-# Test Case
+### Test case
 [[tests]]
 sql = """
 insert into proj.dat.out_table
@@ -44,7 +44,7 @@ a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 c = ["proj.dat.in_table->c"]
 
-# Test Case
+### Test case
 [[tests]]
 sql = """
 insert into `proj.dat.out_table`
@@ -73,7 +73,6 @@ name = "proj.dat.t2"
 kind = "table"
 columns = ["a", "b", "c"]
 
-
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
 kind = "table"
@@ -83,3 +82,100 @@ columns = ["a", "b", "c"]
 a = ["proj.dat.t1->a", "proj.dat.t2->a"]
 b = ["proj.dat.t1->b", "proj.dat.t2->b"]
 c = ["proj.dat.t2->c"]
+
+
+### Test case
+[[tests]]
+sql = """
+create temp table temp_table as (
+    select 
+        *
+    from proj.dat.t1
+);
+
+merge into proj.dat.out_table as t
+using (
+    select * from temp_table
+)
+on false
+when not matched then
+    insert row
+when not matched by source then
+    delete
+"""
+
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[[tests.schema_objects]]
+name = "proj.dat.t2"
+kind = "table"
+columns = ["a", "b", "c"]
+
+
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = ["a", "b", "c"]
+
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.t1->a"]
+b = ["proj.dat.t1->b"]
+c = ["proj.dat.t1->c"]
+
+### Test case
+[[tests]]
+sql = """
+delete from dataset.Inventory T
+where T.product = "foo"
+"""
+
+[[tests.schema_objects]]
+name = "dataset.Inventory"
+kind = "table"
+columns = ["product", "quantity", "last_updated"]
+
+
+[tests.ready_lineage]
+# Empty
+ 
+### Test case
+[[tests]]
+sql = """
+truncate table dataset.Inventory;
+"""
+
+[[tests.schema_objects]]
+name = "dataset.Inventory"
+kind = "table"
+columns = ["product", "quantity", "last_updated"]
+
+[tests.ready_lineage]
+# Empty
+
+
+### Test case
+[[tests]]
+sql = """
+MERGE dataset.Inventory T
+USING dataset.NewArrivals S
+ON T.product = S.product
+WHEN MATCHED THEN
+  UPDATE SET quantity = T.quantity + S.quantity
+"""
+
+[[tests.schema_objects]]
+name = "dataset.Inventory"
+kind = "table"
+columns = ["product", "quantity", "last_updated"]
+
+[[tests.schema_objects]]
+name = "dataset.NewArrivals"
+kind = "table"
+columns = ["product", "quantity", "arrival_date"]
+
+[tests.ready_lineage."dataset.Inventory"]
+quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
+
