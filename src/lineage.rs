@@ -10,10 +10,11 @@ use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
         Ast, CreateTableStatement, Cte, Expr, FromExpr, GroupingQueryExpr, InsertStatement,
-        JoinCondition, JoinExpr, LiteralExpr, Merge, MergeInsert, MergeSource, MergeStatement,
-        MergeUpdate, ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
-        SelectColExpr, SelectExpr, SelectQueryExpr, Statement, UpdateStatement, When, With,
+        JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+        ParseToken, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr,
+        SelectExpr, SelectQueryExpr, Statement, UpdateStatement, When, With,
     },
+    scanner::TokenType,
 };
 
 #[derive(Debug, Clone)]
@@ -364,7 +365,11 @@ impl LineageExtractor {
                     column
                 ))
             }
-        } else if let Some(target_tables) = self.context.curr_columns_stack().unwrap_or(&IndexMap::new()).get(&column)
+        } else if let Some(target_tables) = self
+            .context
+            .curr_columns_stack()
+            .unwrap_or(&IndexMap::new())
+            .get(&column)
         {
             if target_tables.len() > 1
                 && !target_tables.iter().any(|el| {
@@ -422,22 +427,17 @@ impl LineageExtractor {
                     let left_expr = binary_expr.left.as_ref();
                     let right_expr = binary_expr.right.as_ref();
                     match left_expr {
-                        Expr::Literal(literal_expr) => match literal_expr {
-                            LiteralExpr::Identifier(ident) => {
-                                source = ident.clone();
-                            }
-                            LiteralExpr::QuotedIdentifier(qident) => {
-                                source = qident.clone();
-                            }
-                            LiteralExpr::String(_)
-                            | LiteralExpr::Number(_)
-                            | LiteralExpr::Bool(_)
-                            | LiteralExpr::Null
-                            | LiteralExpr::Star => return Err(anyhow!("Invalid query.")),
-                            _ => {
-                                return Err(anyhow!("Invalid query."));
-                            }
-                        },
+                        Expr::Identifier(ident) => {
+                            source = ident.clone();
+                        }
+                        Expr::QuotedIdentifier(qident) => {
+                            source = qident.clone();
+                        }
+                        Expr::String(_)
+                        | Expr::Number(_)
+                        | Expr::Bool(_)
+                        | Expr::Null
+                        | Expr::Star => return Err(anyhow!("Invalid query.")),
                         _ => {
                             // binary expr (e.g., tmp.s.x[0]) where s is a struct
                             todo!()
@@ -445,24 +445,20 @@ impl LineageExtractor {
                     }
 
                     match right_expr {
-                        Expr::Literal(literal_expr) => {
-                            match literal_expr {
-                                LiteralExpr::Identifier(ident) => {
-                                    col_name = ident.clone();
-                                }
-                                LiteralExpr::QuotedIdentifier(qident) => {
-                                    col_name = qident.clone();
-                                }
-                                LiteralExpr::String(_)
-                                | LiteralExpr::Number(_)
-                                | LiteralExpr::Bool(_)
-                                | LiteralExpr::Null
-                                | LiteralExpr::Star => return Err(anyhow!("Invalid query.")),
-                                _ => {
-                                    // TODO: struct is valid, e.g. this is valid ( struct(1 as x).x )
-                                    return Err(anyhow!("Invalid query."));
-                                }
-                            }
+                        Expr::Identifier(ident) => {
+                            col_name = ident.clone();
+                        }
+                        Expr::QuotedIdentifier(qident) => {
+                            col_name = qident.clone();
+                        }
+                        Expr::String(_)
+                        | Expr::Number(_)
+                        | Expr::Bool(_)
+                        | Expr::Null
+                        | Expr::Star => return Err(anyhow!("Invalid query.")),
+                        _ => {
+                            // TODO: struct is valid, e.g. this is valid ( struct(1 as x).x )
+                            return Err(anyhow!("Invalid query."));
                         }
                         _ => todo!(),
                     }
@@ -476,19 +472,16 @@ impl LineageExtractor {
             }
             Expr::Unary(unary_expr) => todo!(),
             Expr::Grouping(grouping_expr) => todo!(),
-            Expr::Literal(literal_expr) => match literal_expr {
-                LiteralExpr::Identifier(ident) | LiteralExpr::QuotedIdentifier(ident) => {
-                    let col_name = ident.clone();
-                    let col_source_idx = self.get_column_source(None, &col_name)?;
-                    self.context.lineage_stack.push(col_source_idx);
-                }
-
-                LiteralExpr::String(_) => todo!(),
-                LiteralExpr::Number(_) => {}
-                LiteralExpr::Bool(_) => todo!(),
-                LiteralExpr::Null => todo!(),
-                LiteralExpr::Star => todo!(),
-            },
+            Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
+                let col_name = ident.clone();
+                let col_source_idx = self.get_column_source(None, &col_name)?;
+                self.context.lineage_stack.push(col_source_idx);
+            }
+            Expr::String(_) => todo!(),
+            Expr::Number(_) => {}
+            Expr::Bool(_) => todo!(),
+            Expr::Null => todo!(),
+            Expr::Star => todo!(),
             Expr::Array(array_expr) => todo!(),
             Expr::Struct(struct_expr) => todo!(),
             Expr::Query(query_expr) => self.query_expr_lin(query_expr)?,
@@ -514,7 +507,12 @@ impl LineageExtractor {
                     .map(|c| c.identifier().to_lowercase())
                     .collect::<HashSet<String>>()
             });
-        for (col_name, sources) in self.context.curr_columns_stack().unwrap_or(&IndexMap::new()).iter() {
+        for (col_name, sources) in self
+            .context
+            .curr_columns_stack()
+            .unwrap_or(&IndexMap::new())
+            .iter()
+        {
             if except_columns.contains(col_name) {
                 continue;
             }
@@ -592,7 +590,7 @@ impl LineageExtractor {
         match &col_expr.expr {
             Expr::Binary(binary_expr) => {
                 let star = &binary_expr.right;
-                assert!(matches!(**star, Expr::Literal(LiteralExpr::Star)));
+                assert!(matches!(**star, Expr::Star));
                 let mut curr_left = &binary_expr.left;
 
                 // Retrieve the last object before the star
@@ -602,13 +600,8 @@ impl LineageExtractor {
                         Expr::Binary(ref binary_expr) => {
                             curr_left = &binary_expr.left;
                         }
-                        Expr::Literal(ref literal_expr) => match &literal_expr {
-                            LiteralExpr::Identifier(ident) => break ident.clone(),
-                            LiteralExpr::QuotedIdentifier(qident) => break qident.clone(),
-                            _ => {
-                                return Err(anyhow!("Invalid query."));
-                            }
-                        },
+                        Expr::Identifier(ref ident) => break ident.clone(),
+                        Expr::QuotedIdentifier(ref qident) => break qident.clone(),
                         _ => return Err(anyhow!("Invalid query.")),
                     }
                 };
@@ -1002,7 +995,7 @@ impl LineageExtractor {
         }
         Ok(())
     }
-    
+
     fn grouping_query_expr_lin(
         &mut self,
         grouping_query_expr: &GroupingQueryExpr,
@@ -1171,18 +1164,15 @@ impl LineageExtractor {
         );
 
         for update_item in &update_statement.update_items {
-            let column = match update_item.column_path {
+            let column = match &update_item.column_path {
                 // col = ...
                 ParseToken::Single(_) => update_item.column_path.identifier(),
                 // table.col = ...
-                ParseToken::Multiple(ref vec) => vec
-                    .last()
-                    .unwrap()
-                    .literal
-                    .as_ref()
-                    .unwrap()
-                    .string_literal()?
-                    .to_owned(),
+                ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
+                    TokenType::Identifier(ident) => ident.to_owned(),
+                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                    _ => unreachable!(),
+                },
             }
             .to_lowercase();
 
@@ -1371,18 +1361,15 @@ impl LineageExtractor {
             .collect::<HashMap<String, ArenaIndex>>();
 
         for update_item in &merge_update.update_items {
-            let column = match update_item.column_path {
+            let column = match &update_item.column_path {
                 // col = ...
                 ParseToken::Single(_) => update_item.column_path.identifier(),
                 // table.col = ...
-                ParseToken::Multiple(ref vec) => vec
-                    .last()
-                    .unwrap()
-                    .literal
-                    .as_ref()
-                    .unwrap()
-                    .string_literal()?
-                    .to_owned(),
+                ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
+                    TokenType::Identifier(ident) => ident.to_owned(),
+                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                    _ => unreachable!(),
+                },
             }
             .to_lowercase();
 

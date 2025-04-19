@@ -1,6 +1,9 @@
 use anyhow::anyhow;
+use strum_macros::EnumDiscriminants;
+use strum_macros::{AsRefStr, IntoStaticStr};
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Debug, EnumDiscriminants)]
+#[strum_discriminants(name(TokenTypeVariant))]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -30,10 +33,10 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
-    QuotedIdentifier,
-    Identifier,
-    String,
-    Number,
+    QuotedIdentifier(String),
+    Identifier(String),
+    String(String),
+    Number(f64),
     Eof,
 
     // Reserved kewords
@@ -87,30 +90,90 @@ pub enum TokenType {
     Limit,
 }
 
-#[derive(Debug, Clone)]
-pub enum TokenLiteral {
-    String(String),
-    Number(f64),
-}
-
-impl TokenLiteral {
-    pub fn string_literal(&self) -> anyhow::Result<&str> {
+impl TokenTypeVariant {
+    pub(crate) fn variant_str(&self) -> &str {
         match self {
-            TokenLiteral::String(s) => Ok(s),
-            other => Err(anyhow!(
-                "TokenLiteral {:?} is not a TokenLiteral::String.",
-                other
-            )),
-        }
-    }
-
-    pub fn number_literal(&self) -> anyhow::Result<f64> {
-        match self {
-            TokenLiteral::Number(n) => Ok(*n),
-            other => Err(anyhow!(
-                "TokenLiteral {:?} is not a TokenLiteral::Number.",
-                other
-            )),
+            TokenTypeVariant::LeftParen => "(",
+            TokenTypeVariant::RightParen => ")",
+            TokenTypeVariant::LeftSquare => "[",
+            TokenTypeVariant::RightSquare => "]",
+            TokenTypeVariant::Comma => ",",
+            TokenTypeVariant::Dot => ".",
+            TokenTypeVariant::Minus => "-",
+            TokenTypeVariant::Plus => "+",
+            TokenTypeVariant::BitwiseNot => "~",
+            TokenTypeVariant::BitwiseOr => "|",
+            TokenTypeVariant::BitwiseAnd => "&",
+            TokenTypeVariant::BitwiseXor => "^",
+            TokenTypeVariant::BitwiseRightShift => ">>",
+            TokenTypeVariant::BitwiseLeftShift => "<<",
+            TokenTypeVariant::Colon => ":",
+            TokenTypeVariant::Semicolon => ";",
+            TokenTypeVariant::Slash => "/",
+            TokenTypeVariant::Star => "*",
+            TokenTypeVariant::Tick => "`",
+            TokenTypeVariant::ConcatOperator => "||",
+            TokenTypeVariant::Bang => "!",
+            TokenTypeVariant::BangEqual => "!=",
+            TokenTypeVariant::Equal => "=",
+            TokenTypeVariant::NotEqual => "<>",
+            TokenTypeVariant::Greater => ">",
+            TokenTypeVariant::GreaterEqual => ">=",
+            TokenTypeVariant::Less => "<",
+            TokenTypeVariant::LessEqual => "<=",
+            TokenTypeVariant::QuotedIdentifier => "QuotedIdentifier",
+            TokenTypeVariant::Identifier => "Identifier",
+            TokenTypeVariant::String => "String",
+            TokenTypeVariant::Number => "Number",
+            TokenTypeVariant::Eof => "EOF",
+            TokenTypeVariant::Asc => "ASC",
+            TokenTypeVariant::Desc => "DESC",
+            TokenTypeVariant::Create => "CREATE",
+            TokenTypeVariant::Recursive => "RECURSIVE",
+            TokenTypeVariant::And => "AND",
+            TokenTypeVariant::Or => "OR",
+            TokenTypeVariant::Not => "NOT",
+            TokenTypeVariant::True => "TRUE",
+            TokenTypeVariant::False => "FALSE",
+            TokenTypeVariant::Union => "UNION",
+            TokenTypeVariant::All => "ALL",
+            TokenTypeVariant::Exists => "EXISTS",
+            TokenTypeVariant::If => "IF",
+            TokenTypeVariant::Distinct => "DISTINCT",
+            TokenTypeVariant::Intersect => "INTERSECT",
+            TokenTypeVariant::Except => "EXCEPT",
+            TokenTypeVariant::Null => "NULL",
+            TokenTypeVariant::Nulls => "NULLS",
+            TokenTypeVariant::Is => "IS",
+            TokenTypeVariant::In => "IN",
+            TokenTypeVariant::Into => "INTO",
+            TokenTypeVariant::Between => "BETWEEN",
+            TokenTypeVariant::Like => "LIKE",
+            TokenTypeVariant::With => "WITH",
+            TokenTypeVariant::Select => "SELECT",
+            TokenTypeVariant::From => "FROM",
+            TokenTypeVariant::Where => "WHERE",
+            TokenTypeVariant::When => "WHEN",
+            TokenTypeVariant::As => "AS",
+            TokenTypeVariant::Array => "ARRAY",
+            TokenTypeVariant::Struct => "STRUCT",
+            TokenTypeVariant::Group => "GROUP",
+            TokenTypeVariant::Order => "ORDER",
+            TokenTypeVariant::By => "BY",
+            TokenTypeVariant::Having => "HAVING",
+            TokenTypeVariant::Qualify => "QUALIFY",
+            TokenTypeVariant::Inner => "INNER",
+            TokenTypeVariant::Join => "JOIN",
+            TokenTypeVariant::Left => "LEFT",
+            TokenTypeVariant::Right => "RIGHT",
+            TokenTypeVariant::Outer => "OUTER",
+            TokenTypeVariant::Full => "FULL",
+            TokenTypeVariant::Then => "THEN",
+            TokenTypeVariant::Cross => "CROSS",
+            TokenTypeVariant::Using => "USING",
+            TokenTypeVariant::On => "ON",
+            TokenTypeVariant::Set => "SET",
+            TokenTypeVariant::Limit => "LIMIT",
         }
     }
 }
@@ -119,7 +182,6 @@ impl TokenLiteral {
 pub struct Token {
     pub kind: TokenType,
     pub lexeme: String,
-    pub literal: Option<TokenLiteral>, // TODO: include this in kind? e.g., TokenKind::QuotedIdentifier(String), Token::String(String)
     pub line: i32,
     pub col: i32,
 }
@@ -199,24 +261,15 @@ impl Scanner {
         true
     }
 
-    fn _add_token(&mut self, token_type: TokenType, literal: Option<TokenLiteral>) {
+    fn add_token(&mut self, token_type: TokenType) {
         self.tokens.push(Token {
             kind: token_type,
             lexeme: self.source_chars[self.start as usize..self.current as usize]
                 .iter()
                 .collect(),
-            literal,
             line: self.line,
             col: self.col,
         });
-    }
-
-    fn add_token(&mut self, token_type: TokenType) {
-        self._add_token(token_type, None);
-    }
-
-    fn add_token_w_literal(&mut self, token_type: TokenType, literal: TokenLiteral) {
-        self._add_token(token_type, Some(literal));
     }
 
     fn current_source_str(&self) -> String {
@@ -248,7 +301,6 @@ impl Scanner {
         self.tokens.push(Token {
             kind: TokenType::Eof,
             lexeme: String::from("eof"),
-            literal: None,
             line: self.line,
             col: self.col,
         });
@@ -262,16 +314,13 @@ impl Scanner {
             let peek_char = self.peek();
 
             if peek_char == '\0' {
-                self.add_token_w_literal(
-                    TokenType::Number,
-                    TokenLiteral::Number(
-                        self.source_chars[self.start as usize..(self.current as usize)]
-                            .iter()
-                            .collect::<String>()
-                            .parse()
-                            .unwrap(),
-                    ),
-                );
+                self.add_token(TokenType::Number(
+                    self.source_chars[self.start as usize..(self.current as usize)]
+                        .iter()
+                        .collect::<String>()
+                        .parse()
+                        .unwrap(),
+                ));
                 break;
             }
 
@@ -305,16 +354,13 @@ impl Scanner {
             } else if peek_char.is_ascii_digit() {
                 self.advance();
             } else {
-                self.add_token_w_literal(
-                    TokenType::Number,
-                    TokenLiteral::Number(
-                        self.source_chars[self.start as usize..(self.current as usize)]
-                            .iter()
-                            .collect::<String>()
-                            .parse()
-                            .unwrap(),
-                    ),
-                );
+                self.add_token(TokenType::Number(
+                    self.source_chars[self.start as usize..(self.current as usize)]
+                        .iter()
+                        .collect::<String>()
+                        .parse()
+                        .unwrap(),
+                ));
                 break;
             }
         }
@@ -328,14 +374,11 @@ impl Scanner {
                 break;
             }
             if self.match_char(delimiter) {
-                self.add_token_w_literal(
-                    TokenType::String,
-                    TokenLiteral::String(
-                        self.source_chars[self.start as usize + 1..self.current as usize - 1]
-                            .iter()
-                            .collect::<String>(),
-                    ),
-                );
+                self.add_token(TokenType::String(
+                    self.source_chars[self.start as usize + 1..self.current as usize - 1]
+                        .iter()
+                        .collect::<String>(),
+                ));
                 break;
             }
             if peek_char == '\n' {
@@ -416,10 +459,7 @@ impl Scanner {
             "set" => self.add_token(TokenType::Set),
             "intersect" => self.add_token(TokenType::Intersect),
             "except" => self.add_token(TokenType::Except),
-            _ => self.add_token_w_literal(
-                TokenType::Identifier,
-                TokenLiteral::String(self.current_source_str()),
-            ),
+            _ => self.add_token(TokenType::Identifier(self.current_source_str())),
         }
     }
 
@@ -580,15 +620,12 @@ impl Scanner {
                         if quoted_ident_end_idx == quoted_ident_start_idx + 1 {
                             self.error("Found empty quoted identifier.");
                         }
-                        self.add_token_w_literal(
-                            TokenType::QuotedIdentifier,
-                            TokenLiteral::String(
-                                self.source_chars[(quoted_ident_start_idx + 1) as usize
-                                    ..quoted_ident_end_idx as usize]
-                                    .iter()
-                                    .collect::<String>(),
-                            ),
-                        );
+                        self.add_token(TokenType::QuotedIdentifier(
+                            self.source_chars[(quoted_ident_start_idx + 1) as usize
+                                ..quoted_ident_end_idx as usize]
+                                .iter()
+                                .collect::<String>(),
+                        ));
                         break;
                     }
                     if self.peek() == '\0' {

@@ -57,17 +57,6 @@ struct OkLineage {
     raw: Option<RawLineage>,
 }
 
-#[derive(Serialize)]
-struct FileLineage {
-    file: String,
-    lineage: OutLineage,
-}
-
-#[derive(Serialize)]
-struct Output {
-    files: Vec<FileLineage>,
-}
-
 fn output_lineage(
     lineage_command: &LineageCommand,
     catalog: &Catalog,
