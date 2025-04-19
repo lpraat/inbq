@@ -364,7 +364,7 @@ impl LineageExtractor {
                     column
                 ))
             }
-        } else if let Some(target_tables) = self.context.curr_columns_stack().unwrap().get(&column)
+        } else if let Some(target_tables) = self.context.curr_columns_stack().unwrap_or(&IndexMap::new()).get(&column)
         {
             if target_tables.len() > 1
                 && !target_tables.iter().any(|el| {
@@ -499,25 +499,6 @@ impl LineageExtractor {
         Ok(())
     }
 
-    fn grouping_query_expr_lin(
-        &mut self,
-        grouping_query_expr: &GroupingQueryExpr,
-    ) -> anyhow::Result<()> {
-        let pushed_empty_cte_ctx = if let Some(with) = grouping_query_expr.with.as_ref() {
-            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context.push_new_ctx(IndexMap::new(), false);
-            self.with_lin(with)?;
-            true
-        } else {
-            false
-        };
-        self.query_expr_lin(&grouping_query_expr.query_expr)?;
-        if pushed_empty_cte_ctx {
-            self.context.pop_curr_ctx();
-        }
-        Ok(())
-    }
-
     fn select_expr_all_lin(
         &mut self,
         anon_obj_idx: ArenaIndex,
@@ -533,7 +514,7 @@ impl LineageExtractor {
                     .map(|c| c.identifier().to_lowercase())
                     .collect::<HashSet<String>>()
             });
-        for (col_name, sources) in self.context.curr_columns_stack().unwrap().iter() {
+        for (col_name, sources) in self.context.curr_columns_stack().unwrap_or(&IndexMap::new()).iter() {
             if except_columns.contains(col_name) {
                 continue;
             }
@@ -1016,6 +997,25 @@ impl LineageExtractor {
         if pushed_context {
             self.context.pop_curr_ctx();
         }
+        if pushed_empty_cte_ctx {
+            self.context.pop_curr_ctx();
+        }
+        Ok(())
+    }
+    
+    fn grouping_query_expr_lin(
+        &mut self,
+        grouping_query_expr: &GroupingQueryExpr,
+    ) -> anyhow::Result<()> {
+        let pushed_empty_cte_ctx = if let Some(with) = grouping_query_expr.with.as_ref() {
+            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            self.context.push_new_ctx(IndexMap::new(), false);
+            self.with_lin(with)?;
+            true
+        } else {
+            false
+        };
+        self.query_expr_lin(&grouping_query_expr.query_expr)?;
         if pushed_empty_cte_ctx {
             self.context.pop_curr_ctx();
         }
