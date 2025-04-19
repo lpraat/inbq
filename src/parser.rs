@@ -718,8 +718,7 @@ impl<'a> Parser<'a> {
                         "delete" => self.parse_delete_statement()?,
                         "update" => self.parse_update_statement()?,
                         "truncate" => self.parse_truncate_statement()?,
-                        "merge" => {
-                            self.parse_merge_statement()?},
+                        "merge" => self.parse_merge_statement()?,
                         _ => {
                             self.error(
                                 &peek,
@@ -2101,7 +2100,8 @@ impl<'a> Parser<'a> {
             TokenType::Identifier(ident) => ident,
             TokenType::QuotedIdentifier(qident) => qident,
             _ => unreachable!(),
-        }.to_lowercase();
+        }
+        .to_lowercase();
 
         match literal.as_str() {
             "bignumeric" | "bigdecimal" => Ok(Type::BigNumeric),
@@ -2208,7 +2208,8 @@ impl<'a> Parser<'a> {
             TokenType::Identifier(ident) => ident,
             TokenType::QuotedIdentifier(qident) => qident,
             _ => unreachable!(),
-        }.to_lowercase();
+        }
+        .to_lowercase();
 
         match literal.as_str() {
             "bignumeric" | "bigdecimal" => {
