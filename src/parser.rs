@@ -596,28 +596,11 @@ impl<'a> Parser<'a> {
         }
         false
     }
-
-    fn match_identifier(&mut self, value: &str) -> bool {
-        if self.check_identifier(value) {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
-    fn consume_identifier(&mut self, value: &str, message: &str) -> anyhow::Result<&Token> {
-        if self.check_identifier(value) {
-            Ok(self.advance())
-        } else {
-            self.error(self.peek(), message);
-            Err(anyhow!(ParseError))
-        }
-    }
-
-    fn check_identifier(&self, value: &str) -> bool {
+    
+    fn check_non_reserved_keyword(&self, value: &str) -> bool {
         let peek = self.peek();
         peek.kind == TokenType::Identifier
+            // TODO: simplify this
             && peek
                 .literal
                 .as_ref()
@@ -627,6 +610,35 @@ impl<'a> Parser<'a> {
                 .to_lowercase()
                 == value
     }
+
+    fn match_non_reserved_keyword(&mut self, value: &str) -> bool {
+        if self.check_non_reserved_keyword(value) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_non_reserved_keyword(&mut self, value: &str, message: &str) -> anyhow::Result<&Token> {
+        if self.check_non_reserved_keyword(value) {
+            Ok(self.advance())
+        } else {
+            self.error(self.peek(), message);
+            Err(anyhow!(ParseError))
+        }
+    }
+    
+    fn consume_one_of_non_reserved_keywords(&mut self, values: &[&str], message: &str) -> anyhow::Result<&Token> {
+        for value in values {
+            if self.check_non_reserved_keyword(value) {
+                return Ok(self.advance());
+            }
+        }
+        self.error(self.peek(), message);
+        Err(anyhow!(ParseError))
+    }
+
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> anyhow::Result<&Token> {
         if self.check_token_type(token_type) {
@@ -725,11 +737,11 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Create, "Expected `CREATE`.")?;
         let replace = self.match_token_type(TokenType::Or);
         if replace {
-            self.consume_identifier("replace", "Expected `REPLACE`.")?;
+            self.consume_non_reserved_keyword("replace", "Expected `REPLACE`.")?;
         }
 
-        let is_temporary = self.match_identifier("temp") || self.match_identifier("temporary");
-        self.consume_identifier("table", "Expected `TABLE`.")?;
+        let is_temporary = self.match_non_reserved_keyword("temp") || self.match_non_reserved_keyword("temporary");
+        self.consume_non_reserved_keyword("table", "Expected `TABLE`.")?;
 
         let if_not_exists = self.match_token_type(TokenType::If);
         if if_not_exists {
@@ -791,7 +803,7 @@ impl<'a> Parser<'a> {
     // input -> query_expr | "VALUES" "(" expr ")" ("(" expr ")")*
     // column_name -> "Identifier" | "QuotedIdentifier"
     fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_identifier("insert", "Expected `INSERT`.")?;
+        self.consume_non_reserved_keyword("insert", "Expected `INSERT`.")?;
         self.match_token_type(TokenType::Into);
         let target_table = self.parse_path()?.path;
         let columns = if self.match_token_type(TokenType::LeftParen) {
@@ -812,7 +824,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let values = if self.match_identifier("values") {
+        let values = if self.match_non_reserved_keyword("values") {
             let mut values = vec![];
             loop {
                 self.consume(TokenType::LeftParen, "Expected `(`.")?;
@@ -851,7 +863,7 @@ impl<'a> Parser<'a> {
 
     // delete_statement -> "DELETE" ["FROM"] path ["AS"] [alias] "WHERE" expr
     fn parse_delete_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_identifier("delete", "Expected `DELETE`.")?;
+        self.consume_non_reserved_keyword("delete", "Expected `DELETE`.")?;
         self.match_token_type(TokenType::From);
         let target_table = self.parse_path()?.path;
         let alias = self
@@ -870,7 +882,7 @@ impl<'a> Parser<'a> {
     // where:
     // set_clause = ("Identifier" | "QuotedIdentifier") = expr ("," ("Identifier" | "QuotedIdentifier") = expr)*
     fn parse_update_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_identifier("update", "Expected `UPDATE`.")?;
+        self.consume_non_reserved_keyword("update", "Expected `UPDATE`.")?;
         let target_table = self.parse_path()?.path;
         let alias = self
             .parse_as_alias()?
@@ -911,8 +923,8 @@ impl<'a> Parser<'a> {
 
     // truncate_statement -> "TRUNCATE" "TABLE" path
     fn parse_truncate_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_identifier("truncate", "Expected `TRUNCATE`.")?;
-        self.consume_identifier("table", "Expected `TABLE`.")?;
+        self.consume_non_reserved_keyword("truncate", "Expected `TRUNCATE`.")?;
+        self.consume_non_reserved_keyword("table", "Expected `TABLE`.")?;
         let target_table = self.parse_path()?.path;
         Ok(Statement::Truncate(TruncateStatement { target_table }))
     }
@@ -923,7 +935,7 @@ impl<'a> Parser<'a> {
     // matched_clause -> "WHEN" "MATCHED" ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
     // not_matched_by_target_clause -> "WHEN" "NOT" "MATCHED" ["BY" "TARGET"] ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
     fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_identifier("merge", "Expected `MERGE`.")?;
+        self.consume_non_reserved_keyword("merge", "Expected `MERGE`.")?;
         self.match_token_type(TokenType::Into);
         let target_table = self.parse_path()?.path;
         let target_alias = self
@@ -938,7 +950,7 @@ impl<'a> Parser<'a> {
         let source_alias = self
             .parse_as_alias()?
             .map(|tok| ParseToken::Single(tok.clone()));
-        self.consume(TokenType::On, "Expected `On`.")?;
+        self.consume(TokenType::On, "Expected `ON`.")?;
         let condition = self.parse_expr()?;
 
         self.consume(TokenType::When, "Expected `WHEN`.")?;
@@ -946,10 +958,10 @@ impl<'a> Parser<'a> {
         let mut whens = vec![];
         loop {
             let when = if self.match_token_type(TokenType::Not) {
-                self.consume_identifier("matched", "Expected `MATCHED`.")?;
+                self.consume_non_reserved_keyword("matched", "Expected `MATCHED`.")?;
 
                 let matched_by = self.match_token_type(TokenType::By);
-                if !matched_by || self.match_identifier("target") {
+                if !matched_by || self.match_non_reserved_keyword("target") {
                     // not_matched_by_target_clause
                     let search_condition = self.parse_merge_search_condition()?;
                     self.consume(TokenType::Then, "Expected `THEN`.")?;
@@ -960,10 +972,10 @@ impl<'a> Parser<'a> {
                     })
                 } else {
                     // not_matched_by_source_clause
-                    self.consume_identifier("source", "Expected `SOURCE`.")?;
+                    self.consume_non_reserved_keyword("source", "Expected `SOURCE`.")?;
                     let search_condition = self.parse_merge_search_condition()?;
                     self.consume(TokenType::Then, "Expected `THEN`.")?;
-                    if self.match_identifier("delete") {
+                    if self.match_non_reserved_keyword("delete") {
                         When::NotMatchedBySource(WhenNotMatchedBySource {
                             search_condition,
                             merge: Merge::Delete,
@@ -977,10 +989,10 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 // matched_clause
-                self.consume_identifier("matched", "Expected `MATCHED`.")?;
+                self.consume_non_reserved_keyword("matched", "Expected `MATCHED`.")?;
                 let search_condition = self.parse_merge_search_condition()?;
                 self.consume(TokenType::Then, "Expected `THEN`.")?;
-                let merge = if self.match_identifier("delete") {
+                let merge = if self.match_non_reserved_keyword("delete") {
                     Merge::Delete
                 } else {
                     self.parse_merge_update()?
@@ -1012,7 +1024,7 @@ impl<'a> Parser<'a> {
     // where:
     // update_item -> ("Identifier" | "QuotedIdentifier") "=" expr
     fn parse_merge_update(&mut self) -> anyhow::Result<Merge> {
-        self.consume_identifier("update", "Expected `UPDATE`.")?;
+        self.consume_non_reserved_keyword("update", "Expected `UPDATE`.")?;
         self.consume(TokenType::Set, "Expected `SET`")?;
         let mut update_items = vec![];
         loop {
@@ -1032,8 +1044,8 @@ impl<'a> Parser<'a> {
     // where:
     // columns -> "Identifier" | "QuotedIdentifier"
     fn parse_merge_insert(&mut self) -> anyhow::Result<Merge> {
-        self.consume_identifier("insert", "Expected `INSERT`.")?;
-        if self.match_identifier("row") {
+        self.consume_non_reserved_keyword("insert", "Expected `INSERT`.")?;
+        if self.match_non_reserved_keyword("row") {
             return Ok(Merge::InsertRow);
         }
 
@@ -1055,7 +1067,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume_identifier("values", "Expected `VALUES`.")?;
+        self.consume_non_reserved_keyword("values", "Expected `VALUES`.")?;
         let mut values = vec![];
         loop {
             self.consume(TokenType::LeftParen, "Expected `(`.")?;
@@ -1164,7 +1176,7 @@ impl<'a> Parser<'a> {
             } else {
                 unreachable!()
             };
-            let offset = if self.match_token_type(TokenType::Offset) {
+            let offset = if self.match_non_reserved_keyword("offset") {
                 if let TokenLiteral::Number(num) = self
                     .consume(TokenType::Number, "Expected Number")?
                     .literal
@@ -1285,22 +1297,22 @@ impl<'a> Parser<'a> {
             } else {
                 None
             };
-
-            let nulls = if self.match_token_type(TokenType::Null) {
-                match self
-                    .consume_one_of(
-                        &[TokenType::First, TokenType::Last],
-                        "Expected `FIRST` or `LAST`.",
-                    )?
-                    .kind
-                {
-                    TokenType::First => Some(OrderNulls::First),
-                    TokenType::Last => Some(OrderNulls::Last),
-                    _ => {
-                        unreachable!();
+            
+            let nulls = if self.match_token_type(TokenType::Nulls) {  
+                let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"], "Expected `FIRST` or `LAST`.")?;
+                // TODO: simplify this
+                match tok
+                    .literal
+                    .as_ref()
+                    .unwrap()
+                    .string_literal()
+                    .unwrap()
+                    .to_lowercase().as_str() {
+                        "first" => Some(OrderNulls::First),
+                        "last" => Some(OrderNulls::Last),
+                        _ => unreachable!(),
                     }
-                }
-            } else {
+            }  else {
                 None
             };
 

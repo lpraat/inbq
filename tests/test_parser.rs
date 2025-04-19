@@ -77,6 +77,13 @@ fn test_should_parse() {
       SELECT n FROM T1
       "#,
         r#"
+      SELECT x, y
+      FROM (SELECT 1 AS x, true AS y UNION ALL
+            SELECT 9, true UNION ALL
+            SELECT NULL, false)
+      ORDER BY x NULLS LAST;
+      "#,
+        r#"
       SELECT
         [1,2,3],
         ARRAY[1,2,3][0],
@@ -240,12 +247,10 @@ fn test_should_parse() {
 
 #[test]
 fn test_should_not_parse() {
-    let sqls = [
-        r#"
+    let sqls = [r#"
       select
         array<struct<int64, `array`<int64>>>[struct(1, [1,2,3])],
-      "#,
-    ];
+      "#];
     for sql in sqls {
         println!("Testing parsing error for SQL: {}", sql);
         assert!(parse_sql(sql).is_err())

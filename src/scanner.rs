@@ -36,11 +36,6 @@ pub enum TokenType {
     Number,
     Eof,
 
-    // Technically, these are not reserved keywords (TODO: remove)
-    First,
-    Last,
-    Offset,
-
     // Reserved kewords
     Asc,
     Desc,
@@ -59,6 +54,7 @@ pub enum TokenType {
     Intersect,
     Except,
     Null,
+    Nulls,
     Is,
     In,
     Into,
@@ -375,9 +371,6 @@ impl Scanner {
                 }
             }
             "limit" => self.add_token(TokenType::Limit),
-            "offset" => self.add_token(TokenType::Offset),
-            "first" => self.add_token(TokenType::First),
-            "last" => self.add_token(TokenType::Last),
             "asc" => self.add_token(TokenType::Asc),
             "desc" => self.add_token(TokenType::Desc),
             "with" => self.add_token(TokenType::With),
@@ -410,6 +403,7 @@ impl Scanner {
             "true" => self.add_token(TokenType::True),
             "false" => self.add_token(TokenType::False),
             "null" => self.add_token(TokenType::Null),
+            "nulls" => self.add_token(TokenType::Nulls),
             "is" => self.add_token(TokenType::Is),
             "in" => self.add_token(TokenType::In),
             "into" => self.add_token(TokenType::Into),
