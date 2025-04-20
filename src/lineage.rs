@@ -479,8 +479,13 @@ impl LineageExtractor {
             }
             Expr::String(_) => todo!(),
             Expr::Number(_) => {}
-            Expr::Bool(_) => todo!(),
-            Expr::Null => todo!(),
+            Expr::Numeric(_) | Expr::BigNumeric(_) => {}
+            Expr::Range(_, _) => {}
+            Expr::Date(_) | Expr::Timestamp(_) | Expr::Datetime(_) | Expr::Time(_) => {}
+            Expr::Interval(_) => {}
+            Expr::Json(_) => {}
+            Expr::Bool(_) => {}
+            Expr::Null => {}
             Expr::Star => todo!(),
             Expr::Array(array_expr) => todo!(),
             Expr::Struct(struct_expr) => todo!(),

@@ -1,6 +1,4 @@
-use anyhow::anyhow;
 use strum_macros::EnumDiscriminants;
-use strum_macros::{AsRefStr, IntoStaticStr};
 
 #[derive(PartialEq, Clone, Debug, EnumDiscriminants)]
 #[strum_discriminants(name(TokenTypeVariant))]
@@ -88,6 +86,9 @@ pub enum TokenType {
     On,
     Set,
     Limit,
+    Interval,
+    To,
+    Range,
 }
 
 impl TokenTypeVariant {
@@ -174,6 +175,9 @@ impl TokenTypeVariant {
             TokenTypeVariant::On => "ON",
             TokenTypeVariant::Set => "SET",
             TokenTypeVariant::Limit => "LIMIT",
+            TokenTypeVariant::Interval => "INTERVAL",
+            TokenTypeVariant::To => "TO",
+            TokenTypeVariant::Range => "RANGE",
         }
     }
 }
@@ -182,19 +186,19 @@ impl TokenTypeVariant {
 pub struct Token {
     pub kind: TokenType,
     pub lexeme: String,
-    pub line: i32,
-    pub col: i32,
+    pub line: u32,
+    pub col: u32,
 }
 
 pub struct Scanner {
     source_chars: Vec<char>,
     tokens: Vec<Token>,
-    start: i32,
-    current: i32,
-    line: i32,
-    col: i32,
-    pub had_error: bool,
-    open_type_brackets: Option<i32>,
+    start: usize,
+    current: usize,
+    line: u32,
+    col: u32,
+    pub(crate) had_error: bool,
+    open_type_brackets: Option<u32>,
 }
 
 impl Scanner {
@@ -212,13 +216,13 @@ impl Scanner {
     }
 
     fn advance(&mut self) -> char {
-        let c = self.source_chars[self.current as usize];
+        let c = self.source_chars[self.current];
         self.current += 1;
         self.col += 1;
         c
     }
 
-    fn n_advance(&mut self, n: i32) -> char {
+    fn n_advance(&mut self, n: usize) -> char {
         assert!(n > 0);
         let mut c = self.advance();
         for _ in 1..n {
@@ -228,28 +232,27 @@ impl Scanner {
     }
 
     fn is_at_end(&self) -> bool {
-        self.current >= self.source_chars.len() as i32
+        self.current >= self.source_chars.len()
     }
 
     fn peek(&self) -> char {
         if self.is_at_end() {
             '\0'
         } else {
-            self.source_chars[self.current as usize]
+            self.source_chars[self.current]
         }
     }
 
-    fn peek_next_i(&mut self, i: i32) -> char {
-        if self.current + i >= self.source_chars.len() as i32 {
+    fn peek_next_i(&mut self, i: usize) -> char {
+        if self.current + i >= self.source_chars.len() {
             '\0'
         } else {
-            self.source_chars[self.current as usize + (i as usize)]
+            self.source_chars[self.current + i]
         }
     }
 
-    fn n_peek(&mut self, n: i32) -> Option<&[char]> {
-        self.source_chars
-            .get(self.current as usize..(self.current + n) as usize)
+    fn n_peek(&mut self, n: usize) -> Option<&[char]> {
+        self.source_chars.get(self.current..self.current + n)
     }
 
     fn match_char(&mut self, expected: char) -> bool {
@@ -264,18 +267,14 @@ impl Scanner {
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens.push(Token {
             kind: token_type,
-            lexeme: self.source_chars[self.start as usize..self.current as usize]
-                .iter()
-                .collect(),
+            lexeme: self.source_chars[self.start..self.current].iter().collect(),
             line: self.line,
             col: self.col,
         });
     }
 
     fn current_source_str(&self) -> String {
-        self.source_chars[self.start as usize..self.current as usize]
-            .iter()
-            .collect()
+        self.source_chars[self.start..self.current].iter().collect()
     }
 
     fn reset(&mut self) {
@@ -294,7 +293,7 @@ impl Scanner {
 
     pub fn scan(&mut self) -> Vec<Token> {
         self.reset();
-        while self.current < self.source_chars.len() as i32 {
+        while self.current < self.source_chars.len() {
             self.start = self.current;
             self.scan_token();
         }
@@ -315,7 +314,7 @@ impl Scanner {
 
             if peek_char == '\0' {
                 self.add_token(TokenType::Number(
-                    self.source_chars[self.start as usize..(self.current as usize)]
+                    self.source_chars[self.start..self.current]
                         .iter()
                         .collect::<String>()
                         .parse()
@@ -355,7 +354,7 @@ impl Scanner {
                 self.advance();
             } else {
                 self.add_token(TokenType::Number(
-                    self.source_chars[self.start as usize..(self.current as usize)]
+                    self.source_chars[self.start..self.current]
                         .iter()
                         .collect::<String>()
                         .parse()
@@ -375,7 +374,7 @@ impl Scanner {
             }
             if self.match_char(delimiter) {
                 self.add_token(TokenType::String(
-                    self.source_chars[self.start as usize + 1..self.current as usize - 1]
+                    self.source_chars[self.start + 1..self.current - 1]
                         .iter()
                         .collect::<String>(),
                 ));
@@ -396,9 +395,7 @@ impl Scanner {
             }
             self.advance();
         }
-        let identifer: String = self.source_chars[self.start as usize..self.current as usize]
-            .iter()
-            .collect();
+        let identifer: String = self.source_chars[self.start..self.current].iter().collect();
 
         match identifer.to_lowercase().as_str() {
             "array" => {
@@ -459,6 +456,9 @@ impl Scanner {
             "set" => self.add_token(TokenType::Set),
             "intersect" => self.add_token(TokenType::Intersect),
             "except" => self.add_token(TokenType::Except),
+            "interval" => self.add_token(TokenType::Interval),
+            "to" => self.add_token(TokenType::To),
+            "range" => self.add_token(TokenType::Range),
             _ => self.add_token(TokenType::Identifier(self.current_source_str())),
         }
     }
@@ -621,8 +621,7 @@ impl Scanner {
                             self.error("Found empty quoted identifier.");
                         }
                         self.add_token(TokenType::QuotedIdentifier(
-                            self.source_chars[(quoted_ident_start_idx + 1) as usize
-                                ..quoted_ident_end_idx as usize]
+                            self.source_chars[(quoted_ident_start_idx + 1)..quoted_ident_end_idx]
                                 .iter()
                                 .collect::<String>(),
                         ));

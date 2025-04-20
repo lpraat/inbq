@@ -40,6 +40,23 @@ fn test_should_parse() {
       where 1=1
       order by c desc
       "#,
+      r#"
+      SELECT
+          NUMERIC "123",
+          BIGNUMERIC '-9.876e-3',
+          DATE '2014-09-27',
+          DATETIME '2014-09-27T12:30:00.45',
+          TIMESTAMP '2014-09-27 12:30:00.45-08', 
+          RANGE<TIMESTAMP> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)',
+          RANGE<`datetime`> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)',  
+          RANGE<DATE> '[UNBOUNDED, UNBOUNDED)',
+          INTERVAL 25 HOUR,
+          INTERVAL 24 `HOUR`,
+          INTERVAL -5 DAY,
+          INTERVAL '8 20 17' MONTH TO HOUR,
+          INTERVAL '8 20 17' `MONTH` TO HOUR,
+          JSON '{"foo": "bar"}'
+      "#,
         r#"
       select
         * except (id1, id2)

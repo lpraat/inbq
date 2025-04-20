@@ -224,13 +224,49 @@ pub enum Expr {
     Identifier(String),
     QuotedIdentifier(String),
     String(String),
+    Numeric(String),
+    BigNumeric(String),
     Number(f64),
     Bool(bool),
+    Date(String),
+    Time(String),
+    Datetime(String),
+    Timestamp(String),
+    Range(ParameterizedType, String),
+    Interval(IntervalExpr),
+    Json(String),
     Null,
     Star,
     Query(QueryExpr),
     GenericFunction(GenericFunctionExpr), // a generic function call, whose signature is not yet implemented in the parser
     Function(FunctionExpr),
+}
+
+#[derive(Debug, Clone)]
+pub enum IntervalExpr {
+    Interval {
+        value: Box<Expr>,
+        part: IntervalPart,
+    },
+    IntervalRange {
+        value: String,
+        start_part: IntervalPart,
+        end_part: IntervalPart,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum IntervalPart {
+    Year,
+    Quarter,
+    Month,
+    Week,
+    Day,
+    Hour,
+    Minute,
+    Second,
+    Millisecond,
+    Microsecond,
 }
 
 #[derive(Debug, Clone)]
@@ -524,7 +560,7 @@ pub struct Qualify {
 // TODO: this struct should own the scanner and use it
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
-    curr: i32,
+    curr: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -540,18 +576,18 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_prev(&self) -> &Token {
-        &self.source_tokens[(self.curr as usize) - 1]
+        &self.source_tokens[self.curr - 1]
     }
 
     fn peek(&self) -> &Token {
-        &self.source_tokens[self.curr as usize]
+        &self.source_tokens[self.curr]
     }
 
-    fn peek_next_i(&self, i: i32) -> &Token {
-        if self.curr + i >= self.source_tokens.len() as i32 {
+    fn peek_next_i(&self, i: usize) -> &Token {
+        if self.curr + i >= self.source_tokens.len() {
             self.source_tokens.last().unwrap() // Eof
         } else {
-            &self.source_tokens[(self.curr as usize) + (i as usize)]
+            &self.source_tokens[self.curr + i]
         }
     }
 
@@ -684,7 +720,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn report(&self, line: i32, col: i32, location: &str, message: &str) {
+    fn report(&self, line: u32, col: u32, location: &str, message: &str) {
         log::debug!(
             "[line {}, col {}] Error {}: {}",
             line,
@@ -1331,7 +1367,7 @@ impl<'a> Parser<'a> {
         select_exprs.push(col_expr);
 
         let mut comma_matched = self.match_token_type(TokenTypeVariant::Comma);
-        let mut last_position = self.curr - (comma_matched as i32);
+        let mut last_position = self.curr - (comma_matched as usize);
 
         loop {
             // NOTE: this is needed to handle the trailing comma, we need to look ahead
@@ -1353,13 +1389,13 @@ impl<'a> Parser<'a> {
 
             match self.parse_select_expr() {
                 Ok(col_expr) => {
-                    if self.source_tokens[last_position as usize].kind != TokenType::Comma {
+                    if self.source_tokens[last_position].kind != TokenType::Comma {
                         self.error(self.peek_prev(), "Expected `,`.");
                         return Err(anyhow!(ParseError));
                     }
                     select_exprs.push(col_expr);
                     comma_matched = self.match_token_type(TokenTypeVariant::Comma);
-                    last_position = self.curr - (comma_matched as i32);
+                    last_position = self.curr - (comma_matched as usize);
                 }
                 Err(_) => {
                     self.error(self.peek(), "Expected expression.");
@@ -2395,9 +2431,64 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
+    fn parse_interval_part(&mut self) -> anyhow::Result<IntervalPart> {
+        let literal = match &self.advance().kind {
+            TokenType::Identifier(ident) => ident,
+            TokenType::QuotedIdentifier(qident) => qident,
+            _ => unreachable!(),
+        }
+        .to_lowercase();
+        match literal.as_str() {
+            "year" => Ok(IntervalPart::Year),
+            "month" => Ok(IntervalPart::Month),
+            "week" => Ok(IntervalPart::Week),
+            "day" => Ok(IntervalPart::Day),
+            "hour" => Ok(IntervalPart::Hour),
+            "minute" => Ok(IntervalPart::Minute),
+            "second" => Ok(IntervalPart::Second),
+            "millisecond" => Ok(IntervalPart::Millisecond),
+            "microsecond" => Ok(IntervalPart::Microsecond),
+            _ => unreachable!(),
+        }
+    }
+
+    // interval_expr -> interval | interval_range
+    // where:
+    // interval -> "INTERVAL" expr interval_part
+    // interval_range -> "String" interval_part "TO" interval_part
+    fn parse_interval_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Interval)?;
+
+        if self.match_token_type(TokenTypeVariant::String) {
+            let value = match &self.peek_prev().kind {
+                TokenType::String(value) => value.clone(),
+                _ => unreachable!(),
+            };
+            let start_part = self.parse_interval_part()?;
+            self.consume(TokenTypeVariant::To)?;
+            let end_part = self.parse_interval_part()?;
+            return Ok(Expr::Interval(IntervalExpr::IntervalRange {
+                value,
+                start_part,
+                end_part,
+            }));
+        }
+
+        let value = self.parse_expr()?;
+        let part = self.parse_interval_part()?;
+        Ok(Expr::Interval(IntervalExpr::Interval {
+            value: Box::new(value),
+            part,
+        }))
+    }
+
     // primary_expr ->
     // "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
-    // | NUMERIC "Number"
+    // | NUMERIC "Number" | BIGNUMERIC "Number"
+    // | DATE "String" | TIMESTAMP "String" | DATETIME "String" | TIME "String"
+    // | "RANGE" "<" bq_parameterized_type ">" "String"
+    // | interval_expr | json_expr
     // | array_expr | struct_expr | struct_tuple_expr
     // | function_expr
     // | "(" expression ")" | "(" query_expr ")"
@@ -2416,9 +2507,80 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Null
             }
+            TokenType::Range => {
+                self.advance();
+                self.consume(TokenTypeVariant::Less)?;
+                let bq_type = self.parse_parameterized_bq_type()?;
+                self.consume(TokenTypeVariant::Greater)?;
+                let curr = self.consume(TokenTypeVariant::String)?;
+                match &curr.kind {
+                    TokenType::String(ts_str) => Expr::Range(bq_type, ts_str.clone()),
+                    _ => unreachable!(),
+                }
+            }
+            TokenType::Interval => self.parse_interval_expr()?,
             TokenType::Identifier(ident) => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
                     return self.parse_function_expr();
+                } else if ident.to_lowercase() == "date" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(date_str) => Expr::Date(date_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "timestamp" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "datetime" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "time" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(date_str) => Expr::Time(date_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "numeric" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "bignumeric" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "interval" {
+                    self.advance();
+                    self.consume(TokenTypeVariant::Less)?;
+                    let bq_type = self.parse_parameterized_bq_type()?;
+                    self.consume(TokenTypeVariant::Greater)?;
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(ts_str) => Expr::Range(bq_type, ts_str.clone()),
+                        _ => unreachable!(),
+                    }
+                } else if ident.to_lowercase() == "json" {
+                    self.advance();
+                    let curr = self.consume(TokenTypeVariant::String)?;
+                    match &curr.kind {
+                        TokenType::String(json_str) => Expr::Json(json_str.clone()),
+                        _ => unreachable!(),
+                    }
                 } else {
                     self.advance();
                     Expr::Identifier(ident)
