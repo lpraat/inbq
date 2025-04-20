@@ -34,6 +34,9 @@ pub enum TokenType {
     QuotedIdentifier(String),
     Identifier(String),
     String(String),
+    RawString(String),
+    Bytes(String),
+    RawBytes(String),
     Number(f64),
     Eof,
 
@@ -125,6 +128,9 @@ impl TokenTypeVariant {
             TokenTypeVariant::QuotedIdentifier => "QuotedIdentifier",
             TokenTypeVariant::Identifier => "Identifier",
             TokenTypeVariant::String => "String",
+            TokenTypeVariant::RawString => "RawString",
+            TokenTypeVariant::Bytes => "Bytes",
+            TokenTypeVariant::RawBytes => "RawBytes",
             TokenTypeVariant::Number => "Number",
             TokenTypeVariant::Eof => "EOF",
             TokenTypeVariant::Asc => "ASC",
@@ -243,6 +249,15 @@ impl Scanner {
         }
     }
 
+    fn peek_prev(&self) -> Option<char> {
+        self.peek_prev_i(1)
+    }
+
+    fn peek_prev_i(&self, i: usize) -> Option<char> {
+        let idx = self.current.checked_sub(i)?;
+        Some(self.source_chars[idx])
+    }
+
     fn peek_next_i(&mut self, i: usize) -> char {
         if self.current + i >= self.source_chars.len() {
             '\0'
@@ -306,6 +321,75 @@ impl Scanner {
         self.tokens.clone()
     }
 
+    fn is_raw_string(&mut self, c: char) -> bool {
+        let next_c = self.peek();
+        (c == 'r' || c == 'R') && (next_c == '\'' || next_c == '"')
+    }
+
+    fn is_bytes(&mut self, c: char) -> bool {
+        let next_c = self.peek();
+        (c == 'b' || c == 'B') && (next_c == '\'' || next_c == '"')
+    }
+
+    fn is_raw_bytes(&mut self, c: char) -> bool {
+        let next_c = self.peek();
+        let next_next_c = self.peek_next_i(1);
+        (c == 'b' || c == 'B' || c == 'r' || c == 'R')
+            && ((c == 'b' && next_c == 'r')
+                || (c == 'B' && next_c == 'R')
+                || (c == 'r' && next_c == 'b')
+                || (c == 'R' && next_c == 'B'))
+            && (next_next_c == '\'' || next_next_c == '"')
+    }
+
+    fn scan_string(&mut self, delimiter: char) {
+        loop {
+            let peek_char = self.peek();
+            if peek_char == '\0' {
+                self.error("Found unterminated string");
+                break;
+            }
+            let escaped = self.peek_prev().map_or(false, |prev| {
+                prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
+            });
+            if !escaped && self.match_char(delimiter) {
+                break;
+            }
+            self.advance();
+        }
+    }
+
+    fn scan_triple_quoted_string(&mut self, delimiter: char) {
+        loop {
+            let peek_char = self.peek();
+            if peek_char == '\0' {
+                self.error("Found unterminated string");
+                break;
+            }
+            let escaped = self.peek_prev().map_or(false, |prev| {
+                prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
+            });
+            if !escaped && self.match_char(delimiter) {
+                let curr = self.current - 1;
+                if self.match_char(delimiter) && self.match_char(delimiter) {
+                    break;
+                } else {
+                    self.current = curr;
+                }
+            }
+            if peek_char == '\n' {
+                self.new_line();
+            }
+            self.advance();
+        }
+    }
+
+    fn string_slice(&mut self, start_offset: usize, end_offset: usize) -> String {
+        self.source_chars[self.start + 1 + start_offset..self.current - 1 - end_offset]
+            .iter()
+            .collect::<String>()
+    }
+
     fn match_number(&mut self) {
         let mut found_dot = false;
         let mut found_e = false;
@@ -366,25 +450,51 @@ impl Scanner {
     }
 
     fn match_string(&mut self, delimiter: char) {
-        loop {
-            let peek_char = self.peek();
-            if peek_char == '\0' {
-                self.error("Found unterminated string");
-                break;
-            }
-            if self.match_char(delimiter) {
-                self.add_token(TokenType::String(
-                    self.source_chars[self.start + 1..self.current - 1]
-                        .iter()
-                        .collect::<String>(),
-                ));
-                break;
-            }
-            if peek_char == '\n' {
-                self.new_line();
-            }
-            self.advance();
-        }
+        self.scan_string(delimiter);
+        let str_slice = self.string_slice(0, 0);
+        self.add_token(TokenType::String(str_slice))
+    }
+
+    fn match_triple_quoted_string(&mut self, delimiter: char) {
+        self.scan_triple_quoted_string(delimiter);
+        let str_slice = self.string_slice(2, 2);
+        self.add_token(TokenType::String(str_slice))
+    }
+
+    fn match_bytes(&mut self, delimiter: char) {
+        self.scan_string(delimiter);
+        let str_slice = self.string_slice(1, 0);
+        self.add_token(TokenType::Bytes(str_slice))
+    }
+
+    fn match_triple_quoted_bytes(&mut self, delimiter: char) {
+        self.scan_triple_quoted_string(delimiter);
+        let str_slice = self.string_slice(3, 2);
+        self.add_token(TokenType::Bytes(str_slice))
+    }
+
+    fn match_raw_bytes(&mut self, delimiter: char) {
+        self.scan_string(delimiter);
+        let str_slice = self.string_slice(2, 0);
+        self.add_token(TokenType::RawBytes(str_slice))
+    }
+
+    fn match_triple_quoted_raw_bytes(&mut self, delimiter: char) {
+        self.scan_triple_quoted_string(delimiter);
+        let str_slice = self.string_slice(4, 2);
+        self.add_token(TokenType::RawBytes(str_slice))
+    }
+
+    fn match_raw_string(&mut self, delimiter: char) {
+        self.scan_string(delimiter);
+        let str_slice = self.string_slice(1, 0);
+        self.add_token(TokenType::RawString(str_slice))
+    }
+
+    fn match_triple_quoted_raw_string(&mut self, delimiter: char) {
+        self.scan_triple_quoted_string(delimiter);
+        let str_slice = self.string_slice(3, 2);
+        self.add_token(TokenType::RawString(str_slice))
     }
 
     fn match_keyword_or_identifier(&mut self) {
@@ -595,10 +705,58 @@ impl Scanner {
             '\r' | ' ' | '\t' => {}
 
             // strings
-            // TODO: we should also handle triple quoted strings
             c if c == '\'' || c == '"' => {
-                // TODO: biquery supports also escaped sequences. We should handle them.
-                self.match_string(c);
+                let peek = self.peek();
+                if peek == c && peek == self.peek_next_i(1) {
+                    self.advance();
+                    self.advance();
+                    self.match_triple_quoted_string(c);
+                } else {
+                    self.match_string(c);
+                }
+            }
+
+            // raw strings
+            c if self.is_raw_string(c) => {
+                let peek_next = self.peek_next_i(1);
+                if self.peek() == peek_next && peek_next == self.peek_next_i(2) {
+                    self.advance();
+                    self.advance();
+                    let delimiter = self.advance();
+                    self.match_triple_quoted_raw_string(delimiter);
+                } else {
+                    let delimiter = self.advance();
+                    self.match_raw_string(delimiter);
+                }
+            }
+
+            // bytes
+            c if self.is_bytes(c) => {
+                let peek_next = self.peek_next_i(1);
+                if self.peek() == peek_next && peek_next == self.peek_next_i(2) {
+                    self.advance();
+                    let delimiter = self.advance();
+                    self.match_triple_quoted_bytes(delimiter);
+                } else {
+                    let delimiter = self.advance();
+                    self.match_bytes(delimiter);
+                }
+            }
+
+            // raw bytes
+            c if self.is_raw_bytes(c) => {
+                let peek_next_next = self.peek_next_i(2);
+                if self.peek_next_i(1) == peek_next_next && peek_next_next == self.peek_next_i(3) {
+                    self.advance();
+                    self.advance();
+                    self.advance();
+                    let delimiter = self.advance();
+                    self.match_triple_quoted_raw_bytes(delimiter);
+                } else {
+                    self.advance();
+                    let delimiter = self.advance();
+                    self.match_raw_bytes(delimiter);
+                }
             }
 
             // numeric

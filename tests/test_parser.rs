@@ -22,6 +22,26 @@ fn test_should_parse() {
       "#,
         r#"
       select
+        'it\'s',
+        "it's",
+        'Title: "Boy"',
+        '''Title:"Boy"''',
+        '''two
+        lines''',
+        r"abc+",
+        r'''abc+''',
+        r"""abc+""",
+        r'f\(abc,(.*),def\)',
+        B"abc",
+        B'''abc''',
+        b"""abc""",
+        br'abc+',
+        RB"abc+",
+        RB'''abc''',
+        b'\x48\x65\x6c\x6c\x6f'
+      "#,
+        r#"
+      select
           --this is a comment
           'foo' as foo,
           "bar" as bar,
@@ -40,15 +60,15 @@ fn test_should_parse() {
       where 1=1
       order by c desc
       "#,
-      r#"
+        r#"
       SELECT
           NUMERIC "123",
           BIGNUMERIC '-9.876e-3',
           DATE '2014-09-27',
           DATETIME '2014-09-27T12:30:00.45',
-          TIMESTAMP '2014-09-27 12:30:00.45-08', 
+          TIMESTAMP '2014-09-27 12:30:00.45-08',
           RANGE<TIMESTAMP> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)',
-          RANGE<`datetime`> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)',  
+          RANGE<`datetime`> '[2020-10-01 12:00:00+08, 2020-12-31 12:00:00+08)',
           RANGE<DATE> '[UNBOUNDED, UNBOUNDED)',
           INTERVAL 25 HOUR,
           INTERVAL 24 `HOUR`,
@@ -147,6 +167,12 @@ fn test_should_parse() {
           concat(tbl.c, ' ', 3)
       from tbl
       "#,
+        r#"
+        select
+            CAST('2016-02-01' AS DATE),
+            CAST(b'\x48\x65\x6c\x6c\x6f' AS STRING FORMAT (select "ASCII")),
+            SAFE_CAST("apple" AS INT64) AS not_a_number;
+        "#,
         r#"
       INSERT dataset.Inventory (product, quantity)
       VALUES('top load washer', 10),

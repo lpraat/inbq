@@ -477,7 +477,8 @@ impl LineageExtractor {
                 let col_source_idx = self.get_column_source(None, &col_name)?;
                 self.context.lineage_stack.push(col_source_idx);
             }
-            Expr::String(_) => todo!(),
+            Expr::String(_) => {}
+            Expr::Bytes(_) => {}
             Expr::Number(_) => {}
             Expr::Numeric(_) | Expr::BigNumeric(_) => {}
             Expr::Range(_, _) => {}

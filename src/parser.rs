@@ -224,6 +224,7 @@ pub enum Expr {
     Identifier(String),
     QuotedIdentifier(String),
     String(String),
+    Bytes(String),
     Numeric(String),
     BigNumeric(String),
     Number(f64),
@@ -274,6 +275,22 @@ pub enum FunctionExpr {
     // list of known functions here
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
     ConcatFn(ConcatFnExpr),
+    Cast(CastFnExpr),
+    SafeCast(SafeCastFnExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct CastFnExpr {
+    expr: Box<Expr>,
+    r#type: ParameterizedType,
+    format: Option<Box<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SafeCastFnExpr {
+    expr: Box<Expr>,
+    r#type: ParameterizedType,
+    format: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -284,7 +301,7 @@ pub struct ConcatFnExpr {
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExpr {
     name: ParseToken,
-    arguments: ParseToken,
+    arguments: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -2361,7 +2378,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // generic_function -> ("Identifier" | "QuotedIdentifier") "(" ... ")"
+    // generic_function -> ("Identifier" | "QuotedIdentifier") "(" expr  ( "," expr )* ")"
     fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
         let function_name = self
             .consume_one_of(&[
@@ -2370,34 +2387,28 @@ impl<'a> Parser<'a> {
             ])?
             .clone();
         self.consume(TokenTypeVariant::LeftParen)?;
-        let mut n_parens = 1;
 
-        let mut argument_tokens = vec![];
+        let mut arguments = vec![];
         loop {
             if self.is_at_end() {
                 return Err(anyhow!("Expected `)`."));
             }
-            let tok = self.advance();
-            argument_tokens.push(tok.clone());
-            match tok.kind {
-                TokenType::LeftParen => {
-                    n_parens += 1;
-                }
-                TokenType::RightParen => {
-                    n_parens -= 1;
-                    if n_parens == 0 {
-                        break;
-                    }
-                }
-                _ => {}
+            if self.match_token_type(TokenTypeVariant::RightParen) {
+                break;
+            }
+            arguments.push(self.parse_expr()?);
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                self.consume(TokenTypeVariant::RightParen)?;
+                break;
             }
         }
         Ok(Expr::GenericFunction(GenericFunctionExpr {
             name: ParseToken::Single(function_name),
-            arguments: ParseToken::Multiple(argument_tokens),
+            arguments,
         }))
     }
 
+    // concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
     fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -2419,14 +2430,58 @@ impl<'a> Parser<'a> {
         })))
     }
 
+    fn parse_cast_fn_arguments(
+        &mut self,
+    ) -> anyhow::Result<(Box<Expr>, ParameterizedType, Option<Box<Expr>>)> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+
+        let expr = self.parse_expr()?;
+        self.consume(TokenTypeVariant::As)?;
+        let r#type = self.parse_parameterized_bq_type()?;
+        let format = if self.match_non_reserved_keyword("format") {
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok((Box::new(expr), r#type, format))
+    }
+
+    // cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
+        Ok(Expr::Function(FunctionExpr::Cast(CastFnExpr {
+            expr,
+            r#type,
+            format,
+        })))
+    }
+
+    // safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    fn parse_safe_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
+        Ok(Expr::Function(FunctionExpr::SafeCast(SafeCastFnExpr {
+            expr,
+            r#type,
+            format,
+        })))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_function_name = match &self.peek().kind {
             TokenType::Identifier(ident) => ident,
             TokenType::QuotedIdentifier(qident) => qident,
             _ => unreachable!(),
-        };
+        }
+        .to_lowercase();
         match peek_function_name.as_str() {
             "concat" => self.parse_concat_fn_expr(),
+            "cast" => self.parse_cast_fn_expr(),
+            "safe_cast" => self.parse_safe_cast_fn_expr(),
             _ => self.parse_generic_function(),
         }
     }
@@ -2506,6 +2561,12 @@ impl<'a> Parser<'a> {
             TokenType::Null => {
                 self.advance();
                 Expr::Null
+            }
+            TokenType::Struct => {
+                return self.parse_struct_expr();
+            }
+            TokenType::LeftSquare | TokenType::Array => {
+                return self.parse_array_expr();
             }
             TokenType::Range => {
                 self.advance();
@@ -2598,9 +2659,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Number(num)
             }
-            TokenType::String(str) => {
+            TokenType::String(str) | TokenType::RawString(str) => {
                 self.advance();
                 Expr::String(str)
+            }
+            TokenType::Bytes(str) | TokenType::RawBytes(str) => {
+                self.advance();
+                Expr::Bytes(str)
             }
             TokenType::LeftParen => {
                 self.advance();
@@ -2629,12 +2694,6 @@ impl<'a> Parser<'a> {
                         expr: Box::new(expr),
                     }));
                 }
-            }
-            TokenType::Struct => {
-                return self.parse_struct_expr();
-            }
-            TokenType::LeftSquare | TokenType::Array => {
-                return self.parse_array_expr();
             }
             _ => {
                 self.error(&peek_token, "Expected Expression.");

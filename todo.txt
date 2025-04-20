@@ -4,6 +4,6 @@
 - We have a vec in from exprs (we dont need it)
 - Add "from unnest"
 - Add window functions
-- Add literals in parse primary expr
 - Extract lineage from arrays and structs
+- Add "filter" lineage
 - Extract lineage from generic function exprs
