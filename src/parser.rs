@@ -101,7 +101,7 @@ pub enum ParameterizedType {
     Interval,
     Json,
     Numeric(Option<u32>, Option<u32>),
-    Range,
+    Range(Box<ParameterizedType>),
     String(Option<u32>),
     Struct(Vec<StructParameterizedFieldType>),
     Time,
@@ -233,14 +233,21 @@ pub enum Expr {
     Time(String),
     Datetime(String),
     Timestamp(String),
-    Range(ParameterizedType, String),
+    Range(RangeExpr),
     Interval(IntervalExpr),
     Json(String),
+    Default,
     Null,
     Star,
     Query(QueryExpr),
     GenericFunction(GenericFunctionExpr), // a generic function call, whose signature is not yet implemented in the parser
     Function(FunctionExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct RangeExpr {
+    r#type: Type,
+    value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -336,7 +343,7 @@ pub enum Type {
     Interval,
     Json,
     Numeric,
-    Range,
+    Range(Box<Type>),
     String,
     Struct(Vec<StructFieldType>),
     Time,
@@ -491,16 +498,18 @@ pub struct SelectAllExpr {
 
 #[derive(Debug, Clone)]
 pub struct From {
-    pub exprs: Vec<FromExpr>,
+    pub expr: Box<FromExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub enum FromExpr {
     Join(JoinExpr),
+    FullJoin(JoinExpr),
     LeftJoin(JoinExpr),
     RightJoin(JoinExpr),
     CrossJoin(CrossJoinExpr),
     Path(FromPathExpr),
+    Unnest(UnnestExpr),
     GroupingQuery(FromGroupingQueryExpr),
     GroupingFrom(GroupingFromExpr),
 }
@@ -508,14 +517,21 @@ pub enum FromExpr {
 #[derive(Debug, Clone)]
 pub struct CrossJoinExpr {
     pub left: Box<FromExpr>,
-    pub join: ParseToken,
     pub right: Box<FromExpr>,
 }
 
 #[derive(Debug, Clone)]
+pub enum JoinKind {
+    Inner,
+    Left,
+    Right,
+    Full,
+}
+
+#[derive(Debug, Clone)]
 pub struct JoinExpr {
+    pub kind: JoinKind,
     pub left: Box<FromExpr>,
-    pub join: ParseToken,
     pub right: Box<FromExpr>,
     pub cond: JoinCondition,
 }
@@ -524,6 +540,14 @@ pub struct JoinExpr {
 pub enum JoinCondition {
     On(Expr),
     Using(Vec<ParseToken>),
+}
+
+#[derive(Debug, Clone)]
+pub struct UnnestExpr {
+    pub array: Box<Expr>,
+    pub alias: Option<ParseToken>,
+    pub with_offset: bool,
+    pub offset_alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone)]
@@ -765,13 +789,13 @@ impl<'a> Parser<'a> {
 
             let statement = match &peek.kind {
                 TokenType::Create => self.parse_create_table_statement()?,
+                TokenType::Merge => self.parse_merge_statement()?,
                 TokenType::Identifier(non_reserved_keyword) => {
                     match non_reserved_keyword.to_lowercase().as_str() {
                         "insert" => self.parse_insert_statement()?,
                         "delete" => self.parse_delete_statement()?,
                         "update" => self.parse_update_statement()?,
                         "truncate" => self.parse_truncate_statement()?,
-                        "merge" => self.parse_merge_statement()?,
                         _ => {
                             self.error(
                                 &peek,
@@ -962,7 +986,7 @@ impl<'a> Parser<'a> {
         }
         let from = if self.match_token_type(TokenTypeVariant::From) {
             Some(From {
-                exprs: vec![self.parse_from_expr()?],
+                expr: Box::new(self.parse_from_expr()?),
             })
         } else {
             None
@@ -996,7 +1020,7 @@ impl<'a> Parser<'a> {
     // matched_clause -> "WHEN" "MATCHED" ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
     // not_matched_by_target_clause -> "WHEN" "NOT" "MATCHED" ["BY" "TARGET"] ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
     fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
-        self.consume_non_reserved_keyword("merge")?;
+        self.consume(TokenTypeVariant::Merge)?;
         self.match_token_type(TokenTypeVariant::Into);
         let target_table = self.parse_path()?.path;
         let target_alias = self
@@ -1422,7 +1446,7 @@ impl<'a> Parser<'a> {
         }
         let from = if self.match_token_type(TokenTypeVariant::From) {
             Some(crate::parser::From {
-                exprs: vec![self.parse_from_expr()?],
+                expr: Box::new(self.parse_from_expr()?),
             })
         } else {
             None
@@ -1540,70 +1564,70 @@ impl<'a> Parser<'a> {
             let curr_peek = self.peek();
             match curr_peek.kind {
                 TokenType::Inner | TokenType::Join => {
-                    let mut parse_tokens = vec![];
-                    if self.check_token_type(TokenTypeVariant::Inner) {
-                        parse_tokens.push(curr_peek.clone());
-                        self.advance();
-                    }
-                    parse_tokens.push(self.consume(TokenTypeVariant::Join)?.clone());
+                    self.match_token_type(TokenTypeVariant::Inner);
+                    self.consume(TokenTypeVariant::Join)?;
                     let right = self.parse_from_item_expr()?;
                     let join_cond = self.parse_cond()?;
                     output = FromExpr::Join(JoinExpr {
+                        kind: JoinKind::Inner,
                         left: Box::new(output),
-                        join: ParseToken::Multiple(parse_tokens),
                         right: Box::new(right),
                         cond: join_cond,
                     })
                 }
                 TokenType::Left => {
-                    let mut parse_tokens = vec![curr_peek.clone()];
                     self.advance();
-                    if self.match_token_type(TokenTypeVariant::Outer) {
-                        parse_tokens.push(self.peek_prev().clone());
-                    }
-                    parse_tokens.push(self.consume(TokenTypeVariant::Join)?.clone());
+                    self.match_token_type(TokenTypeVariant::Outer);
+                    self.consume(TokenTypeVariant::Join)?;
                     let right = self.parse_from_item_expr()?;
                     let join_cond = self.parse_cond()?;
                     output = FromExpr::LeftJoin(JoinExpr {
+                        kind: JoinKind::Left,
                         left: Box::new(output),
-                        join: ParseToken::Multiple(parse_tokens),
                         right: Box::new(right),
                         cond: join_cond,
                     })
                 }
                 TokenType::Right => {
-                    let mut parse_tokens = vec![curr_peek.clone()];
                     self.advance();
-                    if self.match_token_type(TokenTypeVariant::Outer) {
-                        parse_tokens.push(self.peek_prev().clone());
-                    }
-                    parse_tokens.push(self.consume(TokenTypeVariant::Join)?.clone());
+                    self.match_token_type(TokenTypeVariant::Outer);
+                    self.consume(TokenTypeVariant::Join)?;
+                    let right = self.parse_from_item_expr()?;
+                    let join_cond = self.parse_cond()?;
+                    output = FromExpr::FullJoin(JoinExpr {
+                        kind: JoinKind::Full,
+                        left: Box::new(output),
+                        right: Box::new(right),
+                        cond: join_cond,
+                    })
+                }
+                TokenType::Full => {
+                    self.advance();
+                    self.match_token_type(TokenTypeVariant::Outer);
+                    self.consume(TokenTypeVariant::Join)?;
                     let right = self.parse_from_item_expr()?;
                     let join_cond = self.parse_cond()?;
                     output = FromExpr::RightJoin(JoinExpr {
+                        kind: JoinKind::Right,
                         left: Box::new(output),
-                        join: ParseToken::Multiple(parse_tokens),
                         right: Box::new(right),
                         cond: join_cond,
                     })
                 }
                 TokenType::Cross => {
-                    let mut parse_tokens = vec![curr_peek.clone()];
                     self.advance();
-                    parse_tokens.push(self.consume(TokenTypeVariant::Join)?.clone());
+                    self.consume(TokenTypeVariant::Join)?;
                     let right = self.parse_from_item_expr()?;
                     output = FromExpr::CrossJoin(CrossJoinExpr {
                         left: Box::new(output),
-                        join: ParseToken::Multiple(parse_tokens),
                         right: Box::new(right),
                     })
                 }
                 TokenType::Comma => {
-                    let parse_token = self.advance().clone();
+                    self.advance();
                     let right = self.parse_from_item_expr()?;
                     output = FromExpr::CrossJoin(CrossJoinExpr {
                         left: Box::new(output),
-                        join: ParseToken::Single(parse_token),
                         right: Box::new(right),
                     })
                 }
@@ -1639,7 +1663,7 @@ impl<'a> Parser<'a> {
     }
 
     // TODO: add FROM UNNEST
-    // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")"
+    // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             let curr = self.curr;
@@ -1661,7 +1685,10 @@ impl<'a> Parser<'a> {
                 self.curr = curr;
                 let parse_from_expr = self.parse_from_expr()?;
                 match parse_from_expr {
-                    FromExpr::Join(_) | FromExpr::LeftJoin(_) | FromExpr::RightJoin(_) => {
+                    FromExpr::Join(_)
+                    | FromExpr::LeftJoin(_)
+                    | FromExpr::RightJoin(_)
+                    | FromExpr::FullJoin(_) => {
                         // Only these from expressions can be parenthesized
                         self.consume(TokenTypeVariant::RightParen)?;
                         Ok(FromExpr::GroupingFrom(GroupingFromExpr {
@@ -1674,6 +1701,9 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+        } else if self.check_token_type(TokenTypeVariant::Unnest) {
+            let unnest_expr = self.parse_unnest()?;
+            Ok(FromExpr::Unnest(unnest_expr))
         } else {
             let path = self.parse_path()?;
             let alias = self.parse_as_alias()?;
@@ -1682,6 +1712,38 @@ impl<'a> Parser<'a> {
                 alias: alias.map(|tok| ParseToken::Single(tok.clone())),
             }))
         }
+    }
+
+    // unnest -> ("UNNEST" "(" expr ")" [as_alias] | array_path [as alias]) ["WITH" "OFFSET" [as_alias]]
+    // where:
+    // array_path -> expr
+    fn parse_unnest(&mut self) -> anyhow::Result<UnnestExpr> {
+        let array = if self.match_token_type(TokenTypeVariant::Unnest) {
+            self.consume(TokenTypeVariant::LeftParen)?;
+            let array = self.parse_expr()?;
+            self.consume(TokenTypeVariant::RightParen)?;
+            array
+        } else {
+            self.parse_expr()?
+        };
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+        let has_offset = self.match_token_type(TokenTypeVariant::With);
+        let offset_alias = if has_offset {
+            self.consume_non_reserved_keyword("offset")?;
+            self.parse_as_alias()?
+                .map(|tok| ParseToken::Single(tok.clone()))
+        } else {
+            None
+        };
+
+        Ok(UnnestExpr {
+            array: Box::new(array),
+            alias,
+            with_offset: has_offset,
+            offset_alias,
+        })
     }
 
     // as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
@@ -2094,12 +2156,88 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // array_type -> "<" bq_type ("," bq_type)* ">"
+    // interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
+    fn parse_interval_part(&mut self) -> anyhow::Result<IntervalPart> {
+        let literal = match &self.advance().kind {
+            TokenType::Identifier(ident) => ident,
+            TokenType::QuotedIdentifier(qident) => qident,
+            _ => unreachable!(),
+        }
+        .to_lowercase();
+        match literal.as_str() {
+            "year" => Ok(IntervalPart::Year),
+            "month" => Ok(IntervalPart::Month),
+            "week" => Ok(IntervalPart::Week),
+            "day" => Ok(IntervalPart::Day),
+            "hour" => Ok(IntervalPart::Hour),
+            "minute" => Ok(IntervalPart::Minute),
+            "second" => Ok(IntervalPart::Second),
+            "millisecond" => Ok(IntervalPart::Millisecond),
+            "microsecond" => Ok(IntervalPart::Microsecond),
+            _ => unreachable!(),
+        }
+    }
+
+    // interval_expr -> interval | interval_range
+    // where:
+    // interval -> "INTERVAL" expr interval_part
+    // interval_range -> "String" interval_part "TO" interval_part
+    fn parse_interval_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Interval)?;
+
+        if self.match_token_type(TokenTypeVariant::String) {
+            let value = match &self.peek_prev().kind {
+                TokenType::String(value) => value.clone(),
+                _ => unreachable!(),
+            };
+            let start_part = self.parse_interval_part()?;
+            self.consume(TokenTypeVariant::To)?;
+            let end_part = self.parse_interval_part()?;
+            return Ok(Expr::Interval(IntervalExpr::IntervalRange {
+                value,
+                start_part,
+                end_part,
+            }));
+        }
+
+        let value = self.parse_expr()?;
+        let part = self.parse_interval_part()?;
+        Ok(Expr::Interval(IntervalExpr::Interval {
+            value: Box::new(value),
+            part,
+        }))
+    }
+
+    // range_expr -> "RANGE" "<" bq_parameterized_type ">" "String"
+    fn parse_range_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Range)?;
+        self.consume(TokenTypeVariant::Less)?;
+        let bq_type = self.parse_bq_type()?;
+        self.consume(TokenTypeVariant::Greater)?;
+        let curr = self.consume(TokenTypeVariant::String)?;
+        Ok(match &curr.kind {
+            TokenType::String(ts_str) => Expr::Range(RangeExpr {
+                r#type: bq_type,
+                value: ts_str.clone(),
+            }),
+            _ => unreachable!(),
+        })
+    }
+
+    // array_type -> "<" bq_type ">"
     fn parse_array_type(&mut self) -> anyhow::Result<Type> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_bq_type()?;
         self.consume(TokenTypeVariant::Greater)?;
         Ok(Type::Array(Box::new(array_type)))
+    }
+
+    // range_type -> "<" bq_type ">"
+    fn parse_range_type(&mut self) -> anyhow::Result<Type> {
+        self.consume(TokenTypeVariant::Less)?;
+        let range_type = self.parse_bq_type()?;
+        self.consume(TokenTypeVariant::Greater)?;
+        Ok(Type::Range(Box::new(range_type)))
     }
 
     // struct_type -> "<" ["field_name"] bq_type ("," ["field_name"] bq_type)* ">"
@@ -2110,9 +2248,15 @@ impl<'a> Parser<'a> {
             let lookahead = self.peek_next_i(1);
             let field_type_name = if (self.check_token_type(TokenTypeVariant::Identifier)
                 || self.check_token_type(TokenTypeVariant::QuotedIdentifier))
-                && (lookahead.kind.discriminant() == TokenTypeVariant::Identifier
-                    || lookahead.kind.discriminant() == TokenTypeVariant::QuotedIdentifier)
-            {
+                && (matches!(
+                    lookahead.kind.discriminant(),
+                    TokenTypeVariant::Identifier
+                        | TokenTypeVariant::QuotedIdentifier
+                        | TokenTypeVariant::Struct
+                        | TokenTypeVariant::Array
+                        | TokenTypeVariant::Interval
+                        | TokenTypeVariant::Range
+                )) {
                 self.advance();
                 Some(ParseToken::Single(self.peek_prev().clone()))
             } else {
@@ -2145,6 +2289,8 @@ impl<'a> Parser<'a> {
         match &peek_token.kind {
             TokenType::Array => return self.parse_array_type(),
             TokenType::Struct => return self.parse_struct_type(),
+            TokenType::Range => return self.parse_range_type(),
+            TokenType::Interval => return Ok(Type::Interval),
             _ => {}
         }
 
@@ -2170,7 +2316,15 @@ impl<'a> Parser<'a> {
             "interval" => Ok(Type::Interval),
             "json" => Ok(Type::Json),
             "numeric" | "decimal" => Ok(Type::Numeric),
-            "range" => Ok(Type::Range),
+            "range" => {
+                // we cannot use range as a quotedidentifier
+                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                    return Err(anyhow!(
+                        "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
+                    ));
+                }
+                Ok(self.parse_range_type()?)
+            }
             "string" => Ok(Type::String),
             "time" => Ok(Type::Time),
             "timestamp" => Ok(Type::Timestamp),
@@ -2203,7 +2357,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // array_type -> "<" bq_type ("," bq_type)* ">"
+    // range_type -> "<" bq_paramterized_type ">"
+    fn parse_parameterized_range_type(&mut self) -> anyhow::Result<ParameterizedType> {
+        self.consume(TokenTypeVariant::Less)?;
+        let range_type = self.parse_parameterized_range_type()?;
+        self.consume(TokenTypeVariant::Greater)?;
+        Ok(ParameterizedType::Range(Box::new(range_type)))
+    }
+
+    // array_type -> "<" bq_paramterized_type ">"
     fn parse_parameterized_array_type(&mut self) -> anyhow::Result<ParameterizedType> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_parameterized_bq_type()?;
@@ -2211,7 +2373,7 @@ impl<'a> Parser<'a> {
         Ok(ParameterizedType::Array(Box::new(array_type)))
     }
 
-    // struct_type -> "<" field_name bq_type ("," field_name bq_type)* ">"
+    // struct_type -> "<" field_name bq_paramterized_type ("," field_name bq_paramterized_type)* ">"
     // where:
     // field_name -> "Identifier" | "QuotedIdentifier"
     fn parse_parameterized_struct_type(&mut self) -> anyhow::Result<ParameterizedType> {
@@ -2253,6 +2415,8 @@ impl<'a> Parser<'a> {
         match &peek_token.kind {
             TokenType::Array => return self.parse_parameterized_array_type(),
             TokenType::Struct => return self.parse_parameterized_struct_type(),
+            TokenType::Range => return self.parse_parameterized_range_type(),
+            TokenType::Interval => return Ok(ParameterizedType::Interval),
             _ => {}
         }
 
@@ -2333,7 +2497,15 @@ impl<'a> Parser<'a> {
                 };
                 Ok(ParameterizedType::Numeric(precision, scale))
             }
-            "range" => Ok(ParameterizedType::Range),
+            "range" => {
+                // we cannot use range as a quotedidentifier
+                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                    return Err(anyhow!(
+                        "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
+                    ));
+                }
+                Ok(self.parse_parameterized_range_type()?)
+            }
             "string" => {
                 let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
                     let max_len = match self.consume(TokenTypeVariant::Number)?.kind {
@@ -2433,12 +2605,7 @@ impl<'a> Parser<'a> {
     fn parse_cast_fn_arguments(
         &mut self,
     ) -> anyhow::Result<(Box<Expr>, ParameterizedType, Option<Box<Expr>>)> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
         self.consume(TokenTypeVariant::LeftParen)?;
-
         let expr = self.parse_expr()?;
         self.consume(TokenTypeVariant::As)?;
         let r#type = self.parse_parameterized_bq_type()?;
@@ -2453,6 +2620,7 @@ impl<'a> Parser<'a> {
 
     // cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
     fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Cast)?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
         Ok(Expr::Function(FunctionExpr::Cast(CastFnExpr {
             expr,
@@ -2463,6 +2631,10 @@ impl<'a> Parser<'a> {
 
     // safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
     fn parse_safe_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
         Ok(Expr::Function(FunctionExpr::SafeCast(SafeCastFnExpr {
             expr,
@@ -2480,62 +2652,9 @@ impl<'a> Parser<'a> {
         .to_lowercase();
         match peek_function_name.as_str() {
             "concat" => self.parse_concat_fn_expr(),
-            "cast" => self.parse_cast_fn_expr(),
             "safe_cast" => self.parse_safe_cast_fn_expr(),
             _ => self.parse_generic_function(),
         }
-    }
-
-    // interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
-    fn parse_interval_part(&mut self) -> anyhow::Result<IntervalPart> {
-        let literal = match &self.advance().kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
-            _ => unreachable!(),
-        }
-        .to_lowercase();
-        match literal.as_str() {
-            "year" => Ok(IntervalPart::Year),
-            "month" => Ok(IntervalPart::Month),
-            "week" => Ok(IntervalPart::Week),
-            "day" => Ok(IntervalPart::Day),
-            "hour" => Ok(IntervalPart::Hour),
-            "minute" => Ok(IntervalPart::Minute),
-            "second" => Ok(IntervalPart::Second),
-            "millisecond" => Ok(IntervalPart::Millisecond),
-            "microsecond" => Ok(IntervalPart::Microsecond),
-            _ => unreachable!(),
-        }
-    }
-
-    // interval_expr -> interval | interval_range
-    // where:
-    // interval -> "INTERVAL" expr interval_part
-    // interval_range -> "String" interval_part "TO" interval_part
-    fn parse_interval_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume(TokenTypeVariant::Interval)?;
-
-        if self.match_token_type(TokenTypeVariant::String) {
-            let value = match &self.peek_prev().kind {
-                TokenType::String(value) => value.clone(),
-                _ => unreachable!(),
-            };
-            let start_part = self.parse_interval_part()?;
-            self.consume(TokenTypeVariant::To)?;
-            let end_part = self.parse_interval_part()?;
-            return Ok(Expr::Interval(IntervalExpr::IntervalRange {
-                value,
-                start_part,
-                end_part,
-            }));
-        }
-
-        let value = self.parse_expr()?;
-        let part = self.parse_interval_part()?;
-        Ok(Expr::Interval(IntervalExpr::Interval {
-            value: Box::new(value),
-            part,
-        }))
     }
 
     // primary_expr ->
@@ -2568,17 +2687,7 @@ impl<'a> Parser<'a> {
             TokenType::LeftSquare | TokenType::Array => {
                 return self.parse_array_expr();
             }
-            TokenType::Range => {
-                self.advance();
-                self.consume(TokenTypeVariant::Less)?;
-                let bq_type = self.parse_parameterized_bq_type()?;
-                self.consume(TokenTypeVariant::Greater)?;
-                let curr = self.consume(TokenTypeVariant::String)?;
-                match &curr.kind {
-                    TokenType::String(ts_str) => Expr::Range(bq_type, ts_str.clone()),
-                    _ => unreachable!(),
-                }
-            }
+            TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::Identifier(ident) => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
@@ -2625,16 +2734,6 @@ impl<'a> Parser<'a> {
                         TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
                         _ => unreachable!(),
                     }
-                } else if ident.to_lowercase() == "interval" {
-                    self.advance();
-                    self.consume(TokenTypeVariant::Less)?;
-                    let bq_type = self.parse_parameterized_bq_type()?;
-                    self.consume(TokenTypeVariant::Greater)?;
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(ts_str) => Expr::Range(bq_type, ts_str.clone()),
-                        _ => unreachable!(),
-                    }
                 } else if ident.to_lowercase() == "json" {
                     self.advance();
                     let curr = self.consume(TokenTypeVariant::String)?;
@@ -2667,6 +2766,10 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Bytes(str)
             }
+            TokenType::Default => {
+                self.advance();
+                Expr::Default
+            }
             TokenType::LeftParen => {
                 self.advance();
                 let curr_position = self.curr;
@@ -2695,6 +2798,8 @@ impl<'a> Parser<'a> {
                     }));
                 }
             }
+            // Functions whose name is a reserved keyword
+            TokenType::Cast => self.parse_cast_fn_expr()?,
             _ => {
                 self.error(&peek_token, "Expected Expression.");
                 return Err(anyhow!(ParseError));

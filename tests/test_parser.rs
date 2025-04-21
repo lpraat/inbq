@@ -121,16 +121,48 @@ fn test_should_parse() {
       ORDER BY x NULLS LAST;
       "#,
         r#"
-      SELECT
-        [1,2,3],
-        ARRAY[1,2,3][0],
-        ARRAY<ARRAY<int64>>[1,2]
+      SELECT Roster.LastName, TeamMascot.Mascot
+      FROM Roster FULL JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
+      "#,
+        r#"
+      SELECT * FROM UNNEST ([10,20,30]) as numbers WITH OFFSET;
+      SELECT *
+      FROM UNNEST(
+        ARRAY<
+        STRUCT<
+            x INT64,
+            y STRING,
+            z STRUCT<a INT64, b INT64>>>[
+            (1, 'foo', (10, 11)),
+            (3, 'bar', (20, 21))]);
+      SELECT *, struct_value
+      FROM UNNEST(
+      ARRAY<
+        STRUCT<
+        x INT64,
+        y STRING>>[
+        (1, 'foo'),
+        (3, 'bar')]) AS struct_value;
       "#,
         r#"
       SELECT
-          ARRAY<Array<Array<int64>>>[[[1,2]]],
-          1>>4,
-          3<<2>>3,
+        [1,2,3],
+        ARRAY[1,2,3][0],
+        ARRAY<ARRAY<int64>>[1,2],
+        ARRAY<`INTERVAL`>[INTERVAL 1 day],
+        ARRAY<RANGE<DATE>>[RANGE<DATE> '[UNBOUNDED, UNBOUNDED)']
+      "#,
+        r#"
+      WITH Coordinates AS (SELECT [1,2] AS position)
+      SELECT results FROM Coordinates, UNNEST(Coordinates.position) AS results;
+      WITH Coordinates AS (SELECT [1,2] AS position)
+      SELECT results FROM Coordinates, Coordinates.position AS results;
+      "#,
+        r#"
+      SELECT
+            ARRAY<Array<Array<int64>>>[[[1,2]]],
+            1>>4,
+            3<<2>>3,
       "#,
         r#"
       select
@@ -290,10 +322,17 @@ fn test_should_parse() {
 
 #[test]
 fn test_should_not_parse() {
-    let sqls = [r#"
+    let sqls = [
+        // Cannot use array as quoted identifier
+        r#"
       select
         array<struct<int64, `array`<int64>>>[struct(1, [1,2,3])],
-      "#];
+      "#,
+        // Cannot use range as quoted identifier
+        r#"
+        select ARRAY<`RANGE`<DATE>>[RANGE<DATE> '[UNBOUNDED, UNBOUNDED)']
+      "#,
+    ];
     for sql in sqls {
         println!("Testing parsing error for SQL: {}", sql);
         assert!(parse_sql(sql).is_err())

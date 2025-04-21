@@ -481,12 +481,13 @@ impl LineageExtractor {
             Expr::Bytes(_) => {}
             Expr::Number(_) => {}
             Expr::Numeric(_) | Expr::BigNumeric(_) => {}
-            Expr::Range(_, _) => {}
+            Expr::Range(_) => {}
             Expr::Date(_) | Expr::Timestamp(_) | Expr::Datetime(_) | Expr::Time(_) => {}
             Expr::Interval(_) => {}
             Expr::Json(_) => {}
             Expr::Bool(_) => {}
             Expr::Null => {}
+            Expr::Default => {}
             Expr::Star => todo!(),
             Expr::Array(array_expr) => todo!(),
             Expr::Struct(struct_expr) => todo!(),
@@ -719,19 +720,17 @@ impl LineageExtractor {
         joined_tables: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         match from_expr {
-            FromExpr::Join(join_expr) => {
-                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
-            }
-            FromExpr::LeftJoin(join_expr) => {
-                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
-            }
-            FromExpr::RightJoin(join_expr) => {
+            FromExpr::Join(join_expr)
+            | FromExpr::LeftJoin(join_expr)
+            | FromExpr::RightJoin(join_expr)
+            | FromExpr::FullJoin(join_expr) => {
                 self.join_expr_lineage(join_expr, from_tables, joined_tables)?
             }
             FromExpr::CrossJoin(cross_join_expr) => {
                 self.from_expr_lin(&cross_join_expr.left, from_tables, joined_tables)?;
                 self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?;
             }
+            FromExpr::Unnest(_) => todo!(),
             FromExpr::Path(from_path_expr) => {
                 let table_name = from_path_expr.path_expr.path.identifier();
                 let table_like_obj_id = self.get_table_id_from_context(&table_name);
@@ -1093,9 +1092,7 @@ impl LineageExtractor {
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
 
-        for expr in &from.exprs {
-            self.from_expr_lin(expr, &mut from_tables, &mut joined_tables)?;
-        }
+        self.from_expr_lin(&from.expr, &mut from_tables, &mut joined_tables)?;
         let mut ctx_objects = from_tables
             .into_iter()
             .map(|idx| (self.context.arena_objects[idx].name.clone(), idx))

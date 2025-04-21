@@ -1,9 +1,9 @@
 - Modify error handling (we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
+    - add context error (e.g., see  "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`." error)
 - We are currently considering comparison operators as left associative but they are not. In bigquery this is a valid expression only if you add parentheses (x < y) is False (maybe fix after implementing pratt parsing in expressions)
 - Implement Pratt Parsing for operators
 - We have a vec in from exprs (we dont need it)
-- Add "from unnest"
 - Add window functions
-- Extract lineage from arrays and structs
+- Extract lineage from arrays, unnest (implicit vs explicit), and structs
 - Add "filter" lineage
 - Extract lineage from generic function exprs
