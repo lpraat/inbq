@@ -126,6 +126,8 @@ fn test_should_parse() {
       "#,
         r#"
       SELECT * FROM UNNEST ([10,20,30]) as numbers WITH OFFSET;
+      "#,
+        r#"
       SELECT *
       FROM UNNEST(
         ARRAY<
@@ -135,6 +137,8 @@ fn test_should_parse() {
             z STRUCT<a INT64, b INT64>>>[
             (1, 'foo', (10, 11)),
             (3, 'bar', (20, 21))]);
+      "#,
+        r#"
       SELECT *, struct_value
       FROM UNNEST(
       ARRAY<
@@ -155,6 +159,8 @@ fn test_should_parse() {
         r#"
       WITH Coordinates AS (SELECT [1,2] AS position)
       SELECT results FROM Coordinates, UNNEST(Coordinates.position) AS results;
+      "#,
+        r#"
       WITH Coordinates AS (SELECT [1,2] AS position)
       SELECT results FROM Coordinates, Coordinates.position AS results;
       "#,
@@ -200,42 +206,50 @@ fn test_should_parse() {
       from tbl
       "#,
         r#"
-        select
-            CAST('2016-02-01' AS DATE),
-            CAST(b'\x48\x65\x6c\x6c\x6f' AS STRING FORMAT (select "ASCII")),
-            SAFE_CAST("apple" AS INT64) AS not_a_number;
-        "#,
+      select
+          CAST('2016-02-01' AS DATE),
+          CAST(b'\x48\x65\x6c\x6c\x6f' AS STRING FORMAT (select "ASCII")),
+          SAFE_CAST("apple" AS INT64) AS not_a_number;
+      "#,
         r#"
-        SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
-        FROM Library;
-        SELECT book, LAST_VALUE(book)
-          OVER (
-            ORDER BY year
-            RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
-        FROM Library;
-        SELECT item, purchases, category, LAST_VALUE(item)
-          OVER (d) AS most_popular
-        FROM Produce
-        WINDOW
-          a AS (PARTITION BY category),
-          b AS (a ORDER BY purchases),
-          c AS (b ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING),
-          d AS (c);
-          SELECT item, purchases, category, LAST_VALUE(item)
-            OVER (c ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING) AS most_popular
-          FROM Produce
-          WINDOW
-            a AS (PARTITION BY category),
-            b AS (a ORDER BY purchases),
-            c AS b
-        "#,
+      SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
+      FROM Library;
+      "#,
         r#"
-        SELECT ANY_VALUE(year HAVING MAX inches) AS any_year_with_max_inches FROM Precipitation;
-        SELECT
-          x,
-          AVG(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg
-        FROM UNNEST([0, 2, 4, 4, 5]) AS x;
-        "#,
+      SELECT book, LAST_VALUE(book)
+        OVER (
+          ORDER BY year
+          RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      FROM Library;
+      "#,
+        r#"
+      SELECT item, purchases, category, LAST_VALUE(item)
+        OVER (d) AS most_popular
+      FROM Produce
+      WINDOW
+        a AS (PARTITION BY category),
+        b AS (a ORDER BY purchases),
+        c AS (b ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING),
+        d AS (c);
+      "#,
+        r#"
+      SELECT item, purchases, category, LAST_VALUE(item)
+        OVER (c ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING) AS most_popular
+      FROM Produce
+      WINDOW
+        a AS (PARTITION BY category),
+        b AS (a ORDER BY purchases),
+        c AS b
+      "#,
+        r#"
+      SELECT ANY_VALUE(year HAVING MAX inches) AS any_year_with_max_inches FROM Precipitation;
+      "#,
+        r#"
+      SELECT
+        x,
+        AVG(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg
+      FROM UNNEST([0, 2, 4, 4, 5]) AS x;
+      "#,
         r#"
       INSERT dataset.Inventory (product, quantity)
       VALUES('top load washer', 10),
@@ -245,6 +259,8 @@ fn test_should_parse() {
             ('microwave', 20),
             (DEFAULT, 30),
             ('oven', 5);
+      "#,
+        r#"
       select * from dataset.Inventory
       "#,
         r#"
@@ -340,6 +356,8 @@ fn test_should_parse() {
       "#,
         r#"
       CREATE TEMP TABLE tmp (x `decimal`(3,4), y STRUCT <a ARRAY <STRING>, b BOOL>);
+      "#,
+        r#"
       CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b `BOOL`>);
       "#,
     ];
