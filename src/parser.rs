@@ -240,7 +240,7 @@ pub enum Expr {
     Null,
     Star,
     Query(QueryExpr),
-    GenericFunction(GenericFunctionExpr), // a generic function call, whose signature is not yet implemented in the parser
+    GenericFunction(Box<GenericFunctionExpr>),
     Function(FunctionExpr),
 }
 
@@ -305,6 +305,7 @@ pub struct ConcatFnExpr {
     values: Vec<Expr>,
 }
 
+/// Generic function call, whose signature is not yet implemented in the parser
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExpr {
     name: ParseToken,
@@ -2901,7 +2902,7 @@ impl<'a> Parser<'a> {
     }
 
     // generic_function -> ("Identifier" | "QuotedIdentifier") "(" arg ("," arg)* ")" ["OVER" named_window_expr]
-    // where: 
+    // where:
     // arg ->
     //  ["DISTINCT"]
     //  expr
@@ -2918,7 +2919,6 @@ impl<'a> Parser<'a> {
             .clone();
         self.consume(TokenTypeVariant::LeftParen)?;
 
-
         let mut arguments = vec![];
         loop {
             if self.is_at_end() {
@@ -2927,11 +2927,11 @@ impl<'a> Parser<'a> {
             if self.match_token_type(TokenTypeVariant::RightParen) {
                 break;
             }
-            
+
             let distinct = self.match_token_type(TokenTypeVariant::Distinct);
-            
+
             let arg_expr = self.parse_expr()?;
-            
+
             let nulls =
                 if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
                     Some(match &self.peek_prev().kind {
@@ -2968,16 +2968,17 @@ impl<'a> Parser<'a> {
                 let mut exprs = vec![];
                 loop {
                     let expr = self.parse_expr()?;
-                    let sort_direction =
-                        if self.match_token_types(&[TokenTypeVariant::Asc, TokenTypeVariant::Desc]) {
-                            Some(match self.peek_prev().kind {
-                                TokenType::Asc => OrderAscDesc::Asc,
-                                TokenType::Desc => OrderAscDesc::Desc,
-                                _ => unreachable!(),
-                            })
-                        } else {
-                            None
-                        };
+                    let sort_direction = if self
+                        .match_token_types(&[TokenTypeVariant::Asc, TokenTypeVariant::Desc])
+                    {
+                        Some(match self.peek_prev().kind {
+                            TokenType::Asc => OrderAscDesc::Asc,
+                            TokenType::Desc => OrderAscDesc::Desc,
+                            _ => unreachable!(),
+                        })
+                    } else {
+                        None
+                    };
                     exprs.push(AggregateOrderBy {
                         expr: Box::new(expr),
                         sort_direction,
@@ -3014,7 +3015,10 @@ impl<'a> Parser<'a> {
                 None
             };
 
-            arguments.push(GenericFunctionExprArg { arg: arg_expr, aggregate });
+            arguments.push(GenericFunctionExprArg {
+                arg: arg_expr,
+                aggregate,
+            });
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 self.consume(TokenTypeVariant::RightParen)?;
                 break;
@@ -3027,11 +3031,11 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(Expr::GenericFunction(GenericFunctionExpr {
+        Ok(Expr::GenericFunction(Box::new(GenericFunctionExpr {
             name: ParseToken::Single(function_name),
             arguments,
             over,
-        }))
+        })))
     }
 
     // primary_expr ->
