@@ -113,6 +113,11 @@ fn test_should_parse() {
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
       SELECT n FROM T1
       "#,
+      r#"
+      SELECT 1 AS one_digit
+      UNION ALL
+      SELECT 2 AS one_digit;
+      "#,
         r#"
       SELECT x, y
       FROM (SELECT 1 AS x, true AS y UNION ALL

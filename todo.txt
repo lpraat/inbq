@@ -2,9 +2,6 @@
     - add context error (e.g., see  "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`." error)
 - We are currently considering comparison operators as left associative but they are not. In bigquery this is a valid expression only if you add parentheses (x < y) is False (maybe fix after implementing pratt parsing in expressions)
 - Implement Pratt Parsing for operators
-- Number value should be a string
-- Check naming convention consistency (e.g., group_by_expr vs window vs window_expr) 
 - Extract lineage from arrays, unnest (implicit vs explicit), and structs
 - Extract lineage from generic function exprs
 - Add "filter" lineage
-

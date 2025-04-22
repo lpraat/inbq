@@ -61,39 +61,66 @@ pub enum ParameterizedType {
 
 #[derive(Debug, Clone)]
 pub struct StructParameterizedFieldType {
-    name: ParseToken,
-    r#type: ParameterizedType,
+    pub name: ParseToken,
+    pub r#type: ParameterizedType,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Array(Box<Type>),
+    BigNumeric,
+    Bool,
+    Bytes,
+    Date,
+    Datetime,
+    Float64,
+    Geography,
+    Int64,
+    Interval,
+    Json,
+    Numeric,
+    Range(Box<Type>),
+    String,
+    Struct(Vec<StructFieldType>),
+    Time,
+    Timestamp,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructFieldType {
+    pub name: Option<ParseToken>,
+    pub r#type: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct QueryStatement {
-    pub query_expr: QueryExpr,
+    pub query: QueryExpr,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertStatement {
-    pub target_table: ParseToken,
+    pub table: ParseToken,
     pub columns: Option<Vec<ParseToken>>,
     pub values: Option<Vec<Expr>>,
-    pub query_expr: Option<QueryExpr>,
+    pub query: Option<QueryExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteStatement {
-    target_table: ParseToken,
-    alias: Option<ParseToken>,
-    cond: Expr,
+    pub table: ParseToken,
+    pub alias: Option<ParseToken>,
+    pub cond: Expr,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateItem {
-    pub column_path: ParseToken,
+    pub column: ParseToken,
     pub expr: Expr,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateStatement {
-    pub target_table: ParseToken,
+    pub table: ParseToken,
     pub alias: Option<ParseToken>,
     pub update_items: Vec<UpdateItem>,
     pub from: Option<From>,
@@ -102,7 +129,23 @@ pub struct UpdateStatement {
 
 #[derive(Debug, Clone)]
 pub struct TruncateStatement {
-    target_table: ParseToken,
+    pub table: ParseToken,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergeStatement {
+    pub target_table: ParseToken,
+    pub target_alias: Option<ParseToken>,
+    pub source: MergeSource,
+    pub source_alias: Option<ParseToken>,
+    pub condition: Expr,
+    pub whens: Vec<When>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MergeSource {
+    Table(ParseToken),
+    Subquery(QueryExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -150,22 +193,6 @@ pub struct WhenNotMatchedBySource {
 }
 
 #[derive(Debug, Clone)]
-pub struct MergeStatement {
-    pub target_table: ParseToken,
-    pub target_alias: Option<ParseToken>,
-    pub source: MergeSource,
-    pub source_alias: Option<ParseToken>,
-    pub condition: Expr,
-    pub whens: Vec<When>,
-}
-
-#[derive(Debug, Clone)]
-pub enum MergeSource {
-    Table(ParseToken),
-    Subquery(QueryExpr),
-}
-
-#[derive(Debug, Clone)]
 pub enum Expr {
     Binary(BinaryExpr),
     Unary(UnaryExpr),
@@ -197,8 +224,8 @@ pub enum Expr {
 
 #[derive(Debug, Clone)]
 pub struct RangeExpr {
-    r#type: Type,
-    value: String,
+    pub r#type: Type,
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -232,73 +259,73 @@ pub enum IntervalPart {
 pub enum FunctionExpr {
     // list of known functions here
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
-    ConcatFn(ConcatFnExpr),
-    Cast(CastFnExpr),
-    SafeCast(SafeCastFnExpr),
+    Concat(ConcatFunctionExpr),
+    Cast(CastFunctionExpr),
+    SafeCast(SafeCastFunctionExpr),
 }
 
 #[derive(Debug, Clone)]
-pub struct CastFnExpr {
-    expr: Box<Expr>,
-    r#type: ParameterizedType,
-    format: Option<Box<Expr>>,
+pub struct ConcatFunctionExpr {
+    pub values: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SafeCastFnExpr {
-    expr: Box<Expr>,
-    r#type: ParameterizedType,
-    format: Option<Box<Expr>>,
+pub struct CastFunctionExpr {
+    pub expr: Box<Expr>,
+    pub r#type: ParameterizedType,
+    pub format: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ConcatFnExpr {
-    values: Vec<Expr>,
+pub struct SafeCastFunctionExpr {
+    pub expr: Box<Expr>,
+    pub r#type: ParameterizedType,
+    pub format: Option<Box<Expr>>,
 }
 
 /// Generic function call, whose signature is not yet implemented in the parser
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExpr {
-    name: ParseToken,
-    arguments: Vec<GenericFunctionExprArg>,
-    over: Option<NamedWindowExpr>,
+    pub name: ParseToken,
+    pub arguments: Vec<GenericFunctionExprArg>,
+    pub over: Option<NamedWindowExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExprArg {
-    arg: Expr,
-    aggregate: Option<Aggregate>,
+    pub expr: Expr,
+    pub aggregate: Option<FunctionAggregate>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Aggregate {
-    distinct: bool,
-    nulls: Option<AggregateFnNulls>,
-    having: Option<AggregateHaving>,
-    order_by: Option<Vec<AggregateOrderBy>>,
-    limit: Option<Box<Expr>>,
+pub struct FunctionAggregate {
+    pub distinct: bool,
+    pub nulls: Option<FunctionAggregateNulls>,
+    pub having: Option<FunctionAggregateHaving>,
+    pub order_by: Option<Vec<FunctionAggregateOrderBy>>,
+    pub limit: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AggregateOrderBy {
-    expr: Box<Expr>,
-    sort_direction: Option<OrderAscDesc>,
+pub struct FunctionAggregateOrderBy {
+    pub expr: Box<Expr>,
+    pub sort_direction: Option<OrderBySortDirection>,
 }
 
 #[derive(Debug, Clone)]
-pub enum AggregateFnNulls {
+pub enum FunctionAggregateNulls {
     Ignore,
     Respect,
 }
 
 #[derive(Debug, Clone)]
-pub struct AggregateHaving {
-    expr: Box<Expr>,
-    kind: AggregateHavingKind,
+pub struct FunctionAggregateHaving {
+    pub expr: Box<Expr>,
+    pub kind: FunctionAggregateHavingKind,
 }
 
 #[derive(Debug, Clone)]
-pub enum AggregateHavingKind {
+pub enum FunctionAggregateHavingKind {
     Max,
     Min,
 }
@@ -318,52 +345,25 @@ pub struct BinaryExpr {
 
 #[derive(Debug, Clone)]
 pub struct GroupingExpr {
-    expr: Box<Expr>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Type {
-    Array(Box<Type>),
-    BigNumeric,
-    Bool,
-    Bytes,
-    Date,
-    Datetime,
-    Float64,
-    Geography,
-    Int64,
-    Interval,
-    Json,
-    Numeric,
-    Range(Box<Type>),
-    String,
-    Struct(Vec<StructFieldType>),
-    Time,
-    Timestamp,
-}
-
-#[derive(Debug, Clone)]
-pub struct StructFieldType {
-    name: Option<ParseToken>,
-    r#type: Type,
+    pub expr: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayExpr {
-    r#type: Option<Type>,
-    exprs: Vec<Expr>,
+    pub r#type: Option<Type>,
+    pub exprs: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructExpr {
-    r#type: Option<Type>,
-    fields: Vec<StructField>,
+    pub r#type: Option<Type>,
+    pub fields: Vec<StructField>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructField {
-    expr: Expr,
-    alias: Option<ParseToken>,
+    pub expr: Expr,
+    pub alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone)]
@@ -376,7 +376,7 @@ pub enum QueryExpr {
 #[derive(Debug, Clone)]
 pub struct GroupingQueryExpr {
     pub with: Option<With>,
-    pub query_expr: Box<QueryExpr>,
+    pub query: Box<QueryExpr>,
     pub order_by: Option<OrderBy>,
     pub limit: Option<Limit>,
 }
@@ -390,33 +390,51 @@ pub struct SelectQueryExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct OrderBy {
-    exprs: Vec<OrderByExpr>,
+pub struct SetSelectQueryExpr {
+    pub with: Option<With>,
+    pub left_query: Box<QueryExpr>,
+    pub set_operator: SetQueryOperator,
+    pub right_query: Box<QueryExpr>,
+    pub order_by: Option<OrderBy>,
+    pub limit: Option<Limit>,
 }
 
 #[derive(Debug, Clone)]
-pub enum OrderAscDesc {
+pub enum SetQueryOperator {
+    Union,
+    UnionDistinct,
+    IntersectDistinct,
+    ExceptDistinct,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrderBy {
+    pub exprs: Vec<OrderByExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum OrderBySortDirection {
     Asc,
     Desc,
 }
 
 #[derive(Debug, Clone)]
-pub enum OrderNulls {
+pub enum OrderByNulls {
     First,
     Last,
 }
 
 #[derive(Debug, Clone)]
 pub struct OrderByExpr {
-    expr: Expr,
-    asc_desc: Option<OrderAscDesc>,
-    nulls: Option<OrderNulls>,
+    pub expr: Expr,
+    pub sort_direction: Option<OrderBySortDirection>,
+    pub nulls: Option<OrderByNulls>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Limit {
-    count: Box<Expr>,
-    offset: Option<Box<Expr>>,
+    pub count: Box<Expr>,
+    pub offset: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -439,19 +457,9 @@ pub struct NonRecursiveCte {
 
 #[derive(Debug, Clone)]
 pub struct RecursiveCte {
-    name: ParseToken,
-    base_query: QueryExpr,
-    recursive_query: QueryExpr,
-}
-
-#[derive(Debug, Clone)]
-pub struct SetSelectQueryExpr {
-    with: Option<With>,
-    left_query_expr: Box<QueryExpr>,
-    set_operator: ParseToken,
-    right_query_expr: Box<QueryExpr>,
-    order_by: Option<OrderBy>,
-    limit: Option<Limit>,
+    pub name: ParseToken,
+    pub base_query: QueryExpr,
+    pub recursive_query: QueryExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -514,19 +522,19 @@ pub struct CrossJoinExpr {
 }
 
 #[derive(Debug, Clone)]
-pub enum JoinKind {
-    Inner,
-    Left,
-    Right,
-    Full,
-}
-
-#[derive(Debug, Clone)]
 pub struct JoinExpr {
     pub kind: JoinKind,
     pub left: Box<FromExpr>,
     pub right: Box<FromExpr>,
     pub cond: JoinCondition,
+}
+
+#[derive(Debug, Clone)]
+pub enum JoinKind {
+    Inner,
+    Left,
+    Right,
+    Full,
 }
 
 #[derive(Debug, Clone)]
@@ -545,29 +553,29 @@ pub struct UnnestExpr {
 
 #[derive(Debug, Clone)]
 pub struct PathExpr {
-    pub path: ParseToken,
+    pub expr: ParseToken,
 }
 
 #[derive(Debug, Clone)]
 pub struct FromPathExpr {
-    pub path_expr: PathExpr,
+    pub path: PathExpr,
     pub alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GroupingFromExpr {
-    pub query_expr: Box<FromExpr>,
+    pub query: Box<FromExpr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FromGroupingQueryExpr {
-    pub query_expr: Box<QueryExpr>,
+    pub query: Box<QueryExpr>,
     pub alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Where {
-    expr: Box<Expr>,
+    pub expr: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -578,55 +586,55 @@ pub enum GroupByExpr {
 
 #[derive(Debug, Clone)]
 pub struct GroupBy {
-    expr: GroupByExpr,
+    pub expr: GroupByExpr,
 }
 
 #[derive(Debug, Clone)]
 pub struct Having {
-    expr: Box<Expr>,
+    pub expr: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Qualify {
-    expr: Box<Expr>,
+    pub expr: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Window {
-    named_windows: Vec<NamedWindow>,
+    pub named_windows: Vec<NamedWindow>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WindowOrderByExpr {
-    expr: Expr,
-    asc_desc: Option<OrderAscDesc>,
+    pub expr: Expr,
+    pub asc_desc: Option<OrderBySortDirection>,
 }
 
 #[derive(Debug, Clone)]
 pub struct NamedWindow {
-    name: ParseToken,
-    expr: NamedWindowExpr,
+    pub name: ParseToken,
+    pub window: NamedWindowExpr,
 }
 
 #[derive(Debug, Clone)]
 pub enum NamedWindowExpr {
-    Named(ParseToken),
-    Window(WindowExpr),
+    Reference(ParseToken),
+    WindowSpec(WindowSpec),
 }
 
 #[derive(Debug, Clone)]
-pub struct WindowExpr {
-    ref_window: Option<ParseToken>,
-    partition_by: Option<Vec<Expr>>,
-    order_by: Option<Vec<WindowOrderByExpr>>,
-    frame: Option<WindowFrame>,
+pub struct WindowSpec {
+    pub window_name: Option<ParseToken>,
+    pub partition_by: Option<Vec<Expr>>,
+    pub order_by: Option<Vec<WindowOrderByExpr>>,
+    pub frame: Option<WindowFrame>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WindowFrame {
-    kind: WindowFrameKind,
-    start: Option<FrameBound>,
-    end: Option<FrameBound>,
+    pub kind: WindowFrameKind,
+    pub start: Option<FrameBound>,
+    pub end: Option<FrameBound>,
 }
 
 #[derive(Debug, Clone)]
@@ -941,7 +949,7 @@ impl<'a> Parser<'a> {
             self.consume(TokenTypeVariant::Exists)?;
         }
 
-        let name = self.parse_path()?.path;
+        let name = self.parse_path()?.expr;
 
         let schema = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut column_schema = vec![];
@@ -982,7 +990,7 @@ impl<'a> Parser<'a> {
     // query_statement -> query_expr
     fn parse_query_statement(&mut self) -> anyhow::Result<Statement> {
         let query_expr = self.parse_query_expr()?;
-        Ok(Statement::Query(QueryStatement { query_expr }))
+        Ok(Statement::Query(QueryStatement { query: query_expr }))
     }
 
     // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
@@ -992,7 +1000,7 @@ impl<'a> Parser<'a> {
     fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("insert")?;
         self.match_token_type(TokenTypeVariant::Into);
-        let target_table = self.parse_path()?.path;
+        let table = self.parse_path()?.expr;
         let columns = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut columns = vec![];
             loop {
@@ -1038,10 +1046,10 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Statement::Insert(InsertStatement {
-            target_table,
+            table,
             columns,
             values,
-            query_expr,
+            query: query_expr,
         }))
     }
 
@@ -1049,17 +1057,13 @@ impl<'a> Parser<'a> {
     fn parse_delete_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("delete")?;
         self.match_token_type(TokenTypeVariant::From);
-        let target_table = self.parse_path()?.path;
+        let table = self.parse_path()?.expr;
         let alias = self
             .parse_as_alias()?
             .map(|tok| ParseToken::Single(tok.clone()));
         self.consume(TokenTypeVariant::Where)?;
         let cond = self.parse_expr()?;
-        Ok(Statement::Delete(DeleteStatement {
-            target_table,
-            alias,
-            cond,
-        }))
+        Ok(Statement::Delete(DeleteStatement { table, alias, cond }))
     }
 
     // update statement -> "UPDATE" path ["AS"] [alias] SET set_clause ["FROM" from_expr] "WHERE" expr
@@ -1067,17 +1071,20 @@ impl<'a> Parser<'a> {
     // set_clause = ("Identifier" | "QuotedIdentifier") = expr ("," ("Identifier" | "QuotedIdentifier") = expr)*
     fn parse_update_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("update")?;
-        let target_table = self.parse_path()?.path;
+        let table = self.parse_path()?.expr;
         let alias = self
             .parse_as_alias()?
             .map(|tok| ParseToken::Single(tok.clone()));
         self.consume(TokenTypeVariant::Set)?;
         let mut update_items = vec![];
         loop {
-            let column_path = self.parse_path()?.path;
+            let column_path = self.parse_path()?.expr;
             self.consume(TokenTypeVariant::Equal)?;
             let expr = self.parse_expr()?;
-            update_items.push(UpdateItem { column_path, expr });
+            update_items.push(UpdateItem {
+                column: column_path,
+                expr,
+            });
 
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -1095,7 +1102,7 @@ impl<'a> Parser<'a> {
         let where_expr = self.parse_where_expr()?;
 
         Ok(Statement::Update(UpdateStatement {
-            target_table,
+            table,
             alias,
             update_items,
             from,
@@ -1109,8 +1116,8 @@ impl<'a> Parser<'a> {
     fn parse_truncate_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("truncate")?;
         self.consume_non_reserved_keyword("table")?;
-        let target_table = self.parse_path()?.path;
-        Ok(Statement::Truncate(TruncateStatement { target_table }))
+        let table = self.parse_path()?.expr;
+        Ok(Statement::Truncate(TruncateStatement { table }))
     }
 
     // merge_statement -> "MERGE" ["INTO"] path ["AS"] [alias] "USING" path "ON" merge_condition (when_clause)+
@@ -1121,7 +1128,7 @@ impl<'a> Parser<'a> {
     fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Merge)?;
         self.match_token_type(TokenTypeVariant::Into);
-        let target_table = self.parse_path()?.path;
+        let target_table = self.parse_path()?.expr;
         let target_alias = self
             .parse_as_alias()?
             .map(|tok| ParseToken::Single(tok.clone()));
@@ -1129,7 +1136,7 @@ impl<'a> Parser<'a> {
         let source = if self.check_token_type(TokenTypeVariant::LeftParen) {
             MergeSource::Subquery(self.parse_query_expr()?)
         } else {
-            MergeSource::Table(self.parse_path()?.path)
+            MergeSource::Table(self.parse_path()?.expr)
         };
         let source_alias = self
             .parse_as_alias()?
@@ -1212,10 +1219,13 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Set)?;
         let mut update_items = vec![];
         loop {
-            let column_path = self.parse_path()?.path;
+            let column_path = self.parse_path()?.expr;
             self.consume(TokenTypeVariant::Equal)?;
             let expr = self.parse_expr()?;
-            update_items.push(UpdateItem { column_path, expr });
+            update_items.push(UpdateItem {
+                column: column_path,
+                expr,
+            });
 
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -1294,34 +1304,41 @@ impl<'a> Parser<'a> {
         let mut output: QueryExpr = self.parse_select_query_expr()?;
 
         loop {
-            let curr_token = self.peek().clone();
-            match curr_token.kind {
+            let peek_token = self.peek();
+            match peek_token.kind {
                 TokenType::Union => {
-                    let mut set_operators = vec![curr_token];
                     self.advance();
                     let token =
                         self.consume_one_of(&[TokenTypeVariant::All, TokenTypeVariant::Distinct])?;
-                    set_operators.push(token.clone());
+                    let set_operator = match &token.kind {
+                        TokenType::All => SetQueryOperator::Union,
+                        TokenType::Distinct => SetQueryOperator::UnionDistinct,
+                        _ => unreachable!(),
+                    };
                     let right_query_expr = self.parse_select_query_expr()?;
                     output = QueryExpr::SetSelect(SetSelectQueryExpr {
                         with: None,
-                        left_query_expr: Box::new(output),
-                        set_operator: ParseToken::Multiple(set_operators),
-                        right_query_expr: Box::new(right_query_expr),
+                        left_query: Box::new(output),
+                        set_operator,
+                        right_query: Box::new(right_query_expr),
                         order_by: None,
                         limit: None,
                     })
                 }
                 TokenType::Intersect | TokenType::Except => {
-                    let mut set_operators = vec![curr_token];
+                    let set_operator = match &peek_token.kind {
+                        TokenType::Intersect => SetQueryOperator::IntersectDistinct,
+                        TokenType::Except => SetQueryOperator::ExceptDistinct,
+                        _ => unreachable!(),
+                    };
                     self.advance();
-                    set_operators.push(self.consume(TokenTypeVariant::Distinct)?.clone());
+                    self.consume(TokenTypeVariant::Distinct)?;
                     let right_query_expr = self.parse_select_query_expr()?;
                     output = QueryExpr::SetSelect(SetSelectQueryExpr {
                         with: None,
-                        left_query_expr: Box::new(output),
-                        set_operator: ParseToken::Multiple(set_operators),
-                        right_query_expr: Box::new(right_query_expr),
+                        left_query: Box::new(output),
+                        set_operator,
+                        right_query: Box::new(right_query_expr),
                         order_by: None,
                         limit: None,
                     })
@@ -1394,7 +1411,7 @@ impl<'a> Parser<'a> {
             Ok(QueryExpr::Grouping(GroupingQueryExpr {
                 with: None,
                 order_by: None,
-                query_expr: Box::new(query_expr),
+                query: Box::new(query_expr),
                 limit: None,
             }))
         } else {
@@ -1456,9 +1473,9 @@ impl<'a> Parser<'a> {
             let expr = self.parse_expr()?;
 
             let asc_desc = if self.match_token_type(TokenTypeVariant::Asc) {
-                Some(OrderAscDesc::Asc)
+                Some(OrderBySortDirection::Asc)
             } else if self.match_token_type(TokenTypeVariant::Desc) {
-                Some(OrderAscDesc::Desc)
+                Some(OrderBySortDirection::Desc)
             } else {
                 None
             };
@@ -1467,10 +1484,10 @@ impl<'a> Parser<'a> {
                 let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
                 match &tok.kind {
                     TokenType::Identifier(s) if s.to_lowercase() == "first" => {
-                        Some(OrderNulls::First)
+                        Some(OrderByNulls::First)
                     }
                     TokenType::Identifier(s) if s.to_lowercase() == "last" => {
-                        Some(OrderNulls::Last)
+                        Some(OrderByNulls::Last)
                     }
                     _ => unreachable!(),
                 }
@@ -1480,7 +1497,7 @@ impl<'a> Parser<'a> {
 
             order_by_exprs.push(OrderByExpr {
                 expr,
-                asc_desc,
+                sort_direction: asc_desc,
                 nulls,
             });
 
@@ -1623,21 +1640,10 @@ impl<'a> Parser<'a> {
             return Ok(SelectExpr::ColAll(SelectColAllExpr { expr, except }));
         }
 
-        if self.match_token_type(TokenTypeVariant::As) {
-            let identifier = ParseToken::Single(self.consume_identifier()?.clone());
-            return Ok(SelectExpr::Col(SelectColExpr {
-                expr,
-                alias: Some(identifier),
-            }));
-        }
-        if self.match_identifier() {
-            let identifier = ParseToken::Single(self.peek_prev().clone());
-            return Ok(SelectExpr::Col(SelectColExpr {
-                expr,
-                alias: Some(identifier),
-            }));
-        }
-        Ok(SelectExpr::Col(SelectColExpr { expr, alias: None }))
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+        Ok(SelectExpr::Col(SelectColExpr { expr, alias }))
     }
 
     // except -> "EXCEPT" "(" ("Identifier" | "QuotedIdentifier") ["," ("Identifier" | "QuotedIdentifier")]* ")"
@@ -1785,7 +1791,7 @@ impl<'a> Parser<'a> {
                 self.consume(TokenTypeVariant::RightParen)?;
                 let alias = self.parse_as_alias()?;
                 Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
-                    query_expr: Box::new(query_expr),
+                    query: Box::new(query_expr),
                     alias: alias.map(|tok| ParseToken::Single(tok.clone())),
                 }))
             } else {
@@ -1799,7 +1805,7 @@ impl<'a> Parser<'a> {
                         // Only these from expressions can be parenthesized
                         self.consume(TokenTypeVariant::RightParen)?;
                         Ok(FromExpr::GroupingFrom(GroupingFromExpr {
-                            query_expr: Box::new(parse_from_expr),
+                            query: Box::new(parse_from_expr),
                         }))
                     }
                     _ => {
@@ -1815,7 +1821,7 @@ impl<'a> Parser<'a> {
             let path = self.parse_path()?;
             let alias = self.parse_as_alias()?;
             Ok(FromExpr::Path(FromPathExpr {
-                path_expr: path,
+                path,
                 alias: alias.map(|tok| ParseToken::Single(tok.clone())),
             }))
         }
@@ -1875,7 +1881,7 @@ impl<'a> Parser<'a> {
             path_identifiers.extend(identifier);
         }
         Ok(PathExpr {
-            path: ParseToken::Multiple(path_identifiers),
+            expr: ParseToken::Multiple(path_identifiers),
         })
     }
 
@@ -2019,7 +2025,7 @@ impl<'a> Parser<'a> {
     fn parse_named_window_expr(&mut self) -> anyhow::Result<NamedWindowExpr> {
         if !self.match_token_type(TokenTypeVariant::LeftParen) {
             let name = ParseToken::Single(self.consume_identifier()?.clone());
-            return Ok(NamedWindowExpr::Named(name));
+            return Ok(NamedWindowExpr::Reference(name));
         }
         let ref_window = if self.check_identifier() {
             Some(ParseToken::Single(self.consume_identifier()?.clone()))
@@ -2049,9 +2055,9 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expr()?;
 
                 let asc_desc = if self.match_token_type(TokenTypeVariant::Asc) {
-                    Some(OrderAscDesc::Asc)
+                    Some(OrderBySortDirection::Asc)
                 } else if self.match_token_type(TokenTypeVariant::Desc) {
-                    Some(OrderAscDesc::Desc)
+                    Some(OrderBySortDirection::Desc)
                 } else {
                     None
                 };
@@ -2076,8 +2082,8 @@ impl<'a> Parser<'a> {
         };
         self.consume(TokenTypeVariant::RightParen)?;
 
-        Ok(NamedWindowExpr::Window(WindowExpr {
-            ref_window,
+        Ok(NamedWindowExpr::WindowSpec(WindowSpec {
+            window_name: ref_window,
             partition_by,
             order_by,
             frame,
@@ -2094,7 +2100,7 @@ impl<'a> Parser<'a> {
             let named_window_expr = self.parse_named_window_expr()?;
             named_windows.push(NamedWindow {
                 name,
-                expr: named_window_expr,
+                window: named_window_expr,
             });
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -2840,7 +2846,7 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(TokenTypeVariant::RightParen)?;
-        Ok(Expr::Function(FunctionExpr::ConcatFn(ConcatFnExpr {
+        Ok(Expr::Function(FunctionExpr::Concat(ConcatFunctionExpr {
             values,
         })))
     }
@@ -2865,7 +2871,7 @@ impl<'a> Parser<'a> {
     fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Cast)?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
-        Ok(Expr::Function(FunctionExpr::Cast(CastFnExpr {
+        Ok(Expr::Function(FunctionExpr::Cast(CastFunctionExpr {
             expr,
             r#type,
             format,
@@ -2879,11 +2885,13 @@ impl<'a> Parser<'a> {
             TokenTypeVariant::QuotedIdentifier,
         ])?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
-        Ok(Expr::Function(FunctionExpr::SafeCast(SafeCastFnExpr {
-            expr,
-            r#type,
-            format,
-        })))
+        Ok(Expr::Function(FunctionExpr::SafeCast(
+            SafeCastFunctionExpr {
+                expr,
+                r#type,
+                format,
+            },
+        )))
     }
 
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
@@ -2934,8 +2942,8 @@ impl<'a> Parser<'a> {
             let nulls =
                 if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
                     Some(match &self.peek_prev().kind {
-                        TokenType::Ignore => AggregateFnNulls::Ignore,
-                        TokenType::Respect => AggregateFnNulls::Respect,
+                        TokenType::Ignore => FunctionAggregateNulls::Ignore,
+                        TokenType::Respect => FunctionAggregateNulls::Respect,
                         _ => unreachable!(),
                     })
                 } else {
@@ -2947,14 +2955,14 @@ impl<'a> Parser<'a> {
                 let tok = self.consume_one_of_non_reserved_keywords(&["max", "min"])?;
                 let kind = match &tok.kind {
                     TokenType::Identifier(s) => match s.to_lowercase().as_str() {
-                        "max" => AggregateHavingKind::Max,
-                        "min" => AggregateHavingKind::Min,
+                        "max" => FunctionAggregateHavingKind::Max,
+                        "min" => FunctionAggregateHavingKind::Min,
                         _ => unreachable!(),
                     },
                     _ => unreachable!(),
                 };
                 let expr = self.parse_expr()?;
-                Some(AggregateHaving {
+                Some(FunctionAggregateHaving {
                     kind,
                     expr: Box::new(expr),
                 })
@@ -2971,14 +2979,14 @@ impl<'a> Parser<'a> {
                         .match_token_types(&[TokenTypeVariant::Asc, TokenTypeVariant::Desc])
                     {
                         Some(match self.peek_prev().kind {
-                            TokenType::Asc => OrderAscDesc::Asc,
-                            TokenType::Desc => OrderAscDesc::Desc,
+                            TokenType::Asc => OrderBySortDirection::Asc,
+                            TokenType::Desc => OrderBySortDirection::Desc,
                             _ => unreachable!(),
                         })
                     } else {
                         None
                     };
-                    exprs.push(AggregateOrderBy {
+                    exprs.push(FunctionAggregateOrderBy {
                         expr: Box::new(expr),
                         sort_direction,
                     });
@@ -3003,7 +3011,7 @@ impl<'a> Parser<'a> {
                 || order_by.is_some()
                 || limit.is_some()
             {
-                Some(Aggregate {
+                Some(FunctionAggregate {
                     distinct,
                     nulls,
                     having,
@@ -3015,7 +3023,7 @@ impl<'a> Parser<'a> {
             };
 
             arguments.push(GenericFunctionExprArg {
-                arg: arg_expr,
+                expr: arg_expr,
                 aggregate,
             });
             if !self.match_token_type(TokenTypeVariant::Comma) {
@@ -3162,7 +3170,7 @@ impl<'a> Parser<'a> {
                     self.consume(TokenTypeVariant::RightParen)?;
                     return Ok(Expr::Query(QueryExpr::Grouping(GroupingQueryExpr {
                         with: None,
-                        query_expr: Box::new(query_expr),
+                        query: Box::new(query_expr),
                         order_by: None,
                         limit: None,
                     })));

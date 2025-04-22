@@ -52,20 +52,6 @@ struct LineageNode {
 }
 
 impl LineageNode {
-    fn compute_deep_lineage(&self, ctx: &Context) -> Vec<String> {
-        let mut input_cols = vec![];
-        let mut stack = self.input.clone();
-        while let Some(popped) = stack.pop() {
-            let inp = &ctx.arena_lineage_nodes[popped];
-            let col_name = inp.name.clone();
-            let table_name = &ctx.arena_objects[inp.source_obj].name;
-            let input = format!("[{}]{}.{}", inp.source_obj.index, table_name, col_name);
-            input_cols.push(input);
-            stack.extend(inp.input.clone());
-        }
-        input_cols
-    }
-
     fn pretty_log_lineage_node(node_idx: ArenaIndex, ctx: &Context) {
         let node = &ctx.arena_lineage_nodes[node_idx];
         let node_source_name = &ctx.arena_objects[node.source_obj].name;
@@ -318,7 +304,7 @@ impl LineageExtractor {
                 self.context
                     .update_output_lineage_with_object_nodes(cte_idx);
             }
-            Cte::Recursive(recursive_cte) => todo!(),
+            Cte::Recursive(_) => todo!(),
         }
         Ok(())
     }
@@ -349,8 +335,8 @@ impl LineageExtractor {
                     .lineage_nodes
                     .iter()
                     .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
-                    .find(|(n, n_idx)| n.name.string() == column);
-                if let Some((col, col_idx)) = col_in_schema {
+                    .find(|(n, _)| n.name.string() == column);
+                if let Some((_, col_idx)) = col_in_schema {
                     return Ok(col_idx);
                 }
                 Err(anyhow!(
@@ -439,7 +425,7 @@ impl LineageExtractor {
                         | Expr::Null
                         | Expr::Star => return Err(anyhow!("Invalid query.")),
                         _ => {
-                            // binary expr (e.g., tmp.s.x[0]) where s is a struct
+                            // TODO: binary expr (e.g., tmp.s.x[0]) where s is a struct
                             todo!()
                         }
                     }
@@ -460,7 +446,6 @@ impl LineageExtractor {
                             // TODO: struct is valid, e.g. this is valid ( struct(1 as x).x )
                             return Err(anyhow!("Invalid query."));
                         }
-                        _ => todo!(),
                     }
 
                     let col_source_idx = self.get_column_source(Some(&source), &col_name)?;
@@ -470,8 +455,8 @@ impl LineageExtractor {
                     self.select_expr_col_expr(binary_expr.right.as_ref())?;
                 }
             }
-            Expr::Unary(unary_expr) => todo!(),
-            Expr::Grouping(grouping_expr) => todo!(),
+            Expr::Unary(_) => todo!(),
+            Expr::Grouping(_) => todo!(),
             Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
                 let col_name = ident.clone();
                 let col_source_idx = self.get_column_source(None, &col_name)?;
@@ -489,11 +474,11 @@ impl LineageExtractor {
             Expr::Null => {}
             Expr::Default => {}
             Expr::Star => todo!(),
-            Expr::Array(array_expr) => todo!(),
-            Expr::Struct(struct_expr) => todo!(),
+            Expr::Array(_) => todo!(),
+            Expr::Struct(_) => todo!(),
             Expr::Query(query_expr) => self.query_expr_lin(query_expr)?,
-            Expr::GenericFunction(generic_function_expr) => todo!(),
-            Expr::Function(function_expr) => todo!(),
+            Expr::GenericFunction(_) => todo!(),
+            Expr::Function(_) => todo!(),
         }
 
         Ok(())
@@ -732,7 +717,7 @@ impl LineageExtractor {
             }
             FromExpr::Unnest(_) => todo!(),
             FromExpr::Path(from_path_expr) => {
-                let table_name = from_path_expr.path_expr.path.identifier();
+                let table_name = from_path_expr.path.expr.identifier();
                 let table_like_obj_id = self.get_table_id_from_context(&table_name);
 
                 if table_like_obj_id.is_none() {
@@ -788,7 +773,7 @@ impl LineageExtractor {
             }
             FromExpr::GroupingQuery(from_grouping_query_expr) => {
                 let start_lineage_len = self.context.lineage_stack.len();
-                self.query_expr_lin(&from_grouping_query_expr.query_expr)?;
+                self.query_expr_lin(&from_grouping_query_expr.query)?;
                 let curr_lineage_len = self.context.lineage_stack.len();
 
                 let source_name = &from_grouping_query_expr
@@ -825,7 +810,7 @@ impl LineageExtractor {
                 self.add_new_from_table(from_tables, table_like_idx)?;
             }
             FromExpr::GroupingFrom(grouping_from_expr) => {
-                self.from_expr_lin(&grouping_from_expr.query_expr, from_tables, joined_tables)?
+                self.from_expr_lin(&grouping_from_expr.query, from_tables, joined_tables)?
             }
         }
         Ok(())
@@ -1013,7 +998,7 @@ impl LineageExtractor {
         } else {
             false
         };
-        self.query_expr_lin(&grouping_query_expr.query_expr)?;
+        self.query_expr_lin(&grouping_query_expr.query)?;
         if pushed_empty_cte_ctx {
             self.context.pop_curr_ctx();
         }
@@ -1028,14 +1013,14 @@ impl LineageExtractor {
             QueryExpr::Select(select_query_expr) => {
                 self.select_query_expr_lin(select_query_expr)?;
             }
-            QueryExpr::SetSelect(set_select_query_expr) => todo!(),
+            QueryExpr::SetSelect(_) => todo!(),
         }
 
         Ok(())
     }
 
     fn query_statement_lin(&mut self, query_statement: &QueryStatement) -> anyhow::Result<()> {
-        self.query_expr_lin(&query_statement.query_expr)
+        self.query_expr_lin(&query_statement.query)
     }
 
     fn create_table_statement_lin(
@@ -1123,7 +1108,7 @@ impl LineageExtractor {
     }
 
     fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
-        let target_table = update_statement.target_table.identifier();
+        let target_table = update_statement.table.identifier();
         let target_table_alias = if let Some(ref alias) = update_statement.alias {
             alias.identifier()
         } else {
@@ -1167,9 +1152,9 @@ impl LineageExtractor {
         );
 
         for update_item in &update_statement.update_items {
-            let column = match &update_item.column_path {
+            let column = match &update_item.column {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.identifier(),
+                ParseToken::Single(_) => update_item.column.identifier(),
                 // table.col = ...
                 ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
                     TokenType::Identifier(ident) => ident.to_owned(),
@@ -1206,7 +1191,7 @@ impl LineageExtractor {
     }
 
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
-        let target_table = insert_statement.target_table.identifier();
+        let target_table = insert_statement.table.identifier();
 
         let target_table_id = self.get_table_id_from_context(&target_table);
         if target_table_id.is_none() {
@@ -1247,7 +1232,7 @@ impl LineageExtractor {
             target_table_obj.lineage_nodes.clone()
         };
 
-        if let Some(query_expr) = &insert_statement.query_expr {
+        if let Some(query_expr) = &insert_statement.query {
             let start_lineage_len = self.context.lineage_stack.len();
             self.query_expr_lin(query_expr)?;
             let curr_lineage_len = self.context.lineage_stack.len();
@@ -1364,9 +1349,9 @@ impl LineageExtractor {
             .collect::<HashMap<String, ArenaIndex>>();
 
         for update_item in &merge_update.update_items {
-            let column = match &update_item.column_path {
+            let column = match &update_item.column {
                 // col = ...
-                ParseToken::Single(_) => update_item.column_path.identifier(),
+                ParseToken::Single(_) => update_item.column.identifier(),
                 // table.col = ...
                 ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
                     TokenType::Identifier(ident) => ident.to_owned(),
