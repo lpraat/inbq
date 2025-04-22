@@ -37,7 +37,7 @@ pub enum TokenType {
     RawString(String),
     Bytes(String),
     RawBytes(String),
-    Number(f64),
+    Number(String),
     Eof,
 
     // Reserved Keywords
@@ -490,9 +490,7 @@ impl Scanner {
                 self.add_token(TokenType::Number(
                     self.source_chars[self.start..self.current]
                         .iter()
-                        .collect::<String>()
-                        .parse()
-                        .unwrap(),
+                        .collect::<String>(),
                 ));
                 break;
             }
@@ -530,9 +528,7 @@ impl Scanner {
                 self.add_token(TokenType::Number(
                     self.source_chars[self.start..self.current]
                         .iter()
-                        .collect::<String>()
-                        .parse()
-                        .unwrap(),
+                        .collect::<String>(),
                 ));
                 break;
             }

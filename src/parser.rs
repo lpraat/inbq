@@ -6,55 +6,6 @@ use strum::IntoDiscriminant;
 
 use crate::scanner::{Scanner, Token, TokenType, TokenTypeVariant};
 
-// TODO: make this a real error
-#[derive(Debug)]
-struct ParseError;
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ParseError")
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ParseToken {
-    Single(Token),
-    Multiple(Vec<Token>),
-}
-
-impl ParseToken {
-    pub fn lexeme(&self, join_char: Option<&str>) -> String {
-        match self {
-            ParseToken::Single(token) => token.lexeme.clone(),
-            ParseToken::Multiple(vec) => vec
-                .iter()
-                .map(|tok| tok.lexeme.clone())
-                .collect::<Vec<String>>()
-                .join(join_char.map_or(" ", |c| c)),
-        }
-    }
-    pub fn identifier(&self) -> String {
-        match self {
-            ParseToken::Single(token) => match &token.kind {
-                TokenType::Identifier(ident) => ident.to_owned(),
-                TokenType::QuotedIdentifier(qident) => qident.to_owned(),
-                _ => panic!("Can't call identifier on {:?}", self),
-            },
-
-            ParseToken::Multiple(vec) => vec
-                .iter()
-                .map(|tok| match &tok.kind {
-                    TokenType::Identifier(ident) => ident.to_owned(),
-                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
-                    _ => tok.lexeme.to_owned(),
-                })
-                .collect::<Vec<String>>()
-                .join(""),
-        }
-    }
-}
-
-// TODO: create another file to place all these AST objects
 #[derive(Debug, Clone)]
 pub struct Ast {
     pub statements: Vec<Statement>,
@@ -90,9 +41,9 @@ pub struct ColumnSchema {
 #[derive(Debug, Clone)]
 pub enum ParameterizedType {
     Array(Box<ParameterizedType>),
-    BigNumeric(Option<u32>, Option<u32>),
+    BigNumeric(Option<String>, Option<String>),
     Bool,
-    Bytes(Option<u32>),
+    Bytes(Option<String>),
     Date,
     Datetime,
     Float64,
@@ -100,9 +51,9 @@ pub enum ParameterizedType {
     Int64,
     Interval,
     Json,
-    Numeric(Option<u32>, Option<u32>),
+    Numeric(Option<String>, Option<String>),
     Range(Box<ParameterizedType>),
-    String(Option<u32>),
+    String(Option<String>),
     Struct(Vec<StructParameterizedFieldType>),
     Time,
     Timestamp,
@@ -227,7 +178,7 @@ pub enum Expr {
     Bytes(String),
     Numeric(String),
     BigNumeric(String),
-    Number(f64),
+    Number(String),
     Bool(bool),
     Date(String),
     Time(String),
@@ -681,9 +632,9 @@ pub struct WindowFrame {
 #[derive(Debug, Clone)]
 pub enum FrameBound {
     UnboundedPreceding,
-    Preceding(i64),
+    Preceding(String),
     UnboundedFollowing,
-    Following(i64),
+    Following(String),
     CurrentRow,
 }
 
@@ -691,6 +642,54 @@ pub enum FrameBound {
 pub enum WindowFrameKind {
     Range,
     Rows,
+}
+
+#[derive(Debug, Clone)]
+pub enum ParseToken {
+    Single(Token),
+    Multiple(Vec<Token>),
+}
+
+impl ParseToken {
+    pub fn lexeme(&self, join_char: Option<&str>) -> String {
+        match self {
+            ParseToken::Single(token) => token.lexeme.clone(),
+            ParseToken::Multiple(vec) => vec
+                .iter()
+                .map(|tok| tok.lexeme.clone())
+                .collect::<Vec<String>>()
+                .join(join_char.map_or(" ", |c| c)),
+        }
+    }
+    pub fn identifier(&self) -> String {
+        match self {
+            ParseToken::Single(token) => match &token.kind {
+                TokenType::Identifier(ident) => ident.to_owned(),
+                TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                _ => panic!("Can't call identifier on {:?}", self),
+            },
+
+            ParseToken::Multiple(vec) => vec
+                .iter()
+                .map(|tok| match &tok.kind {
+                    TokenType::Identifier(ident) => ident.to_owned(),
+                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                    _ => tok.lexeme.to_owned(),
+                })
+                .collect::<Vec<String>>()
+                .join(""),
+        }
+    }
+}
+
+// TODO: make this a real error
+#[derive(Debug)]
+struct ParseError;
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ParseError")
+    }
 }
 
 // TODO: this struct should own the scanner and use it
@@ -1344,15 +1343,15 @@ impl<'a> Parser<'a> {
 
         let limit = if self.match_token_type(TokenTypeVariant::Limit) {
             let tok = self.consume(TokenTypeVariant::Number)?;
-            let count = match tok.kind {
-                TokenType::Number(num) => Expr::Number(num),
+            let count = match &tok.kind {
+                TokenType::Number(num) => Expr::Number(num.clone()),
                 _ => unreachable!(),
             };
 
             let offset = if self.match_non_reserved_keyword("offset") {
                 let tok = self.consume(TokenTypeVariant::Number)?;
-                match tok.kind {
-                    TokenType::Number(num) => Some(Box::new(Expr::Number(num))),
+                match &tok.kind {
+                    TokenType::Number(num) => Some(Box::new(Expr::Number(num.clone()))),
                     _ => unreachable!(),
                 }
             } else {
@@ -1952,15 +1951,15 @@ impl<'a> Parser<'a> {
             self.consume_non_reserved_keyword("row")?;
             Some(FrameBound::CurrentRow)
         } else if self.match_token_type(TokenTypeVariant::Number) {
-            match self.peek_prev().kind {
+            match self.peek_prev().clone().kind {
                 TokenType::Number(num) => {
                     let tok = self.consume_one_of(&[
                         TokenTypeVariant::Preceding,
                         TokenTypeVariant::Following,
                     ])?;
-                    match tok.kind {
-                        TokenType::Preceding => Some(FrameBound::Preceding(num as i64)),
-                        TokenType::Following => Some(FrameBound::Following(num as i64)),
+                    match &tok.kind {
+                        TokenType::Preceding => Some(FrameBound::Preceding(num)),
+                        TokenType::Following => Some(FrameBound::Following(num)),
                         _ => unreachable!(),
                     }
                 }
@@ -2705,14 +2704,14 @@ impl<'a> Parser<'a> {
         match literal.as_str() {
             "bignumeric" | "bigdecimal" => {
                 let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let precision: u32 = match self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => number as u32,
+                    let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
+                        TokenType::Number(number) => number.clone(),
                         _ => unreachable!(),
                     };
 
-                    let scale: Option<u32> = if self.match_token_type(TokenTypeVariant::Comma) {
-                        match self.consume(TokenTypeVariant::Number)?.kind {
-                            TokenType::Number(number) => Some(number as u32),
+                    let scale = if self.match_token_type(TokenTypeVariant::Comma) {
+                        match &self.consume(TokenTypeVariant::Number)?.kind {
+                            TokenType::Number(number) => Some(number.clone()),
                             _ => unreachable!(),
                         }
                     } else {
@@ -2728,8 +2727,8 @@ impl<'a> Parser<'a> {
             "bool" | "boolean" => Ok(ParameterizedType::Bool),
             "bytes" => {
                 let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let max_len = match self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => Some(number as u32),
+                    let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
+                        TokenType::Number(number) => Some(number.clone()),
                         _ => None,
                     };
                     self.consume(TokenTypeVariant::RightParen)?;
@@ -2751,14 +2750,14 @@ impl<'a> Parser<'a> {
             "json" => Ok(ParameterizedType::Json),
             "numeric" | "decimal" => {
                 let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let precision: u32 = match self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => number as u32,
+                    let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
+                        TokenType::Number(number) => number.clone(),
                         _ => unreachable!(),
                     };
 
-                    let scale: Option<u32> = if self.match_token_type(TokenTypeVariant::Comma) {
-                        match self.consume(TokenTypeVariant::Number)?.kind {
-                            TokenType::Number(number) => Some(number as u32),
+                    let scale = if self.match_token_type(TokenTypeVariant::Comma) {
+                        match &self.consume(TokenTypeVariant::Number)?.kind {
+                            TokenType::Number(number) => Some(number.clone()),
                             _ => unreachable!(),
                         }
                     } else {
@@ -2782,8 +2781,8 @@ impl<'a> Parser<'a> {
             }
             "string" => {
                 let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let max_len = match self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => Some(number as u32),
+                    let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
+                        TokenType::Number(number) => Some(number.clone()),
                         _ => None,
                     };
                     self.consume(TokenTypeVariant::RightParen)?;
