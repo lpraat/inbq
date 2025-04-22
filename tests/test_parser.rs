@@ -206,6 +206,37 @@ fn test_should_parse() {
             SAFE_CAST("apple" AS INT64) AS not_a_number;
         "#,
         r#"
+        SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
+        FROM Library;
+        SELECT book, LAST_VALUE(book)
+          OVER (
+            ORDER BY year
+            RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+        FROM Library;
+        SELECT item, purchases, category, LAST_VALUE(item)
+          OVER (d) AS most_popular
+        FROM Produce
+        WINDOW
+          a AS (PARTITION BY category),
+          b AS (a ORDER BY purchases),
+          c AS (b ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING),
+          d AS (c);
+          SELECT item, purchases, category, LAST_VALUE(item)
+            OVER (c ROWS BETWEEN 2 PRECEDING AND 2 FOLLOWING) AS most_popular
+          FROM Produce
+          WINDOW
+            a AS (PARTITION BY category),
+            b AS (a ORDER BY purchases),
+            c AS b
+        "#,
+        r#"
+        SELECT ANY_VALUE(year HAVING MAX inches) AS any_year_with_max_inches FROM Precipitation;
+        SELECT
+          x,
+          AVG(x) OVER (ORDER BY x ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg
+        FROM UNNEST([0, 2, 4, 4, 5]) AS x;
+        "#,
+        r#"
       INSERT dataset.Inventory (product, quantity)
       VALUES('top load washer', 10),
             ('front load washer', 20),

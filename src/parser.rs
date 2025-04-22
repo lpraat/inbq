@@ -308,7 +308,47 @@ pub struct ConcatFnExpr {
 #[derive(Debug, Clone)]
 pub struct GenericFunctionExpr {
     name: ParseToken,
-    arguments: Vec<Expr>,
+    arguments: Vec<GenericFunctionExprArg>,
+    over: Option<NamedWindowExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericFunctionExprArg {
+    arg: Expr,
+    aggregate: Option<Aggregate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Aggregate {
+    distinct: bool,
+    nulls: Option<AggregateFnNulls>,
+    having: Option<AggregateHaving>,
+    order_by: Option<Vec<AggregateOrderBy>>,
+    limit: Option<Box<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregateOrderBy {
+    expr: Box<Expr>,
+    sort_direction: Option<OrderAscDesc>,
+}
+
+#[derive(Debug, Clone)]
+pub enum AggregateFnNulls {
+    Ignore,
+    Respect,
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregateHaving {
+    expr: Box<Expr>,
+    kind: AggregateHavingKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum AggregateHavingKind {
+    Max,
+    Min,
 }
 
 #[derive(Debug, Clone)]
@@ -470,6 +510,7 @@ pub struct Select {
     pub group_by: Option<GroupBy>,
     pub having: Option<Having>,
     pub qualify: Option<Qualify>,
+    pub window: Option<Window>,
 }
 
 #[derive(Debug, Clone)]
@@ -598,6 +639,59 @@ pub struct Qualify {
     expr: Box<Expr>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Window {
+    named_windows: Vec<NamedWindow>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowOrderByExpr {
+    expr: Expr,
+    asc_desc: Option<OrderAscDesc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NamedWindow {
+    name: ParseToken,
+    expr: NamedWindowExpr,
+}
+
+#[derive(Debug, Clone)]
+pub enum NamedWindowExpr {
+    Named(ParseToken),
+    Window(WindowExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowExpr {
+    ref_window: Option<ParseToken>,
+    partition_by: Option<Vec<Expr>>,
+    order_by: Option<Vec<WindowOrderByExpr>>,
+    frame: Option<WindowFrame>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowFrame {
+    kind: WindowFrameKind,
+    start: Option<FrameBound>,
+    end: Option<FrameBound>,
+}
+
+#[derive(Debug, Clone)]
+pub enum FrameBound {
+    UnboundedPreceding,
+    Preceding(i64),
+    UnboundedFollowing,
+    Following(i64),
+    CurrentRow,
+}
+
+#[derive(Debug, Clone)]
+pub enum WindowFrameKind {
+    Range,
+    Rows,
+}
+
 // TODO: this struct should own the scanner and use it
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
@@ -673,6 +767,11 @@ impl<'a> Parser<'a> {
             TokenType::Identifier(ident) => ident.to_lowercase() == value,
             _ => false,
         }
+    }
+
+    fn check_identifier(&mut self) -> bool {
+        self.check_token_type(TokenTypeVariant::Identifier)
+            || self.check_token_type(TokenTypeVariant::QuotedIdentifier)
     }
 
     fn match_non_reserved_keyword(&mut self, value: &str) -> bool {
@@ -1401,6 +1500,7 @@ impl<'a> Parser<'a> {
     // ["GROUP BY" group_by_expr]
     // ["HAVING" having_expr]
     // ["QUALIFY" qualify_expr]
+    // ["WINDOW" window]
     fn parse_select(&mut self) -> anyhow::Result<Select> {
         self.consume(TokenTypeVariant::Select)?;
         let mut select_exprs = vec![];
@@ -1485,6 +1585,12 @@ impl<'a> Parser<'a> {
             None
         };
 
+        let window = if self.check_token_type(TokenTypeVariant::Window) {
+            Some(self.parse_window()?)
+        } else {
+            None
+        };
+
         Ok(Select {
             exprs: select_exprs,
             from,
@@ -1492,6 +1598,7 @@ impl<'a> Parser<'a> {
             group_by,
             having,
             qualify,
+            window,
         })
     }
 
@@ -1828,6 +1935,172 @@ impl<'a> Parser<'a> {
     // qualify_expr -> expr
     fn parse_qualify_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_expr()
+    }
+
+    // frame_bound -> ("UNBOUNDED" "PRECEDING" | "UNBOUNDED" "FOLLOWING" | "Number" "PRECEDING" | "Number" "FOLLOWING" | "CURRENT" "ROW")
+    fn parse_frame_bound(&mut self) -> anyhow::Result<Option<FrameBound>> {
+        let frame_bound = if self.match_non_reserved_keyword("unbounded") {
+            let tok =
+                self.consume_one_of(&[TokenTypeVariant::Preceding, TokenTypeVariant::Following])?;
+            match &tok.kind {
+                TokenType::Preceding => Some(FrameBound::UnboundedPreceding),
+                TokenType::Following => Some(FrameBound::UnboundedFollowing),
+                _ => unreachable!(),
+            }
+        } else if self.match_token_type(TokenTypeVariant::Current) {
+            self.consume_non_reserved_keyword("row")?;
+            Some(FrameBound::CurrentRow)
+        } else if self.match_token_type(TokenTypeVariant::Number) {
+            match self.peek_prev().kind {
+                TokenType::Number(num) => {
+                    let tok = self.consume_one_of(&[
+                        TokenTypeVariant::Preceding,
+                        TokenTypeVariant::Following,
+                    ])?;
+                    match tok.kind {
+                        TokenType::Preceding => Some(FrameBound::Preceding(num as i64)),
+                        TokenType::Following => Some(FrameBound::Following(num as i64)),
+                        _ => unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            None
+        };
+        Ok(frame_bound)
+    }
+
+    // window_frame -> ("ROWS" | "RANGE") (frame_start | frame_between)
+    // where:
+    // frame_start -> frame_bound
+    // frame_between -> "BETWEEN" frame_bound "AND" frame_bound
+    fn parse_window_frame(&mut self) -> anyhow::Result<WindowFrame> {
+        let tok = self.consume_one_of(&[TokenTypeVariant::Rows, TokenTypeVariant::Range])?;
+        let kind = match &tok.kind {
+            TokenType::Rows => WindowFrameKind::Rows,
+            TokenType::Range => WindowFrameKind::Range,
+            _ => unreachable!(),
+        };
+
+        let (start, end) = if self.match_token_type(TokenTypeVariant::Between) {
+            // We first try to parse a frame bound, then we return an error if it's not a valid frame bound given the context
+            let start = self
+                .parse_frame_bound()?
+                .ok_or(anyhow!("Expected one of: `UNBOUNDED`, `Number`, `CURRENT`"))?;
+            if let FrameBound::UnboundedFollowing = start {
+                return Err(anyhow!("Expected `PRECEDING`."));
+            };
+            self.consume(TokenTypeVariant::And)?;
+
+            let end = self.parse_frame_bound()?.ok_or_else(|| match start {
+                FrameBound::UnboundedPreceding
+                | FrameBound::Preceding(_)
+                | FrameBound::CurrentRow => {
+                    anyhow!("Expected one of: `UNBOUNDED`, `Number`, `CURRENT`.")
+                }
+                FrameBound::Following(_) => anyhow!("Expected one of: `UNBOUNDED`, `Number`."),
+                _ => unreachable!(),
+            })?;
+            (Some(start), Some(end))
+        } else {
+            let start = self.parse_frame_bound()?;
+            (start, None)
+        };
+
+        Ok(WindowFrame { kind, start, end })
+    }
+
+    // named_window_expr -> ((Identifier" | "QuotedIdentifier") |  [("Identifier" | "QuotedIdentifier")] [partition_by] [order_by] [frame])
+    // where:
+    // partition_by -> "PARTITION" "BY" expr ("," expr)*
+    // order_by -> "ORDER" "BY" expr [("ASC" | "DESC")] ("," expr [("ASC" | "DESC")?])*
+    // frame -> window_frame
+    fn parse_named_window_expr(&mut self) -> anyhow::Result<NamedWindowExpr> {
+        if !self.match_token_type(TokenTypeVariant::LeftParen) {
+            let name = ParseToken::Single(self.consume_identifier()?.clone());
+            return Ok(NamedWindowExpr::Named(name));
+        }
+        let ref_window = if self.check_identifier() {
+            Some(ParseToken::Single(self.consume_identifier()?.clone()))
+        } else {
+            None
+        };
+        let partition_by = if self.match_token_type(TokenTypeVariant::Partition) {
+            self.consume(TokenTypeVariant::By)?;
+            let mut partition_by_exprs = vec![];
+            loop {
+                let expr = self.parse_expr()?;
+                partition_by_exprs.push(expr);
+
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(partition_by_exprs)
+        } else {
+            None
+        };
+
+        let order_by = if self.match_token_type(TokenTypeVariant::Order) {
+            self.consume(TokenTypeVariant::By)?;
+            let mut order_by_exprs = vec![];
+            loop {
+                let expr = self.parse_expr()?;
+
+                let asc_desc = if self.match_token_type(TokenTypeVariant::Asc) {
+                    Some(OrderAscDesc::Asc)
+                } else if self.match_token_type(TokenTypeVariant::Desc) {
+                    Some(OrderAscDesc::Desc)
+                } else {
+                    None
+                };
+
+                order_by_exprs.push(WindowOrderByExpr { expr, asc_desc });
+
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(order_by_exprs)
+        } else {
+            None
+        };
+
+        let frame = if self.check_token_type(TokenTypeVariant::Range)
+            || self.check_token_type(TokenTypeVariant::Rows)
+        {
+            Some(self.parse_window_frame()?)
+        } else {
+            None
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        Ok(NamedWindowExpr::Window(WindowExpr {
+            ref_window,
+            partition_by,
+            order_by,
+            frame,
+        }))
+    }
+
+    // window -> "WINDOW" ("Identifier" | "QuotedIdentifier") "AS" named_window_expr ("," ("Identifier" | "QuotedIdentifier") "AS" named_window_expr)*
+    fn parse_window(&mut self) -> anyhow::Result<Window> {
+        self.consume(TokenTypeVariant::Window)?;
+        let mut named_windows = vec![];
+        loop {
+            let name = ParseToken::Single(self.consume_identifier()?.clone());
+            self.consume(TokenTypeVariant::As)?;
+            let named_window_expr = self.parse_named_window_expr()?;
+            named_windows.push(NamedWindow {
+                name,
+                expr: named_window_expr,
+            });
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        Ok(Window { named_windows })
     }
 
     // expr -> or_expr
@@ -2550,36 +2823,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // generic_function -> ("Identifier" | "QuotedIdentifier") "(" expr  ( "," expr )* ")"
-    fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
-        let function_name = self
-            .consume_one_of(&[
-                TokenTypeVariant::Identifier,
-                TokenTypeVariant::QuotedIdentifier,
-            ])?
-            .clone();
-        self.consume(TokenTypeVariant::LeftParen)?;
-
-        let mut arguments = vec![];
-        loop {
-            if self.is_at_end() {
-                return Err(anyhow!("Expected `)`."));
-            }
-            if self.match_token_type(TokenTypeVariant::RightParen) {
-                break;
-            }
-            arguments.push(self.parse_expr()?);
-            if !self.match_token_type(TokenTypeVariant::Comma) {
-                self.consume(TokenTypeVariant::RightParen)?;
-                break;
-            }
-        }
-        Ok(Expr::GenericFunction(GenericFunctionExpr {
-            name: ParseToken::Single(function_name),
-            arguments,
-        }))
-    }
-
     // concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
     fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
@@ -2655,6 +2898,140 @@ impl<'a> Parser<'a> {
             "safe_cast" => self.parse_safe_cast_fn_expr(),
             _ => self.parse_generic_function(),
         }
+    }
+
+    // generic_function -> ("Identifier" | "QuotedIdentifier") "(" arg ("," arg)* ")" ["OVER" named_window_expr]
+    // where: 
+    // arg ->
+    //  ["DISTINCT"]
+    //  expr
+    //  [("IGNORE" | "RESPECT") "NULLS"]
+    //  ["HAVING ("MAX" | "MIN") expr]
+    //  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
+    //  ["LIMIT" "Number"]
+    fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
+        let function_name = self
+            .consume_one_of(&[
+                TokenTypeVariant::Identifier,
+                TokenTypeVariant::QuotedIdentifier,
+            ])?
+            .clone();
+        self.consume(TokenTypeVariant::LeftParen)?;
+
+
+        let mut arguments = vec![];
+        loop {
+            if self.is_at_end() {
+                return Err(anyhow!("Expected `)`."));
+            }
+            if self.match_token_type(TokenTypeVariant::RightParen) {
+                break;
+            }
+            
+            let distinct = self.match_token_type(TokenTypeVariant::Distinct);
+            
+            let arg_expr = self.parse_expr()?;
+            
+            let nulls =
+                if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
+                    Some(match &self.peek_prev().kind {
+                        TokenType::Ignore => AggregateFnNulls::Ignore,
+                        TokenType::Respect => AggregateFnNulls::Respect,
+                        _ => unreachable!(),
+                    })
+                } else {
+                    None
+                };
+
+            let having = if self.match_token_type(TokenTypeVariant::Having) {
+                // TODO: this is error prone (we need to remember to lowercase, write a method)
+                let tok = self.consume_one_of_non_reserved_keywords(&["max", "min"])?;
+                let kind = match &tok.kind {
+                    TokenType::Identifier(s) => match s.to_lowercase().as_str() {
+                        "max" => AggregateHavingKind::Max,
+                        "min" => AggregateHavingKind::Min,
+                        _ => unreachable!(),
+                    },
+                    _ => unreachable!(),
+                };
+                let expr = self.parse_expr()?;
+                Some(AggregateHaving {
+                    kind,
+                    expr: Box::new(expr),
+                })
+            } else {
+                None
+            };
+
+            let order_by = if self.match_token_type(TokenTypeVariant::Order) {
+                self.consume(TokenTypeVariant::By)?;
+                let mut exprs = vec![];
+                loop {
+                    let expr = self.parse_expr()?;
+                    let sort_direction =
+                        if self.match_token_types(&[TokenTypeVariant::Asc, TokenTypeVariant::Desc]) {
+                            Some(match self.peek_prev().kind {
+                                TokenType::Asc => OrderAscDesc::Asc,
+                                TokenType::Desc => OrderAscDesc::Desc,
+                                _ => unreachable!(),
+                            })
+                        } else {
+                            None
+                        };
+                    exprs.push(AggregateOrderBy {
+                        expr: Box::new(expr),
+                        sort_direction,
+                    });
+                    if !self.match_token_type(TokenTypeVariant::Comma) {
+                        break;
+                    }
+                }
+                Some(exprs)
+            } else {
+                None
+            };
+
+            let limit = if self.match_token_type(TokenTypeVariant::Limit) {
+                Some(Box::new(self.parse_expr()?))
+            } else {
+                None
+            };
+
+            let aggregate = if distinct
+                || nulls.is_some()
+                || having.is_some()
+                || order_by.is_some()
+                || limit.is_some()
+            {
+                Some(Aggregate {
+                    distinct,
+                    nulls,
+                    having,
+                    order_by,
+                    limit,
+                })
+            } else {
+                None
+            };
+
+            arguments.push(GenericFunctionExprArg { arg: arg_expr, aggregate });
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                self.consume(TokenTypeVariant::RightParen)?;
+                break;
+            }
+        }
+
+        let over = if self.match_token_type(TokenTypeVariant::Over) {
+            Some(self.parse_named_window_expr()?)
+        } else {
+            None
+        };
+
+        Ok(Expr::GenericFunction(GenericFunctionExpr {
+            name: ParseToken::Single(function_name),
+            arguments,
+            over,
+        }))
     }
 
     // primary_expr ->
