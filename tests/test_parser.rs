@@ -113,7 +113,7 @@ fn test_should_parse() {
       WITH RECURSIVE T1 AS ( (SELECT 1 AS n) UNION ALL (SELECT n + 1 AS n FROM T1 WHERE n < 3) )
       SELECT n FROM T1
       "#,
-      r#"
+        r#"
       SELECT 1 AS one_digit
       UNION ALL
       SELECT 2 AS one_digit;
@@ -357,6 +357,17 @@ fn test_should_parse() {
       WHEN MATCHED AND state = 'CA' THEN
         UPDATE SET quantity = T.quantity + S.quantity
       WHEN MATCHED THEN
+        DELETE
+      "#,
+        r#"
+      MERGE dataset.NewArrivals
+      USING (SELECT * FROM UNNEST([('microwave', 10, 'warehouse #1'),
+                                   ('dryer', 30, 'warehouse #1'),
+                                   ('oven', 20, 'warehouse #2')]))
+      ON FALSE
+      WHEN NOT MATCHED THEN
+        INSERT ROW
+      WHEN NOT MATCHED BY SOURCE THEN
         DELETE
       "#,
         r#"

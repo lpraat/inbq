@@ -5,21 +5,21 @@ insert into proj.dat.out_table
 select * except (c)
 from proj.dat.in_table
 """
-
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
 kind = "table"
-columns = ["a", "b"]
-
+columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
-
 
 ### Test case
 [[tests]]
@@ -28,17 +28,22 @@ insert into proj.dat.out_table
 select *
 from proj.dat.in_table
 """
-
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
@@ -52,47 +57,51 @@ with tmp as (
     select * except (c)
     from proj.dat.t1
 ),
-
 tmp2 as (
     select a, b, `c`
     from proj.dat.t2
 )
-
 select
     *
 from tmp inner join tmp2 using (a,b)
 """
-
 [[tests.schema_objects]]
 name = "proj.dat.t1"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.t2"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.t1->a", "proj.dat.t2->a"]
 b = ["proj.dat.t1->b", "proj.dat.t2->b"]
 c = ["proj.dat.t2->c"]
 
-
 ### Test case
 [[tests]]
 sql = """
 create temp table temp_table as (
-    select 
+    select
         *
     from proj.dat.t1
 );
-
 merge into proj.dat.out_table as t
 using (
     select * from temp_table
@@ -103,23 +112,30 @@ when not matched then
 when not matched by source then
     delete
 """
-
 [[tests.schema_objects]]
 name = "proj.dat.t1"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.t2"
 kind = "table"
-columns = ["a", "b", "c"]
-
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
 kind = "table"
-columns = ["a", "b", "c"]
-
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.t1->a"]
 b = ["proj.dat.t1->b"]
@@ -131,30 +147,32 @@ sql = """
 delete from dataset.Inventory T
 where T.product = "foo"
 """
-
 [[tests.schema_objects]]
 name = "dataset.Inventory"
 kind = "table"
-columns = ["product", "quantity", "last_updated"]
-
-
+columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+    { name = "last_updated", dtype = "TIMESTAMP" },
+]
 [tests.ready_lineage]
 # Empty
- 
+
 ### Test case
 [[tests]]
 sql = """
 truncate table dataset.Inventory;
 """
-
 [[tests.schema_objects]]
 name = "dataset.Inventory"
 kind = "table"
-columns = ["product", "quantity", "last_updated"]
-
+columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+    { name = "last_updated", dtype = "TIMESTAMP" },
+]
 [tests.ready_lineage]
 # Empty
-
 
 ### Test case
 [[tests]]
@@ -165,17 +183,170 @@ ON T.product = S.product
 WHEN MATCHED THEN
   UPDATE SET quantity = T.quantity + S.quantity
 """
-
 [[tests.schema_objects]]
 name = "dataset.Inventory"
 kind = "table"
-columns = ["product", "quantity", "last_updated"]
-
+columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+    { name = "last_updated", dtype = "TIMESTAMP" },
+]
 [[tests.schema_objects]]
 name = "dataset.NewArrivals"
 kind = "table"
-columns = ["product", "quantity", "arrival_date"]
-
+columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+    { name = "arrival_date", dtype = "DATE" },
+]
 [tests.ready_lineage."dataset.Inventory"]
 quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
 
+### Test case
+[[tests]]
+sql = """
+merge proj.dataset.out_table
+using (
+select
+    f0 + f3.a[0].x,
+    f1.*,
+    f2.a.x
+from
+    proj.dataset.in_table
+)
+on false
+when not matched by target then
+    insert row
+when not matched by source then
+    delete
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.in_table"
+kind = "table"
+columns = [
+    {"name" = "f0", "dtype" = "int64"},
+    {"name" = "f1", "dtype" = "struct<a int64, b array<int64>>"},
+    {"name" = "f2", "dtype" = "struct<a struct<x int64, y array<int64>>>"},
+    {"name" = "f3", "dtype" = "struct<a array<struct<x int64>>>"}
+]
+[[tests.schema_objects]]
+name = "proj.dataset.out_table"
+kind = "table"
+columns = [
+    {"name" = "o1", "dtype" = "int64"},
+    {"name" = "o2", "dtype" = "int64"},
+    {"name" = "o3", "dtype" = "array<int64>"},
+    {"name" = "o4", "dtype" = "int64"}
+]
+[tests.ready_lineage."proj.dataset.out_table"]
+o1 = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
+o2 = ["proj.dataset.in_table->f1.a"]
+o3 = ["proj.dataset.in_table->f1.b"]
+o4 = ["proj.dataset.in_table->f2.a.x"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.output_table
+SELECT
+  arr_table.id,
+  items
+FROM
+  proj.dataset.array_table AS arr_table,
+  UNNEST(arr_table.array_column) AS items
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.array_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "array_column", dtype = "ARRAY<STRING>" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.output_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "item_value", dtype = "STRING" }
+]
+[tests.ready_lineage."proj.dataset.output_table"]
+id = ["proj.dataset.array_table->id"]
+item_value = ["proj.dataset.array_table->array_column[]"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.output_table
+WITH struct_to_array AS (
+  SELECT 
+    id,
+    [struct1, struct2] AS combined_structs
+  FROM proj.dataset.struct_table
+)
+SELECT
+  s.id,
+  item.field1,
+  item.field2
+FROM 
+  struct_to_array s,
+  UNNEST(s.combined_structs) AS item
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.struct_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
+    { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.output_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "field1", dtype = "STRING" },
+    { name = "field2", dtype = "INT64" }
+]
+[tests.ready_lineage."proj.dataset.output_table"]
+id = ["proj.dataset.struct_table->id"]
+field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.output_table
+WITH struct_to_array AS (
+  SELECT 
+    id,
+    [struct1, struct2] AS combined_structs
+  FROM `proj.dataset.struct_table`
+)
+SELECT
+  s.id,
+  item.field1,
+  item.field2
+FROM 
+  struct_to_array s,
+  `s`.`combined_structs` AS item
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.struct_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
+    { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.output_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "field1", dtype = "STRING" },
+    { name = "field2", dtype = "INT64" }
+]
+[tests.ready_lineage."proj.dataset.output_table"]
+id = ["proj.dataset.struct_table->id"]
+field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]

@@ -1,0 +1,22 @@
+{
+  "schema_objects": [
+    {
+      "name": "proj.dataset.struct_table",
+      "kind": "table",
+      "columns": [
+        {"name": "id", "dtype": "INT64"},
+        {"name": "struct1", "dtype": "STRUCT<field1 STRING, field2 INT64>"},
+        {"name": "struct2", "dtype": "STRUCT<field1 STRING, field2 INT64>"}
+      ]
+    },
+    {
+      "name": "proj.dataset.output_table",
+      "kind": "table",
+      "columns": [
+        {"name": "id", "dtype": "INT64"},
+        {"name": "field1", "dtype": "STRING"},
+        {"name": "field2", "dtype": "INT64"}
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use inbq::lineage::Catalog;
+use inbq::lineage::{Catalog, Column};
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -15,7 +15,7 @@ struct LineageTest {
 struct SchemaObject {
     name: String,
     kind: String,
-    columns: Vec<String>,
+    columns: Vec<Column>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,6 +35,8 @@ fn test_lineage() {
         toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in yaml");
 
     for test in test_lineage_data.tests {
+        println!("Testing parsing for SQL: {}", &test.sql);
+
         let mut schema_objects: Vec<inbq::lineage::SchemaObject> = vec![];
         for schema_object in test.schema_objects {
             schema_objects.push(inbq::lineage::SchemaObject {
@@ -47,6 +49,7 @@ fn test_lineage() {
                 columns: schema_object.columns,
             });
         }
+
         let ast =
             parse_sql(&test.sql).unwrap_or_else(|_| panic!("Could not parse sql: {:?}", &test.sql));
 

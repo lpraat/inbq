@@ -90,6 +90,9 @@ fn output_lineage(
 }
 
 fn main() -> anyhow::Result<()> {
+    use std::time::Instant;
+    let now = Instant::now();
+
     env_logger::init();
     let cli = Cli::parse();
 
@@ -149,6 +152,9 @@ fn main() -> anyhow::Result<()> {
             println!("{}", out_str);
         }
     }
+
+    let elapsed = now.elapsed();
+    log::info!("Elapsed: {:.2?}", elapsed);
 
     Ok(())
 }

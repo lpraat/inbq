@@ -2687,7 +2687,7 @@ impl<'a> Parser<'a> {
     // | "BOOL" | "BYTES" ["(" number ")"] | "STRING" ["(" number ")"]
     // | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
     // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" |  | "TIME"" | "TIMESTAMP"
-    fn parse_parameterized_bq_type(&mut self) -> anyhow::Result<ParameterizedType> {
+    pub(crate) fn parse_parameterized_bq_type(&mut self) -> anyhow::Result<ParameterizedType> {
         let peek_token = self.advance().clone();
 
         // reserved keywords
