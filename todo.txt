@@ -1,9 +1,0 @@
-- Modify error handling (we are interested only in the first error printed, since errors my be printed when trying to match grammar rules e.g. see parse_select method)
-    - add context error (e.g., see  "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`." error)
-- We are currently considering comparison operators as left associative but they are not. In bigquery this is a valid expression only if you add parentheses (x < y) is False (maybe fix after implementing pratt parsing in expressions)
-- Implement Pratt Parsing for operators
-- Extract lineage from generic function exprs
-- Add "filter" lineage
-- Make insert and merge checks optional
-- Refactor consumed lineage
-- alias.clone() -> alias.as_ref().map()
