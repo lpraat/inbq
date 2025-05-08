@@ -10,10 +10,11 @@ use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
         ArrayExpr, Ast, BinaryExpr, CreateTableStatement, Cte, Expr, FromExpr, FromPathExpr,
-        GroupingQueryExpr, InsertStatement, JoinCondition, JoinExpr, Merge, MergeInsert,
-        MergeSource, MergeStatement, MergeUpdate, ParameterizedType, ParseToken, Parser, QueryExpr,
-        QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, Statement, StructExpr, Type, UpdateStatement, When, With,
+        FunctionExpr, GroupingQueryExpr, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
+        Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, ParameterizedType,
+        ParseToken, Parser, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
+        SelectColExpr, SelectExpr, SelectQueryExpr, Statement, StructExpr, Type, UpdateStatement,
+        When, With,
     },
     scanner::{Scanner, TokenType},
 };
@@ -1144,7 +1145,7 @@ impl LineageExtractor {
         match expr {
             Expr::Binary(binary_expr) => self.binary_col_expr_lin(binary_expr)?,
             Expr::Unary(_) => todo!(),
-            Expr::Grouping(_) => todo!(),
+            Expr::Grouping(grouping_expr) => self.select_expr_col_expr_lin(&grouping_expr.expr)?,
             Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
                 let col_name = ident.clone();
                 let col_source_idx = self.get_column_source(None, &col_name)?;
@@ -1156,7 +1157,10 @@ impl LineageExtractor {
             Expr::Numeric(_) | Expr::BigNumeric(_) => {}
             Expr::Range(_) => {}
             Expr::Date(_) | Expr::Timestamp(_) | Expr::Datetime(_) | Expr::Time(_) => {}
-            Expr::Interval(_) => {}
+            Expr::Interval(interval_expr) => match interval_expr {
+                IntervalExpr::Interval { value, .. } => self.select_expr_col_expr_lin(value)?,
+                IntervalExpr::IntervalRange { .. } => {}
+            },
             Expr::Json(_) => {}
             Expr::Bool(_) => {}
             Expr::Null => {}
@@ -1169,8 +1173,24 @@ impl LineageExtractor {
                 self.struct_expr_lin(struct_expr)?;
             }
             Expr::Query(query_expr) => self.query_expr_lin(query_expr)?,
-            Expr::GenericFunction(_) => todo!(),
-            Expr::Function(_) => todo!(),
+            Expr::GenericFunction(function_expr) => {
+                for arg in &function_expr.arguments {
+                    self.select_expr_col_expr_lin(&arg.expr)?
+                }
+            }
+            Expr::Function(function_expr) => match function_expr {
+                FunctionExpr::Concat(concat_fn_expr) => {
+                    for expr in &concat_fn_expr.values {
+                        self.select_expr_col_expr_lin(expr)?;
+                    }
+                }
+                FunctionExpr::Cast(cast_fn_expr) => {
+                    self.select_expr_col_expr_lin(&cast_fn_expr.expr)?
+                }
+                FunctionExpr::SafeCast(safe_cast_fn_expr) => {
+                    self.select_expr_col_expr_lin(&safe_cast_fn_expr.expr)?
+                }
+            },
         }
 
         Ok(())

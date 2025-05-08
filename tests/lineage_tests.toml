@@ -350,3 +350,90 @@ columns = [
 id = ["proj.dataset.struct_table->id"]
 field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
 field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.output_table
+SELECT
+  id,
+  CONCAT(first_name, ' ', last_name) AS full_name,
+  CAST(numeric_value AS STRING) AS string_value,
+  CONCAT(
+    CAST(id AS STRING),
+    '_',
+    first_name,
+    '_',
+    CAST(numeric_value AS STRING)
+  ) AS composite_key
+FROM proj.dataset.input_table
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.input_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "first_name", dtype = "STRING" },
+    { name = "last_name", dtype = "STRING" },
+    { name = "numeric_value", dtype = "FLOAT64" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.output_table"
+kind = "table"
+columns = [
+    { name = "id", dtype = "INT64" },
+    { name = "full_name", dtype = "STRING" },
+    { name = "string_value", dtype = "STRING" },
+    { name = "composite_key", dtype = "STRING" }
+]
+[tests.ready_lineage."proj.dataset.output_table"]
+id = ["proj.dataset.input_table->id"]
+full_name = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->last_name"]
+string_value = ["proj.dataset.input_table->numeric_value"]
+composite_key = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.analytics_results
+SELECT
+  category,
+  COUNT(DISTINCT user_id) AS unique_users,
+  COALESCE(last_value, default_value, 0) AS normalized_value,
+  TIMESTAMP_ADD(event_time, INTERVAL duration_minutes MINUTE) AS end_time,
+  COALESCE(
+    TIMESTAMP_ADD(last_update, INTERVAL 7 DAY),
+    TIMESTAMP_ADD(creation_date, INTERVAL 30 DAY)
+  ) AS expiration_date
+FROM proj.dataset.events
+GROUP BY category, last_value, default_value, event_time, duration_minutes, last_update, creation_date
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.events"
+kind = "table"
+columns = [
+    { name = "category", dtype = "STRING" },
+    { name = "user_id", dtype = "STRING" },
+    { name = "last_value", dtype = "FLOAT64" },
+    { name = "default_value", dtype = "FLOAT64" },
+    { name = "event_time", dtype = "TIMESTAMP" },
+    { name = "duration_minutes", dtype = "INT64" },
+    { name = "last_update", dtype = "TIMESTAMP" },
+    { name = "creation_date", dtype = "TIMESTAMP" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.analytics_results"
+kind = "table"
+columns = [
+    { name = "category", dtype = "STRING" },
+    { name = "unique_users", dtype = "INT64" },
+    { name = "normalized_value", dtype = "FLOAT64" },
+    { name = "end_time", dtype = "TIMESTAMP" },
+    { name = "expiration_date", dtype = "TIMESTAMP" }
+]
+[tests.ready_lineage."proj.dataset.analytics_results"]
+category = ["proj.dataset.events->category"]
+unique_users = ["proj.dataset.events->user_id"]
+normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
+end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
+expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
