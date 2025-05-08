@@ -662,16 +662,26 @@ impl LineageExtractor {
         curr
     }
 
-    // TODO: we need to refactor this
+    fn call_func_and_consume_lineage_nodes<T>(
+        &mut self,
+        func: impl Fn(&mut LineageExtractor) -> std::result::Result<T, anyhow::Error>,
+    ) -> anyhow::Result<Vec<ArenaIndex>> {
+        let initial_stack_size = self.context.lineage_stack.len();
+        func(self)?;
+        let curr_lineage_len = self.context.lineage_stack.len();
+        Ok(self.consume_lineage_nodes(initial_stack_size, curr_lineage_len))
+    }
+
     fn consume_lineage_nodes(
         &mut self,
         initial_stack_size: usize,
         final_stack_size: usize,
     ) -> Vec<ArenaIndex> {
-        let mut lineage_nodes = vec![];
-        for _ in 0..final_stack_size - initial_stack_size {
+        let n_nodes = final_stack_size - initial_stack_size;
+        let mut lineage_nodes = Vec::with_capacity(n_nodes);
+        for _ in 0..n_nodes {
             let node_idx = self.context.lineage_stack.pop().unwrap();
-            lineage_nodes.push(node_idx);
+            lineage_nodes.push(node_idx)
         }
         lineage_nodes.reverse();
         lineage_nodes
@@ -682,12 +692,10 @@ impl LineageExtractor {
             Cte::NonRecursive(non_recursive_cte) => {
                 let cte_name = non_recursive_cte.name.identifier();
 
-                let start_lineage_len = self.context.lineage_stack.len();
-                self.query_expr_lin(&non_recursive_cte.query)?;
-                let curr_lineage_len = self.context.lineage_stack.len();
+                let consumed_lineage_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                    this.query_expr_lin(&non_recursive_cte.query)
+                })?;
 
-                let consumed_lineage_nodes =
-                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
                 let cte_idx = self.context.allocate_new_ctx_object(
                     &cte_name,
                     ContextObjectKind::Cte,
@@ -1020,10 +1028,10 @@ impl LineageExtractor {
         let mut input = vec![];
         for field in struct_expr.fields.iter() {
             let name = field.alias.as_ref().map(|tok| tok.identifier());
-            let start_lineage_len = self.context.lineage_stack.len();
-            self.select_expr_col_expr_lin(&field.expr)?;
-            let curr_lineage_len = self.context.lineage_stack.len();
-            let consumed_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+
+            let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                this.select_expr_col_expr_lin(&field.expr)
+            })?;
 
             let node_type = consumed_nodes
                 .iter()
@@ -1082,12 +1090,13 @@ impl LineageExtractor {
     }
 
     fn array_expr_lin(&mut self, array_expr: &ArrayExpr) -> anyhow::Result<ArenaIndex> {
-        let start_lineage_len = self.context.lineage_stack.len();
-        for expr in array_expr.exprs.iter() {
-            self.select_expr_col_expr_lin(expr)?;
-        }
-        let curr_lineage_len = self.context.lineage_stack.len();
-        let consumed_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            for expr in array_expr.exprs.iter() {
+                this.select_expr_col_expr_lin(expr)?;
+            }
+            Ok(())
+        })?;
+
         let node_type = consumed_nodes
             .iter()
             .find_map(|idx| {
@@ -1269,10 +1278,9 @@ impl LineageExtractor {
                 .collect::<HashSet<String>>()
         });
 
-        let start_lineage_len = self.context.lineage_stack.len();
-        self.select_expr_col_expr_lin(&col_expr.expr)?;
-        let curr_lineage_len = self.context.lineage_stack.len();
-        let consumed_nodes = self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            this.select_expr_col_expr_lin(&col_expr.expr)
+        })?;
 
         let mut new_lineage_nodes = vec![];
         for node_idx in &consumed_nodes {
@@ -1319,10 +1327,9 @@ impl LineageExtractor {
             .lineage_nodes
             .push(pending_node_idx);
 
-        let start_pending_len = self.context.lineage_stack.len();
-        self.select_expr_col_expr_lin(&col_expr.expr)?;
-        let curr_pending_len = self.context.lineage_stack.len();
-        let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            this.select_expr_col_expr_lin(&col_expr.expr)
+        })?;
 
         let first_node = consumed_nodes
             .first()
@@ -1537,11 +1544,9 @@ impl LineageExtractor {
                 );
                 self.context.push_new_ctx(ctx_objects, false);
 
-                let start_lineage_len = self.context.lineage_stack.len();
-                self.select_expr_col_expr_lin(unnest_expr.array.as_ref())?;
-                let curr_lineage_len = self.context.lineage_stack.len();
-                let consumed_nodes =
-                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+                let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                    this.select_expr_col_expr_lin(unnest_expr.array.as_ref())
+                })?;
 
                 let name = unnest_expr
                     .alias
@@ -1583,17 +1588,15 @@ impl LineageExtractor {
                 self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, false)?
             }
             FromExpr::GroupingQuery(from_grouping_query_expr) => {
-                let start_lineage_len = self.context.lineage_stack.len();
-                self.query_expr_lin(&from_grouping_query_expr.query)?;
-                let curr_lineage_len = self.context.lineage_stack.len();
-
                 let source_name = &from_grouping_query_expr
                     .alias
                     .as_ref()
                     .map(|alias| alias.identifier());
 
-                let consumed_lineage_nodes =
-                    self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+                let consumed_lineage_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                    this.query_expr_lin(&from_grouping_query_expr.query)
+                })?;
+
                 let lineage_nodes_source =
                     self.context.arena_lineage_nodes[consumed_lineage_nodes[0]].source_obj;
 
@@ -1849,12 +1852,9 @@ impl LineageExtractor {
         };
         let temp_table_idx = if let Some(ref query) = create_table_statement.query {
             // Extract the schema from the query lineage
-            let start_lineage_len = self.context.lineage_stack.len();
-            self.query_expr_lin(query)?;
-            let curr_lineage_len = self.context.lineage_stack.len();
-
             let consumed_lineage_nodes =
-                self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
+                self.call_func_and_consume_lineage_nodes(|this| this.query_expr_lin(query))?;
+
             self.context.allocate_new_ctx_object(
                 &table_name,
                 table_kind,
@@ -1990,10 +1990,9 @@ impl LineageExtractor {
                 target_table_alias
             ))?;
 
-            let start_pending_len = self.context.lineage_stack.len();
-            self.select_expr_col_expr_lin(&update_item.expr)?;
-            let curr_pending_len = self.context.lineage_stack.len();
-            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                this.select_expr_col_expr_lin(&update_item.expr)
+            })?;
 
             if !consumed_nodes.is_empty() {
                 let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
@@ -2053,12 +2052,10 @@ impl LineageExtractor {
         };
 
         if let Some(query_expr) = &insert_statement.query {
-            let start_lineage_len = self.context.lineage_stack.len();
-            self.query_expr_lin(query_expr)?;
-            let curr_lineage_len = self.context.lineage_stack.len();
-            let consumed_lineage_nodes =
-                self.consume_lineage_nodes(start_lineage_len, curr_lineage_len);
-            if consumed_lineage_nodes.len() != target_columns.len() {
+            let consumed_nodes =
+                self.call_func_and_consume_lineage_nodes(|this| this.query_expr_lin(query_expr))?;
+
+            if consumed_nodes.len() != target_columns.len() {
                 return Err(anyhow!(
                     "The number of insert columns is not equal to the number of insert values."
                 ));
@@ -2066,7 +2063,7 @@ impl LineageExtractor {
 
             target_columns
                 .iter()
-                .zip(consumed_lineage_nodes)
+                .zip(consumed_nodes)
                 .for_each(|(target_col, value)| {
                     let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
                     target_lineage_node.input.push(value);
@@ -2077,11 +2074,9 @@ impl LineageExtractor {
                 .iter()
                 .zip(insert_statement.values.as_ref().unwrap())
             {
-                let start_pending_len = self.context.lineage_stack.len();
-                self.select_expr_col_expr_lin(value)?;
-                let curr_pending_len = self.context.lineage_stack.len();
-                let consumed_nodes =
-                    self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+                let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                    this.select_expr_col_expr_lin(value)
+                })?;
 
                 let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
                 target_lineage_node.input.extend(consumed_nodes.clone());
@@ -2130,10 +2125,8 @@ impl LineageExtractor {
             target_table_obj.lineage_nodes.clone()
         };
         for (target_col, value) in target_columns.iter().zip(&merge_insert.values) {
-            let start_pending_len = self.context.lineage_stack.len();
-            self.select_expr_col_expr_lin(value)?;
-            let curr_pending_len = self.context.lineage_stack.len();
-            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            let consumed_nodes = self
+                .call_func_and_consume_lineage_nodes(|this| this.select_expr_col_expr_lin(value))?;
 
             let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
             target_lineage_node.input.extend(consumed_nodes.clone());
@@ -2187,10 +2180,9 @@ impl LineageExtractor {
                 target_table_alias
             ))?;
 
-            let start_pending_len = self.context.lineage_stack.len();
-            self.select_expr_col_expr_lin(&update_item.expr)?;
-            let curr_pending_len = self.context.lineage_stack.len();
-            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+            let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                this.select_expr_col_expr_lin(&update_item.expr)
+            })?;
 
             if !consumed_nodes.is_empty() {
                 let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
@@ -2264,37 +2256,34 @@ impl LineageExtractor {
             None
         };
 
-        let (subquery_table_id, subquery_nodes) = if let MergeSource::Subquery(query_expr) =
-            &merge_statement.source
-        {
-            let start_pending_len = self.context.lineage_stack.len();
-            self.query_expr_lin(query_expr)?;
-            let curr_pending_len = self.context.lineage_stack.len();
-            let consumed_nodes = self.consume_lineage_nodes(start_pending_len, curr_pending_len);
+        let (subquery_table_id, subquery_nodes) =
+            if let MergeSource::Subquery(query_expr) = &merge_statement.source {
+                let consumed_nodes = self
+                    .call_func_and_consume_lineage_nodes(|this| this.query_expr_lin(query_expr))?;
 
-            if let Some(alias) = &merge_statement.source_alias {
-                let new_source_name = alias.identifier();
-                let source_idx = self.context.allocate_new_ctx_object(
-                    &new_source_name,
-                    ContextObjectKind::Query,
-                    consumed_nodes
-                        .iter()
-                        .cloned()
-                        .map(|idx| {
-                            let node = &self.context.arena_lineage_nodes[idx];
-                            (node.name.clone(), node.r#type.clone(), vec![idx])
-                        })
-                        .collect(),
-                );
-                self.context
-                    .update_output_lineage_with_object_nodes(source_idx);
-                (Some(source_idx), Some(consumed_nodes))
+                if let Some(alias) = &merge_statement.source_alias {
+                    let new_source_name = alias.identifier();
+                    let source_idx = self.context.allocate_new_ctx_object(
+                        &new_source_name,
+                        ContextObjectKind::Query,
+                        consumed_nodes
+                            .iter()
+                            .cloned()
+                            .map(|idx| {
+                                let node = &self.context.arena_lineage_nodes[idx];
+                                (node.name.clone(), node.r#type.clone(), vec![idx])
+                            })
+                            .collect(),
+                    );
+                    self.context
+                        .update_output_lineage_with_object_nodes(source_idx);
+                    (Some(source_idx), Some(consumed_nodes))
+                } else {
+                    (None, Some(consumed_nodes))
+                }
             } else {
-                (None, Some(consumed_nodes))
-            }
-        } else {
-            (None, None)
-        };
+                (None, None)
+            };
 
         let source_table_id = source_table_id.or(subquery_table_id);
 
