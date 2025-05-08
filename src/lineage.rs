@@ -1405,7 +1405,7 @@ impl LineageExtractor {
         &mut self,
         from_path_expr: &FromPathExpr,
         from_tables: &mut Vec<ArenaIndex>,
-        joined_tables: &mut Vec<ArenaIndex>,
+        joined_tables: &[ArenaIndex],
         check_unnest: bool,
     ) -> anyhow::Result<()> {
         let table_name = from_path_expr.path.expr.identifier();
@@ -1559,8 +1559,7 @@ impl LineageExtractor {
                 ctx_objects.extend(
                     joined_tables
                         .iter()
-                        .cloned()
-                        .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
+                        .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx)),
                 );
                 self.context.push_new_ctx(ctx_objects, false);
 
@@ -1659,7 +1658,7 @@ impl LineageExtractor {
         self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
         self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
         if let JoinCondition::Using(using_columns) = &join_expr.cond {
-            let mut joined_table_names: Vec<String> = vec![];
+            let mut joined_table_names: Vec<&str> = vec![];
             let mut lineage_nodes = vec![];
             let from_tables_len = from_tables.len();
 
@@ -1671,11 +1670,11 @@ impl LineageExtractor {
                 // This is the first join, which corresponds to index -2 in the original from_tables
                 &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
             };
-            joined_table_names.push(left_join_table.name.clone());
+            joined_table_names.push(&left_join_table.name);
 
             let right_join_table =
                 &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
-            joined_table_names.push(right_join_table.name.clone());
+            joined_table_names.push(&right_join_table.name);
 
             let mut using_columns_added = HashSet::new();
             for col in using_columns {
@@ -1950,9 +1949,9 @@ impl LineageExtractor {
     fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
         let target_table = update_statement.table.identifier();
         let target_table_alias = if let Some(ref alias) = update_statement.alias {
-            alias.identifier()
+            &alias.identifier()
         } else {
-            target_table.clone()
+            &target_table
         };
 
         let target_table_id = self.get_table_id_from_context(&target_table);
@@ -2099,7 +2098,7 @@ impl LineageExtractor {
                 })?;
 
                 let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-                target_lineage_node.input.extend(consumed_nodes.clone());
+                target_lineage_node.input.extend(consumed_nodes);
                 self.context.output.push(*target_col);
             }
         }
@@ -2149,7 +2148,7 @@ impl LineageExtractor {
                 .call_func_and_consume_lineage_nodes(|this| this.select_expr_col_expr_lin(value))?;
 
             let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-            target_lineage_node.input.extend(consumed_nodes.clone());
+            target_lineage_node.input.extend(consumed_nodes);
             self.context.output.push(*target_col);
         }
 
@@ -2247,9 +2246,9 @@ impl LineageExtractor {
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
         let target_table = merge_statement.target_table.identifier();
         let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
-            alias.identifier()
+            &alias.identifier()
         } else {
-            target_table.clone()
+            &target_table
         };
 
         let target_table_id = self.get_table_id_from_context(&target_table);
@@ -2288,10 +2287,9 @@ impl LineageExtractor {
                         ContextObjectKind::Query,
                         consumed_nodes
                             .iter()
-                            .cloned()
                             .map(|idx| {
-                                let node = &self.context.arena_lineage_nodes[idx];
-                                (node.name.clone(), node.r#type.clone(), vec![idx])
+                                let node = &self.context.arena_lineage_nodes[*idx];
+                                (node.name.clone(), node.r#type.clone(), vec![*idx])
                             })
                             .collect(),
                     );
@@ -2318,7 +2316,7 @@ impl LineageExtractor {
                 When::Matched(when_matched) => match &when_matched.merge {
                     Merge::Update(merge_update) => self.merge_update(
                         &new_ctx,
-                        &target_table_alias,
+                        target_table_alias,
                         target_table_id,
                         merge_update,
                     )?,
@@ -2342,7 +2340,7 @@ impl LineageExtractor {
                     match &when_not_matched_by_source.merge {
                         Merge::Update(merge_update) => self.merge_update(
                             &new_ctx,
-                            &target_table_alias,
+                            target_table_alias,
                             target_table_id,
                             merge_update,
                         )?,
@@ -2482,7 +2480,7 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
                 .map(|field| StructNodeFieldType {
                     name: field
                         .name
-                        .clone()
+                        .as_ref()
                         .map_or("anonymous".to_owned(), |name| name.identifier()),
                     r#type: node_type_from_parser_type(&field.r#type, types_vec),
                     input: vec![],
@@ -2605,8 +2603,8 @@ pub fn lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
 
     // Remove duplicates
     for obj in &lineage.context.arena_objects {
-        for node_idx in obj.lineage_nodes.clone() {
-            let lineage_node = &mut lineage.context.arena_lineage_nodes[node_idx];
+        for node_idx in &obj.lineage_nodes {
+            let lineage_node = &mut lineage.context.arena_lineage_nodes[*node_idx];
             let mut set = HashSet::new();
             let mut unique_input = vec![];
             for inp_idx in &lineage_node.input {
@@ -2619,10 +2617,9 @@ pub fn lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
         }
     }
 
-    let output_lineage_nodes = lineage.context.output.clone();
     log::debug!("Output Lineage Nodes:");
-    for pending_node in output_lineage_nodes {
-        LineageNode::pretty_log_lineage_node(pending_node, &lineage.context);
+    for pending_node in &lineage.context.output {
+        LineageNode::pretty_log_lineage_node(*pending_node, &lineage.context);
     }
 
     let mut objects: IndexMap<ArenaIndex, IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
@@ -2657,7 +2654,7 @@ pub fn lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
                     })
                     .or_insert(HashSet::from([(source_obj_idx, node_idx)]));
             } else {
-                stack.extend(node.input.clone());
+                stack.extend(&node.input);
             }
         }
     }
