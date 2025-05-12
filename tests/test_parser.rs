@@ -87,6 +87,12 @@ fn test_should_parse() {
       from tmp
       "#,
         r#"
+      SELECT ARRAY(SELECT AS STRUCT 1 a, 2 b)
+      "#,
+        r#"
+      SELECT AS VALUE STRUCT(1 AS a, 2 AS b) xyz
+      "#,
+        r#"
       with tmp as (with inner_tmp as (select 1 as x) select * from inner_tmp)
       select * from tmp
       "#,

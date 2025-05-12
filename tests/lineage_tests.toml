@@ -437,3 +437,154 @@ unique_users = ["proj.dataset.events->user_id"]
 normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
 end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
 expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
+
+### Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.user_analytics
+SELECT
+  user_id,
+  -- Access nested struct fields from array elements
+  ARRAY(
+    SELECT AS STRUCT
+      event.event_id,
+      event.timestamp,
+      event.properties.page_name,
+      event.properties.session.duration,
+      ARRAY(
+        SELECT item.product_id
+        FROM UNNEST(event.properties.cart.items) AS item
+        WHERE item.quantity > 0
+      ) AS purchased_products
+    FROM UNNEST(user_events) AS event
+    WHERE event.properties.is_completed = TRUE
+  ) AS completed_events,
+  
+  -- Create new struct with fields from different nested paths
+  STRUCT(
+    profile.demographics.age AS user_age,
+    profile.demographics.country AS user_country,
+    (SELECT COUNT(DISTINCT device.device_id) FROM UNNEST(profile.devices) AS device) AS device_count,
+    profile.preferences.theme AS preferred_theme,
+    ARRAY(
+      SELECT AS STRUCT
+        cat.category_name,
+        cat.affinity_score
+      FROM UNNEST(profile.preferences.category_affinities) AS cat
+      WHERE cat.affinity_score > 0.5
+      ORDER BY cat.affinity_score DESC
+    ) AS high_affinity_categories
+  ) AS user_profile_summary,
+  
+  -- Complex expressions involving nested fields
+  (
+    SELECT 
+      SUM(item.price * item.quantity)
+    FROM UNNEST(user_events) AS event, 
+    UNNEST(event.properties.cart.items) AS item
+    WHERE event.properties.event_type = 'purchase'
+  ) AS total_spent,
+  
+  -- Build struct array derived from multiple sources
+  ARRAY(
+    SELECT AS STRUCT
+      device.device_id,
+      device.platform,
+      (
+        SELECT MAX(event.timestamp)
+        FROM UNNEST(user_events) AS event
+        WHERE event.device_id = device.device_id
+      ) AS last_active_time
+    FROM UNNEST(profile.devices) AS device
+  ) AS device_activity
+  
+FROM proj.dataset.user_data
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.user_data"
+kind = "table"
+columns = [
+    { name = "user_id", dtype = "STRING" },
+    { name = "profile", dtype = "STRUCT<demographics STRUCT<age INT64, gender STRING, country STRING>, preferences STRUCT<theme STRING, language STRING, category_affinities ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>, devices ARRAY<STRUCT<device_id STRING, platform STRING, model STRING, last_used_date DATE>>>" },
+    { name = "user_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, device_id STRING, properties STRUCT<event_type STRING, page_name STRING, is_completed BOOL, session STRUCT<session_id STRING, duration INT64>, cart STRUCT<cart_id STRING, items ARRAY<STRUCT<product_id STRING, quantity INT64, price FLOAT64>>>>>>" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.user_analytics"
+kind = "table"
+columns = [
+    { name = "user_id", dtype = "STRING" },
+    { name = "completed_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, page_name STRING, duration INT64, purchased_products ARRAY<STRING>>>" },
+    { name = "user_profile_summary", dtype = "STRUCT<user_age INT64, user_country STRING, device_count INT64, preferred_theme STRING, high_affinity_categories ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>" },
+    { name = "total_spent", dtype = "FLOAT64" },
+    { name = "device_activity", dtype = "ARRAY<STRUCT<device_id STRING, platform STRING, last_active_time TIMESTAMP>>" }
+]
+[tests.ready_lineage."proj.dataset.user_analytics"]
+user_id = ["proj.dataset.user_data->user_id"]
+completed_events = [
+    "proj.dataset.user_data->user_events[].event_id",
+    "proj.dataset.user_data->user_events[].timestamp",
+    "proj.dataset.user_data->user_events[].properties.page_name",
+    "proj.dataset.user_data->user_events[].properties.session.duration",
+    "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
+    # "proj.dataset.user_data->user_events[].properties.is_completed" -- filter lineage
+]
+user_profile_summary = [
+    "proj.dataset.user_data->profile.demographics.age",
+    "proj.dataset.user_data->profile.demographics.country",
+    "proj.dataset.user_data->profile.devices[].device_id",
+    "proj.dataset.user_data->profile.preferences.theme",
+    "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
+    "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
+]
+total_spent = [
+    # "proj.dataset.user_data->user_events[].properties.event_type", -- filter lineage
+    "proj.dataset.user_data->user_events[].properties.cart.items[].price",
+    "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+]
+device_activity = [
+    "proj.dataset.user_data->profile.devices[].device_id",
+    "proj.dataset.user_data->profile.devices[].platform",
+    "proj.dataset.user_data->user_events[].timestamp",
+    # "proj.dataset.user_data->user_events[].device_id" -- filter lineage
+]
+
+### Test case
+[[tests]]
+sql = """
+insert into `proj.dataset.output_table`
+with tmp as (
+    select as struct a, b
+    from proj.dataset.input_table
+)
+select
+    a,b
+from tmp;
+
+insert into `proj.dataset.output_table`
+with tmp as (
+    select as value struct(c, d)
+    from proj.dataset.input_table
+)
+select
+    *
+from tmp;
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.input_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "INT64" },
+    { name = "b", dtype = "INT64" },
+    { name = "c", dtype = "INT64" },
+    { name = "d", dtype = "INT64" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.output_table"
+kind = "table"
+columns = [
+    { name = "o1", dtype = "INT64" },
+    { name = "o2", dtype = "INT64" },
+]
+[tests.ready_lineage."proj.dataset.output_table"]
+o1 = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
+o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]

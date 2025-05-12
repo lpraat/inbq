@@ -259,9 +259,15 @@ pub enum IntervalPart {
 pub enum FunctionExpr {
     // list of known functions here
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
+    Array(ArrayFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayFunctionExpr {
+    pub query: QueryExpr,
 }
 
 #[derive(Debug, Clone)]
@@ -464,6 +470,8 @@ pub struct RecursiveCte {
 
 #[derive(Debug, Clone)]
 pub struct Select {
+    pub distinct: bool,
+    pub table_value: Option<SelectTableValue>,
     pub exprs: Vec<SelectExpr>,
     pub from: Option<From>,
     pub r#where: Option<Where>,
@@ -471,6 +479,12 @@ pub struct Select {
     pub having: Option<Having>,
     pub qualify: Option<Qualify>,
     pub window: Option<Window>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SelectTableValue {
+    Struct,
+    Value,
 }
 
 #[derive(Debug, Clone)]
@@ -1509,9 +1523,11 @@ impl<'a> Parser<'a> {
         Ok(order_by_exprs)
     }
 
-    // TODO: add all distinct
     // select ->
-    // "SELECT" select_col_expr [","] (select_col_expr [","])*
+    // "SELECT"
+    // [("ALL" | "DISTINCT")]
+    // ["AS" ("STRUCT" | "VALUE")]
+    // select_col_expr [","] (select_col_expr [","])*
     // ["FROM" from_expr]
     // ["WHERE" where_expr]
     // ["GROUP BY" group_by_expr]
@@ -1520,6 +1536,22 @@ impl<'a> Parser<'a> {
     // ["WINDOW" window]
     fn parse_select(&mut self) -> anyhow::Result<Select> {
         self.consume(TokenTypeVariant::Select)?;
+
+        let distinct = self.match_token_type(TokenTypeVariant::Distinct);
+        self.match_token_type(TokenTypeVariant::All);
+        let table_value = if self.match_token_type(TokenTypeVariant::As) {
+            if self.match_token_type(TokenTypeVariant::Struct) {
+                Some(SelectTableValue::Struct)
+            } else if self.match_non_reserved_keyword("value") {
+                Some(SelectTableValue::Value)
+            } else {
+                self.error(self.peek(), "Expected one of: `VALUE` or `STRUCT`.");
+                return Err(anyhow!(ParseError));
+            }
+        } else {
+            None
+        };
+
         let mut select_exprs = vec![];
         let col_expr = self.parse_select_expr()?;
         select_exprs.push(col_expr);
@@ -1609,6 +1641,8 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Select {
+            distinct,
+            table_value,
             exprs: select_exprs,
             from,
             r#where,
@@ -1775,7 +1809,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // TODO: add FROM UNNEST
     // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
@@ -2351,7 +2384,7 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // array_expr -> ["ARRAY" [array_type] "[" expr ("," expr)* "]"
+    // array_expr -> "ARRAY" ([array_type] "[" expr ("," expr)* "]" | "(" query_expr ")")
     fn parse_array_expr(&mut self) -> anyhow::Result<Expr> {
         let mut array_type: Option<Type> = None;
         if self.match_token_type(TokenTypeVariant::Array)
@@ -2829,6 +2862,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // array_fn -> "ARRAY" "(" query_expr ")"
+    fn parse_array_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Array)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let query = self.parse_query_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(FunctionExpr::Array(ArrayFunctionExpr {
+            query,
+        })))
+    }
+
     // concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
     fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
@@ -3072,62 +3116,74 @@ impl<'a> Parser<'a> {
             TokenType::Struct => {
                 return self.parse_struct_expr();
             }
-            TokenType::LeftSquare | TokenType::Array => {
+            TokenType::LeftSquare => {
                 return self.parse_array_expr();
+            }
+            TokenType::Array => {
+                if self.peek_next_i(1).kind == TokenType::LeftParen {
+                    return self.parse_array_fn_expr();
+                } else {
+                    return self.parse_array_expr();
+                }
             }
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::Identifier(ident) => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
                     return self.parse_function_expr();
-                } else if ident.to_lowercase() == "date" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(date_str) => Expr::Date(date_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "timestamp" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "datetime" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "time" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(date_str) => Expr::Time(date_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "numeric" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "bignumeric" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
-                        _ => unreachable!(),
-                    }
-                } else if ident.to_lowercase() == "json" {
-                    self.advance();
-                    let curr = self.consume(TokenTypeVariant::String)?;
-                    match &curr.kind {
-                        TokenType::String(json_str) => Expr::Json(json_str.clone()),
-                        _ => unreachable!(),
+                } else if self.peek_prev().kind != TokenType::Dot {
+                    if ident.to_lowercase() == "date" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(date_str) => Expr::Date(date_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "timestamp" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "datetime" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "time" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(date_str) => Expr::Time(date_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "numeric" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "bignumeric" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else if ident.to_lowercase() == "json" {
+                        self.advance();
+                        let curr = self.consume(TokenTypeVariant::String)?;
+                        match &curr.kind {
+                            TokenType::String(json_str) => Expr::Json(json_str.clone()),
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        self.advance();
+                        Expr::Identifier(ident)
                     }
                 } else {
                     self.advance();
