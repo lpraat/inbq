@@ -262,6 +262,12 @@ fn test_should_parse() {
       FROM UNNEST([0, 2, 4, 4, 5]) AS x;
       "#,
         r#"
+      select 1 + case x when x > 0 then 1 else 2 end;
+      "#,
+        r#"
+      select 1 + case when true then 1 else 2 end
+      "#,
+        r#"
       INSERT dataset.Inventory (product, quantity)
       VALUES('top load washer', 10),
             ('front load washer', 20),

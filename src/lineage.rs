@@ -1337,6 +1337,16 @@ impl LineageExtractor {
                 self.struct_expr_lin(struct_expr)?;
             }
             Expr::Query(query_expr) => self.query_expr_lin(query_expr, expand_value_table)?,
+            Expr::Case(case_expr) => {
+                if let Some(case) = &case_expr.case {
+                    self.select_expr_col_expr_lin(case, expand_value_table)?;
+                }
+                for (when, then) in &case_expr.when_thens {
+                    self.select_expr_col_expr_lin(when, expand_value_table)?;
+                    self.select_expr_col_expr_lin(then, expand_value_table)?;
+                }
+                self.select_expr_col_expr_lin(&case_expr.r#else, expand_value_table)?;
+            }
             Expr::GenericFunction(function_expr) => {
                 for arg in &function_expr.arguments {
                     self.select_expr_col_expr_lin(&arg.expr, expand_value_table)?

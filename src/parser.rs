@@ -218,8 +218,16 @@ pub enum Expr {
     Null,
     Star,
     Query(QueryExpr),
+    Case(CaseExpr),
     GenericFunction(Box<GenericFunctionExpr>),
     Function(FunctionExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct CaseExpr {
+    pub case: Option<Box<Expr>>,
+    pub when_thens: Vec<(Expr, Expr)>,
+    pub r#else: Box<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -3089,6 +3097,42 @@ impl<'a> Parser<'a> {
         })))
     }
 
+    // case_expr -> "CASE" ("WHEN" expr "THEN" expr)+ "ELSE" expr "END"
+    fn parse_case_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Case)?;
+
+        let case = if self.check_token_type(TokenTypeVariant::When) {
+            None
+        } else {
+            Some(Box::new(self.parse_expr()?))
+        };
+
+        let mut when_thens = vec![];
+
+        loop {
+            self.consume(TokenTypeVariant::When)?;
+            let when_expr = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Then)?;
+            let then_expr = self.parse_expr()?;
+
+            when_thens.push((when_expr, then_expr));
+
+            if self.match_token_type(TokenTypeVariant::Else) {
+                break;
+            }
+        }
+
+        let r#else = self.parse_expr()?;
+
+        self.consume(TokenTypeVariant::End)?;
+
+        Ok(Expr::Case(CaseExpr {
+            case,
+            when_thens,
+            r#else: Box::new(r#else),
+        }))
+    }
+
     // primary_expr ->
     // "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
     // | NUMERIC "Number" | BIGNUMERIC "Number"
@@ -3096,6 +3140,7 @@ impl<'a> Parser<'a> {
     // | "RANGE" "<" bq_parameterized_type ">" "String"
     // | interval_expr | json_expr
     // | array_expr | struct_expr | struct_tuple_expr
+    // | case_expr
     // | function_expr
     // | "(" expression ")" | "(" query_expr ")"
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
@@ -3126,6 +3171,7 @@ impl<'a> Parser<'a> {
                     return self.parse_array_expr();
                 }
             }
+            TokenType::Case => self.parse_case_expr()?,
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::Identifier(ident) => {
