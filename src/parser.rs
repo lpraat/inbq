@@ -1,5 +1,4 @@
 use core::panic;
-use std::fmt::Display;
 
 use anyhow::anyhow;
 use strum::IntoDiscriminant;
@@ -454,7 +453,6 @@ pub struct Limit {
 #[derive(Debug, Clone)]
 pub struct With {
     pub ctes: Vec<Cte>,
-    pub is_recursive: bool, // TODO: we can eliminate this field
 }
 
 #[derive(Debug, Clone)]
@@ -712,17 +710,6 @@ impl ParseToken {
     }
 }
 
-// TODO: make this a real error
-#[derive(Debug)]
-struct ParseError;
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ParseError")
-    }
-}
-
-// TODO: this struct should own the scanner and use it
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
     curr: usize,
@@ -818,8 +805,7 @@ impl<'a> Parser<'a> {
             Ok(self.advance())
         } else {
             let err_msg = format!("Expected `{}`.", value.to_uppercase());
-            self.error(self.peek(), &err_msg);
-            Err(anyhow!(ParseError))
+            Err(anyhow!(self.error(self.peek(), &err_msg)))
         }
     }
 
@@ -834,8 +820,10 @@ impl<'a> Parser<'a> {
             .map(|el| format!("`{}`", el.to_uppercase()))
             .collect::<Vec<String>>()
             .join(" or ");
-        self.error(self.peek(), &format!("Expected one of: {}.", err_msg));
-        Err(anyhow!(ParseError))
+        Err(anyhow!(self.error(
+            self.peek(),
+            &format!("Expected one of: {}.", err_msg)
+        )))
     }
 
     fn consume(&mut self, token_type: TokenTypeVariant) -> anyhow::Result<&Token> {
@@ -843,8 +831,7 @@ impl<'a> Parser<'a> {
             Ok(self.advance())
         } else {
             let err_msg = format!("Expected `{}`.", token_type.variant_str());
-            self.error(self.peek(), &err_msg);
-            Err(anyhow!(ParseError))
+            Err(anyhow!(self.error(self.peek(), &err_msg)))
         }
     }
 
@@ -873,31 +860,20 @@ impl<'a> Parser<'a> {
             .map(|el| format!("`{}`", el.variant_str()))
             .collect::<Vec<String>>()
             .join(" or ");
-        self.error(self.peek(), &format!("Expected one of: {}.", err_msg));
-        Err(anyhow!(ParseError))
+        Err(anyhow!(self.error(
+            self.peek(),
+            &format!("Expected one of: {}.", err_msg)
+        )))
     }
 
-    fn error(&self, token: &Token, message: &str) {
-        if token.kind == TokenType::Eof {
-            self.report(token.line, token.col, "at end", message);
-        } else {
-            self.report(
-                token.line,
-                token.col,
-                &format!("at '{}'", token.lexeme),
-                message,
-            );
-        }
-    }
-
-    fn report(&self, line: u32, col: u32, location: &str, message: &str) {
-        log::debug!(
+    fn error(&self, token: &Token, message: &str) -> String {
+        format!(
             "[line {}, col {}] Error {}: {}",
-            line,
-            col,
-            location,
+            token.line,
+            token.col,
+            &format!("at '{}'", token.lexeme),
             message
-        );
+        )
     }
 
     // query -> query_statement (; query_statement [";"])*
@@ -926,14 +902,13 @@ impl<'a> Parser<'a> {
                         "update" => self.parse_update_statement()?,
                         "truncate" => self.parse_truncate_statement()?,
                         _ => {
-                            self.error(
+                            return Err(anyhow!(self.error(
                                 &peek,
                                 &format!(
                                     "Unexpected non reserved keyword: `{}`.",
                                     non_reserved_keyword
                                 ),
-                            );
-                            return Err(anyhow!(ParseError));
+                            )));
                         }
                     }
                 }
@@ -1452,7 +1427,7 @@ impl<'a> Parser<'a> {
     // non_recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr ")"
     // recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr "UNION" "ALL" query_expr ")"
     fn parse_with_expr(&mut self) -> anyhow::Result<With> {
-        let is_recursive = self.match_token_type(TokenTypeVariant::Recursive);
+        self.match_token_type(TokenTypeVariant::Recursive);
         let mut ctes = vec![];
         loop {
             let cte_name = self.consume_identifier()?.clone();
@@ -1464,7 +1439,7 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        Ok(With { ctes, is_recursive })
+        Ok(With { ctes })
     }
 
     fn parse_cte(&mut self, name: &Token) -> anyhow::Result<Cte> {
@@ -1553,8 +1528,9 @@ impl<'a> Parser<'a> {
             } else if self.match_non_reserved_keyword("value") {
                 Some(SelectTableValue::Value)
             } else {
-                self.error(self.peek(), "Expected one of: `VALUE` or `STRUCT`.");
-                return Err(anyhow!(ParseError));
+                return Err(anyhow!(
+                    self.error(self.peek(), "Expected one of: `VALUE` or `STRUCT`.")
+                ));
             }
         } else {
             None
@@ -1581,23 +1557,20 @@ impl<'a> Parser<'a> {
             }
 
             if self.check_token_type(TokenTypeVariant::Select) {
-                self.error(self.peek(), "Expected `;`.");
-                return Err(anyhow!(ParseError));
+                return Err(anyhow!(self.error(self.peek(), "Expected `;`.")));
             }
 
             match self.parse_select_expr() {
                 Ok(col_expr) => {
                     if self.source_tokens[last_position].kind != TokenType::Comma {
-                        self.error(self.peek_prev(), "Expected `,`.");
-                        return Err(anyhow!(ParseError));
+                        return Err(anyhow!(self.error(self.peek_prev(), "Expected `,`.")));
                     }
                     select_exprs.push(col_expr);
                     comma_matched = self.match_token_type(TokenTypeVariant::Comma);
                     last_position = self.curr - (comma_matched as usize);
                 }
                 Err(_) => {
-                    self.error(self.peek(), "Expected expression.");
-                    return Err(anyhow!(ParseError));
+                    return Err(anyhow!(self.error(self.peek(), "Expected expression.")));
                 }
             }
         }
@@ -1671,8 +1644,7 @@ impl<'a> Parser<'a> {
 
         let expr = match self.parse_expr() {
             Err(_) => {
-                self.error(self.peek(), "Expected Expression.");
-                return Err(anyhow!(ParseError));
+                return Err(anyhow!(self.error(self.peek(), "Expected Expression.")));
             }
             Ok(expr) => expr,
         };
@@ -1812,8 +1784,7 @@ impl<'a> Parser<'a> {
                 using_tokens.into_iter().map(ParseToken::Single).collect(),
             ))
         } else {
-            self.error(self.peek(), "Expected `ON` or `USING`.");
-            return Err(anyhow!(ParseError));
+            return Err(anyhow!(self.error(self.peek(), "Expected `ON` or `USING`.")));
         }
     }
 
@@ -1849,10 +1820,7 @@ impl<'a> Parser<'a> {
                             query: Box::new(parse_from_expr),
                         }))
                     }
-                    _ => {
-                        self.error(self.peek(), "Expected `JOIN`.");
-                        Err(anyhow!(ParseError))
-                    }
+                    _ => Err(anyhow!(self.error(self.peek(), "Expected `JOIN`."))),
                 }
             }
         } else if self.check_token_type(TokenTypeVariant::Unnest) {
@@ -2667,12 +2635,11 @@ impl<'a> Parser<'a> {
                 Ok(self.parse_array_type()?)
             }
             _ => {
-                self.error(
+                Err(anyhow!( self.error(
                     &peek_token,
                     "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
                      `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
-                );
-                Err(anyhow!(ParseError))
+                )))
             }
         }
     }
@@ -2860,12 +2827,11 @@ impl<'a> Parser<'a> {
                 Ok(self.parse_parameterized_array_type()?)
             }
             _ => {
-                self.error(
+                Err(anyhow!( self.error(
                     &peek_token,
                     "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
                      `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
-                );
-                Err(anyhow!(ParseError))
+                )))
             }
         }
     }
@@ -3291,8 +3257,7 @@ impl<'a> Parser<'a> {
             // Functions whose name is a reserved keyword
             TokenType::Cast => self.parse_cast_fn_expr()?,
             _ => {
-                self.error(&peek_token, "Expected Expression.");
-                return Err(anyhow!(ParseError));
+                return Err(anyhow!(self.error(&peek_token, "Expected Expression.")));
             }
         };
 
@@ -3305,18 +3270,15 @@ pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
 
     let mut scanner = Scanner::new(sql);
 
-    let tokens = scanner.scan();
-
-    // TODO: just use a result also in the Scanner
-    if scanner.had_error {
-        log::debug!("Exiting. Found error while scanning.");
-        return Err(anyhow!("scanner error"));
-    }
+    scanner.scan()?;
 
     log::debug!("Tokens:");
-    tokens.iter().for_each(|tok| log::debug!("{:?}", tok));
+    scanner
+        .tokens()
+        .iter()
+        .for_each(|tok| log::debug!("{:?}", tok));
 
-    let mut parser = Parser::new(&tokens);
+    let mut parser = Parser::new(scanner.tokens());
     let ast = parser.parse()?;
     log::debug!("AST: {:?}", ast);
     Ok(ast)

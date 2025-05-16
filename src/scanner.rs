@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use strum_macros::EnumDiscriminants;
 
 #[derive(PartialEq, Clone, Debug, EnumDiscriminants)]
@@ -293,7 +294,6 @@ pub struct Scanner {
     current: usize,
     line: u32,
     col: u32,
-    pub(crate) had_error: bool,
     open_type_brackets: Option<u32>,
 }
 
@@ -306,9 +306,12 @@ impl Scanner {
             current: 0,
             line: 1,
             col: 0,
-            had_error: false,
             open_type_brackets: None,
         }
+    }
+
+    pub fn tokens(&self) -> &Vec<Token> {
+        &self.tokens
     }
 
     fn advance(&mut self) -> char {
@@ -388,7 +391,6 @@ impl Scanner {
         self.current = 0;
         self.col = 1;
         self.line = 1;
-        self.had_error = false;
     }
 
     fn new_line(&mut self) {
@@ -396,11 +398,11 @@ impl Scanner {
         self.col = 1;
     }
 
-    pub fn scan(&mut self) -> Vec<Token> {
+    pub fn scan(&mut self) -> anyhow::Result<()> {
         self.reset();
         while self.current < self.source_chars.len() {
             self.start = self.current;
-            self.scan_token();
+            self.scan_token()?;
         }
         self.tokens.push(Token {
             kind: TokenType::Eof,
@@ -408,7 +410,8 @@ impl Scanner {
             line: self.line,
             col: self.col,
         });
-        self.tokens.clone()
+
+        Ok(())
     }
 
     fn is_raw_string(&mut self, c: char) -> bool {
@@ -432,12 +435,11 @@ impl Scanner {
             && (next_next_c == '\'' || next_next_c == '"')
     }
 
-    fn scan_string(&mut self, delimiter: char) {
+    fn scan_string(&mut self, delimiter: char) -> anyhow::Result<()> {
         loop {
             let peek_char = self.peek();
             if peek_char == '\0' {
-                self.error("Found unterminated string");
-                break;
+                return Err(anyhow!(self.error_str("Found unterminated string")));
             }
             let escaped = self.peek_prev().map_or(false, |prev| {
                 prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
@@ -447,14 +449,14 @@ impl Scanner {
             }
             self.advance();
         }
+        Ok(())
     }
 
-    fn scan_triple_quoted_string(&mut self, delimiter: char) {
+    fn scan_triple_quoted_string(&mut self, delimiter: char) -> anyhow::Result<()> {
         loop {
             let peek_char = self.peek();
             if peek_char == '\0' {
-                self.error("Found unterminated string");
-                break;
+                return Err(anyhow!(self.error_str("Found unterminated string")));
             }
             let escaped = self.peek_prev().map_or(false, |prev| {
                 prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
@@ -472,6 +474,7 @@ impl Scanner {
             }
             self.advance();
         }
+        Ok(())
     }
 
     fn string_slice(&mut self, start_offset: usize, end_offset: usize) -> String {
@@ -480,7 +483,7 @@ impl Scanner {
             .collect::<String>()
     }
 
-    fn match_number(&mut self) {
+    fn match_number(&mut self) -> anyhow::Result<()> {
         let mut found_dot = false;
         let mut found_e = false;
         loop {
@@ -497,30 +500,26 @@ impl Scanner {
 
             if peek_char == '.' {
                 if found_dot || found_e {
-                    self.error("Found invalid number");
-                    break;
+                    return Err(anyhow!(self.error_str("Found invalid number")));
                 }
                 found_dot = true;
                 self.advance();
             } else if peek_char == 'e' || peek_char == 'E' {
                 if found_e {
-                    self.error("Found invalid number");
-                    break;
+                    return Err(anyhow!(self.error_str("Found invalid number")));
                 }
                 found_e = true;
                 let peek_next_char = self.peek_next_i(1);
                 if peek_next_char == '+' || peek_next_char == '-' {
                     self.advance();
                     if !(self.peek_next_i(1).is_ascii_digit()) {
-                        self.error("Found invalid number");
-                        break;
+                        return Err(anyhow!(self.error_str("Found invalid number")));
                     }
                     self.advance();
                 } else if peek_next_char.is_ascii_digit() {
                     self.advance();
                 } else {
-                    self.error("Found invalid number");
-                    break;
+                    return Err(anyhow!(self.error_str("Found invalid number")));
                 }
             } else if peek_char.is_ascii_digit() {
                 self.advance();
@@ -533,54 +532,64 @@ impl Scanner {
                 break;
             }
         }
+
+        Ok(())
     }
 
-    fn match_string(&mut self, delimiter: char) {
-        self.scan_string(delimiter);
+    fn match_string(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_string(delimiter)?;
         let str_slice = self.string_slice(0, 0);
-        self.add_token(TokenType::String(str_slice))
+        self.add_token(TokenType::String(str_slice));
+        Ok(())
     }
 
-    fn match_triple_quoted_string(&mut self, delimiter: char) {
-        self.scan_triple_quoted_string(delimiter);
+    fn match_triple_quoted_string(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_triple_quoted_string(delimiter)?;
         let str_slice = self.string_slice(2, 2);
-        self.add_token(TokenType::String(str_slice))
+        self.add_token(TokenType::String(str_slice));
+        Ok(())
     }
 
-    fn match_bytes(&mut self, delimiter: char) {
-        self.scan_string(delimiter);
+    fn match_bytes(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_string(delimiter)?;
         let str_slice = self.string_slice(1, 0);
-        self.add_token(TokenType::Bytes(str_slice))
+        self.add_token(TokenType::Bytes(str_slice));
+        Ok(())
     }
 
-    fn match_triple_quoted_bytes(&mut self, delimiter: char) {
-        self.scan_triple_quoted_string(delimiter);
+    fn match_triple_quoted_bytes(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_triple_quoted_string(delimiter)?;
         let str_slice = self.string_slice(3, 2);
-        self.add_token(TokenType::Bytes(str_slice))
+        self.add_token(TokenType::Bytes(str_slice));
+        Ok(())
     }
 
-    fn match_raw_bytes(&mut self, delimiter: char) {
-        self.scan_string(delimiter);
+    fn match_raw_bytes(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_string(delimiter)?;
         let str_slice = self.string_slice(2, 0);
-        self.add_token(TokenType::RawBytes(str_slice))
+        self.add_token(TokenType::RawBytes(str_slice));
+        Ok(())
     }
 
-    fn match_triple_quoted_raw_bytes(&mut self, delimiter: char) {
-        self.scan_triple_quoted_string(delimiter);
+    fn match_triple_quoted_raw_bytes(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_triple_quoted_string(delimiter)?;
         let str_slice = self.string_slice(4, 2);
-        self.add_token(TokenType::RawBytes(str_slice))
+        self.add_token(TokenType::RawBytes(str_slice));
+        Ok(())
     }
 
-    fn match_raw_string(&mut self, delimiter: char) {
-        self.scan_string(delimiter);
+    fn match_raw_string(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_string(delimiter)?;
         let str_slice = self.string_slice(1, 0);
-        self.add_token(TokenType::RawString(str_slice))
+        self.add_token(TokenType::RawString(str_slice));
+        Ok(())
     }
 
-    fn match_triple_quoted_raw_string(&mut self, delimiter: char) {
-        self.scan_triple_quoted_string(delimiter);
+    fn match_triple_quoted_raw_string(&mut self, delimiter: char) -> anyhow::Result<()> {
+        self.scan_triple_quoted_string(delimiter)?;
         let str_slice = self.string_slice(3, 2);
-        self.add_token(TokenType::RawString(str_slice))
+        self.add_token(TokenType::RawString(str_slice));
+        Ok(())
     }
 
     fn match_keyword_or_identifier(&mut self) {
@@ -703,7 +712,7 @@ impl Scanner {
         }
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> anyhow::Result<()> {
         let curr_char = self.advance();
         match curr_char {
             '(' => self.add_token(TokenType::LeftParen),
@@ -717,7 +726,7 @@ impl Scanner {
             '.' => {
                 let peek_char = self.peek();
                 if peek_char.is_ascii_digit() || peek_char == '.' {
-                    self.match_number();
+                    self.match_number()?;
                 } else {
                     self.add_token(TokenType::Dot);
                 }
@@ -727,12 +736,15 @@ impl Scanner {
             '/' => {
                 if self.match_char('*') {
                     loop {
+                        if self.peek() == '\0' {
+                            return Err(anyhow!(self.error_str("Found unterminated comment")));
+                        }
                         if self.peek() == '\n' {
                             self.new_line();
                         }
                         let peek_chars = self.n_peek(2);
-                        if peek_chars.is_none()
-                            || peek_chars
+                        if peek_chars.is_some()
+                            && peek_chars
                                 .unwrap()
                                 .iter()
                                 .zip("*/".chars())
@@ -840,9 +852,9 @@ impl Scanner {
                 if peek == c && peek == self.peek_next_i(1) {
                     self.advance();
                     self.advance();
-                    self.match_triple_quoted_string(c);
+                    self.match_triple_quoted_string(c)?;
                 } else {
-                    self.match_string(c);
+                    self.match_string(c)?;
                 }
             }
 
@@ -853,10 +865,10 @@ impl Scanner {
                     self.advance();
                     self.advance();
                     let delimiter = self.advance();
-                    self.match_triple_quoted_raw_string(delimiter);
+                    self.match_triple_quoted_raw_string(delimiter)?;
                 } else {
                     let delimiter = self.advance();
-                    self.match_raw_string(delimiter);
+                    self.match_raw_string(delimiter)?;
                 }
             }
 
@@ -866,10 +878,10 @@ impl Scanner {
                 if self.peek() == peek_next && peek_next == self.peek_next_i(2) {
                     self.advance();
                     let delimiter = self.advance();
-                    self.match_triple_quoted_bytes(delimiter);
+                    self.match_triple_quoted_bytes(delimiter)?;
                 } else {
                     let delimiter = self.advance();
-                    self.match_bytes(delimiter);
+                    self.match_bytes(delimiter)?;
                 }
             }
 
@@ -881,17 +893,17 @@ impl Scanner {
                     self.advance();
                     self.advance();
                     let delimiter = self.advance();
-                    self.match_triple_quoted_raw_bytes(delimiter);
+                    self.match_triple_quoted_raw_bytes(delimiter)?;
                 } else {
                     self.advance();
                     let delimiter = self.advance();
-                    self.match_raw_bytes(delimiter);
+                    self.match_raw_bytes(delimiter)?;
                 }
             }
 
             // numeric
             c if c.is_ascii_digit() => {
-                self.match_number();
+                self.match_number()?;
             }
 
             // Keywords and identifiers
@@ -906,7 +918,7 @@ impl Scanner {
                     if curr_char == '`' {
                         let quoted_ident_end_idx = self.current - 1;
                         if quoted_ident_end_idx == quoted_ident_start_idx + 1 {
-                            self.error("Found empty quoted identifier.");
+                            return Err(anyhow!(self.error_str("Found empty quoted identifier.")));
                         }
                         self.add_token(TokenType::QuotedIdentifier(
                             self.source_chars[(quoted_ident_start_idx + 1)..quoted_ident_end_idx]
@@ -916,23 +928,27 @@ impl Scanner {
                         break;
                     }
                     if self.peek() == '\0' {
-                        self.error("Found unterminated quoted identifier");
-                        break;
+                        return Err(anyhow!(
+                            self.error_str("Found unterminated quoted identifier")
+                        ));
                     }
                 }
             }
 
             _ => {
-                self.error(&format!(
+                return Err(anyhow!(self.error_str(&format!(
                     "Found unexpected character while scanning: {}",
                     curr_char
-                ));
+                ))))
             }
         }
+        Ok(())
     }
 
-    fn error(&mut self, error: &str) {
-        self.had_error = true;
-        log::debug!("[line: {}, col: {}] {}", self.line, self.col, error)
+    fn error_str(&mut self, error: &str) -> String {
+        format!(
+            "[line: {}, col: {}] Scanner error: {}",
+            self.line, self.col, error
+        )
     }
 }

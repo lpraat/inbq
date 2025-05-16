@@ -2699,7 +2699,6 @@ pub struct Lineage {
     pub ready: ReadyLineage,
 }
 
-// TODO: impl From
 fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) -> NodeType {
     let r#type = match param_type {
         Type::Array(r#type) => NodeType::Array(Box::new(ArrayNodeType {
@@ -2739,7 +2738,6 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
     r#type
 }
 
-// TODO: impl From
 fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> NodeType {
     match param_type {
         ParameterizedType::Array(parameterized_type) => NodeType::Array(Box::new(ArrayNodeType {
@@ -2776,10 +2774,13 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
 
 fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
     let mut scanner = Scanner::new(&column.dtype);
-    let tokens = scanner.scan();
-    log::debug!("Tokens:");
-    tokens.iter().for_each(|tok| log::debug!("{:?}", tok));
-    let mut parser = Parser::new(&tokens);
+    scanner.scan()?;
+    log::debug!("Data Type Tokens:");
+    scanner
+        .tokens()
+        .iter()
+        .for_each(|tok| log::debug!("{:?}", tok));
+    let mut parser = Parser::new(scanner.tokens());
     let r#type = parser.parse_parameterized_bq_type()?;
     Ok(node_type_from_parser_parameterized_type(&r#type))
 }

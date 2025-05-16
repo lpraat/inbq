@@ -97,6 +97,171 @@ c = ["proj.dat.t2->c"]
 ### Test case
 [[tests]]
 sql = """
+INSERT INTO proj.dataset.employee_department_report
+SELECT
+  d.department_id,
+  d.department_name,
+  location_id,
+  l.city,
+  l.country,
+  COUNT(e.employee_id) AS employee_count,
+  AVG(e.salary) AS avg_salary
+FROM
+  proj.dataset.employees e
+RIGHT JOIN
+  proj.dataset.departments d
+USING
+  (department_id, location_id)
+JOIN
+  proj.dataset.locations l
+USING
+  (location_id)
+GROUP BY
+  d.department_id, d.department_name, d.location_id, l.city, l.country
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.employees"
+kind = "table"
+columns = [
+    { name = "employee_id", dtype = "INT64" },
+    { name = "first_name", dtype = "STRING" },
+    { name = "last_name", dtype = "STRING" },
+    { name = "department_id", dtype = "INT64" },
+    { name = "location_id", dtype = "INT64" },
+    { name = "salary", dtype = "FLOAT64" },
+    { name = "hire_date", dtype = "DATE" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.departments"
+kind = "table"
+columns = [
+    { name = "department_id", dtype = "INT64" },
+    { name = "department_name", dtype = "STRING" },
+    { name = "location_id", dtype = "INT64" },
+    { name = "manager_id", dtype = "INT64" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.locations"
+kind = "table"
+columns = [
+    { name = "location_id", dtype = "INT64" },
+    { name = "street_address", dtype = "STRING" },
+    { name = "city", dtype = "STRING" },
+    { name = "state", dtype = "STRING" },
+    { name = "country", dtype = "STRING" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.employee_department_report"
+kind = "table"
+columns = [
+    { name = "department_id", dtype = "INT64" },
+    { name = "department_name", dtype = "STRING" },
+    { name = "location_id", dtype = "INT64" },
+    { name = "city", dtype = "STRING" },
+    { name = "country", dtype = "STRING" },
+    { name = "employee_count", dtype = "INT64" },
+    { name = "avg_salary", dtype = "FLOAT64" }
+]
+[tests.ready_lineage."proj.dataset.employee_department_report"]
+department_id = ["proj.dataset.departments->department_id"]
+department_name = ["proj.dataset.departments->department_name"]
+# NOTE: the location_id lineage goes back to all the tables since the column in the select is not qualified
+location_id = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"] 
+city = ["proj.dataset.locations->city"]
+country = ["proj.dataset.locations->country"]
+employee_count = ["proj.dataset.employees->employee_id"]
+avg_salary = ["proj.dataset.employees->salary"]
+
+# Test case
+[[tests]]
+sql = """
+INSERT INTO proj.dataset.product_region_matrix
+WITH top_products AS (
+  SELECT 
+    product_id, 
+    product_name
+  FROM 
+    proj.dataset.products
+  ORDER BY 
+    sales_count DESC
+  LIMIT 10
+),
+regions AS (
+  SELECT 
+    DISTINCT region_id, 
+    region_name
+  FROM 
+    proj.dataset.sales_regions
+  WHERE 
+    is_active = TRUE
+)
+SELECT
+  p.product_id,
+  p.product_name,
+  r.region_id,
+  r.region_name,
+  COALESCE(s.total_sales, 0) AS total_sales,
+  COALESCE(s.market_share, 0) AS market_share
+FROM
+  top_products p
+CROSS JOIN
+  regions r
+LEFT JOIN
+  proj.dataset.regional_sales s
+ON
+  p.product_id = s.product_id AND
+  r.region_id = s.region_id
+"""
+[[tests.schema_objects]]
+name = "proj.dataset.products"
+kind = "table"
+columns = [
+    { name = "product_id", dtype = "STRING" },
+    { name = "product_name", dtype = "STRING" },
+    { name = "sales_count", dtype = "INT64" },
+    { name = "category", dtype = "STRING" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.sales_regions"
+kind = "table"
+columns = [
+    { name = "region_id", dtype = "STRING" },
+    { name = "region_name", dtype = "STRING" },
+    { name = "country_code", dtype = "STRING" },
+    { name = "is_active", dtype = "BOOL" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.regional_sales"
+kind = "table"
+columns = [
+    { name = "product_id", dtype = "STRING" },
+    { name = "region_id", dtype = "STRING" },
+    { name = "total_sales", dtype = "FLOAT64" },
+    { name = "market_share", dtype = "FLOAT64" },
+    { name = "last_updated", dtype = "DATE" }
+]
+[[tests.schema_objects]]
+name = "proj.dataset.product_region_matrix"
+kind = "table"
+columns = [
+    { name = "product_id", dtype = "STRING" },
+    { name = "product_name", dtype = "STRING" },
+    { name = "region_id", dtype = "STRING" },
+    { name = "region_name", dtype = "STRING" },
+    { name = "total_sales", dtype = "FLOAT64" },
+    { name = "market_share", dtype = "FLOAT64" }
+]
+[tests.ready_lineage."proj.dataset.product_region_matrix"]
+product_id = ["proj.dataset.products->product_id"]
+product_name = ["proj.dataset.products->product_name"]
+region_id = ["proj.dataset.sales_regions->region_id"]
+region_name = ["proj.dataset.sales_regions->region_name"]
+total_sales = ["proj.dataset.regional_sales->total_sales"]
+market_share = ["proj.dataset.regional_sales->market_share"]
+
+### Test case
+[[tests]]
+sql = """
 create temp table temp_table as (
     select
         *
