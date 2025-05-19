@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use clap::Parser as ClapParser;
 use clap::Subcommand;
-use inbq::lineage::{lineage, Catalog, Lineage, RawLineage, ReadyLineage};
+use inbq::lineage::{Catalog, Lineage, RawLineage, ReadyLineage, lineage};
 use inbq::parser::parse_sql;
 use serde::Serialize;
 
@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
                     .filter_map(|res| res.ok())
                     .map(|entry| entry.path())
                     .filter_map(|file| {
-                        if file.extension().map_or(false, |ext| ext == "sql") {
+                        if file.extension().is_some_and(|ext| ext == "sql") {
                             Some(file)
                         } else {
                             None

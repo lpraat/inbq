@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Ok};
+use anyhow::{Ok, anyhow};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -163,6 +163,7 @@ impl NestedNodeName {
 #[derive(Debug, Clone)]
 enum NodeType {
     Unknown,
+    #[allow(dead_code)]
     Base(String),
     Struct(StructNodeType),
     Array(Box<ArrayNodeType>),
@@ -2475,7 +2476,10 @@ impl LineageExtractor {
         let target_nodes = &target_table.lineage_nodes;
 
         if target_nodes.len() != nodes.len() {
-            return Err(anyhow!("The number of merge insert columns is not equal to the number of columns in target table `{}`.", target_table.name));
+            return Err(anyhow!(
+                "The number of merge insert columns is not equal to the number of columns in target table `{}`.",
+                target_table.name
+            ));
         }
 
         for (target_node, source_node) in target_nodes.iter().zip(nodes) {

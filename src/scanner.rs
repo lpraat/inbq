@@ -441,8 +441,8 @@ impl Scanner {
             if peek_char == '\0' {
                 return Err(anyhow!(self.error_str("Found unterminated string")));
             }
-            let escaped = self.peek_prev().map_or(false, |prev| {
-                prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
+            let escaped = self.peek_prev().is_some_and(|prev| {
+                prev == '\\' && self.peek_prev_i(2).is_some_and(|prev_2| prev_2 != '\\')
             });
             if !escaped && self.match_char(delimiter) {
                 break;
@@ -458,8 +458,8 @@ impl Scanner {
             if peek_char == '\0' {
                 return Err(anyhow!(self.error_str("Found unterminated string")));
             }
-            let escaped = self.peek_prev().map_or(false, |prev| {
-                prev == '\\' && self.peek_prev_i(2).map_or(false, |prev_2| prev_2 != '\\')
+            let escaped = self.peek_prev().is_some_and(|prev| {
+                prev == '\\' && self.peek_prev_i(2).is_some_and(|prev_2| prev_2 != '\\')
             });
             if !escaped && self.match_char(delimiter) {
                 let curr = self.current - 1;
@@ -815,11 +815,7 @@ impl Scanner {
                     if self.open_type_brackets.is_some() {
                         self.open_type_brackets = self.open_type_brackets.and_then(|n| {
                             let new_n = n - 1;
-                            if new_n == 0 {
-                                None
-                            } else {
-                                Some(new_n)
-                            }
+                            if new_n == 0 { None } else { Some(new_n) }
                         });
                     }
                     self.add_token(TokenType::Greater);
@@ -939,7 +935,7 @@ impl Scanner {
                 return Err(anyhow!(self.error_str(&format!(
                     "Found unexpected character while scanning: {}",
                     curr_char
-                ))))
+                ))));
             }
         }
         Ok(())

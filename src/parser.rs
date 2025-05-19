@@ -15,7 +15,7 @@ pub enum Statement {
     Delete(DeleteStatement),
     Update(UpdateStatement),
     Truncate(TruncateStatement),
-    Merge(MergeStatement),
+    Merge(Box<MergeStatement>),
     CreateTable(CreateTableStatement),
 }
 
@@ -1196,14 +1196,14 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Statement::Merge(MergeStatement {
+        Ok(Statement::Merge(Box::new(MergeStatement {
             target_table,
             target_alias,
             source,
             source_alias,
             condition,
             whens,
-        }))
+        })))
     }
 
     // merge_update -> "UPDATE" "SET" update_item ("," update_item)*
@@ -1782,7 +1782,9 @@ impl<'a> Parser<'a> {
                 using_tokens.into_iter().map(ParseToken::Single).collect(),
             ))
         } else {
-            return Err(anyhow!(self.error(self.peek(), "Expected `ON` or `USING`.")));
+            return Err(anyhow!(
+                self.error(self.peek(), "Expected `ON` or `USING`.")
+            ));
         }
     }
 
