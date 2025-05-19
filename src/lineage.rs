@@ -2,7 +2,7 @@ use anyhow::{Ok, anyhow};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::{Debug, Display},
 };
 
@@ -2225,7 +2225,7 @@ impl LineageExtractor {
                     *idx,
                 )
             })
-            .collect::<HashMap<String, ArenaIndex>>();
+            .collect::<IndexMap<String, ArenaIndex>>();
 
         // NOTE: we push the target table after pushing the from context
         self.context.push_new_ctx(
@@ -2295,7 +2295,7 @@ impl LineageExtractor {
                     *idx,
                 )
             })
-            .collect::<HashMap<String, ArenaIndex>>();
+            .collect::<IndexMap<String, ArenaIndex>>();
 
         let target_columns = if let Some(columns) = &insert_statement.columns {
             let mut filtered_columns = vec![];
@@ -2370,7 +2370,7 @@ impl LineageExtractor {
                     *idx,
                 )
             })
-            .collect::<HashMap<String, ArenaIndex>>();
+            .collect::<IndexMap<String, ArenaIndex>>();
 
         let target_columns = if let Some(columns) = &merge_insert.columns {
             let mut filtered_columns = vec![];
@@ -2423,7 +2423,7 @@ impl LineageExtractor {
                     *idx,
                 )
             })
-            .collect::<HashMap<String, ArenaIndex>>();
+            .collect::<IndexMap<String, ArenaIndex>>();
 
         for update_item in &merge_update.update_items {
             let column = match &update_item.column {

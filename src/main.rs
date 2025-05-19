@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
@@ -6,6 +5,7 @@ use clap::Parser as ClapParser;
 use clap::Subcommand;
 use inbq::lineage::{Catalog, Lineage, RawLineage, ReadyLineage, lineage};
 use inbq::parser::parse_sql;
+use indexmap::IndexMap;
 use serde::Serialize;
 
 #[derive(clap::Parser)]
@@ -115,7 +115,7 @@ fn main() -> anyhow::Result<()> {
                 )
             })?;
             let out_str = if sql_file_or_dir.is_dir() {
-                let mut file_lineages: HashMap<String, OutLineage> = HashMap::new();
+                let mut file_lineages: IndexMap<String, OutLineage> = IndexMap::new();
                 let sql_in_dir: Vec<_> = std::fs::read_dir(sql_file_or_dir)?
                     .filter_map(|res| res.ok())
                     .map(|entry| entry.path())
