@@ -10,7 +10,7 @@ use serde::Serialize;
 
 #[derive(clap::Parser)]
 #[command(name = "inbq")]
-#[command(about = "BigQuery parser and lineage extractor", long_about = None)]
+#[command(about = "BigQuery SQL parser and lineage extractor", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

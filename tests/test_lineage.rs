@@ -35,7 +35,7 @@ fn test_lineage() {
         toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in yaml");
 
     for test in test_lineage_data.tests {
-        println!("Testing parsing for SQL: {}", &test.sql);
+        println!("Testing lineage for SQL: {}", &test.sql);
 
         let mut schema_objects: Vec<inbq::lineage::SchemaObject> = vec![];
         for schema_object in test.schema_objects {

@@ -20,12 +20,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct LineageNode {
-    pub name: NodeName,
-    pub r#type: NodeType,
-    pub source_obj: ArenaIndex,
-    pub input: Vec<ArenaIndex>,
-    pub nested_nodes: IndexMap<String, ArenaIndex>,
+struct LineageNode {
+    name: NodeName,
+    r#type: NodeType,
+    source_obj: ArenaIndex,
+    input: Vec<ArenaIndex>,
+    nested_nodes: IndexMap<String, ArenaIndex>,
 }
 
 impl LineageNode {
@@ -75,7 +75,7 @@ impl LineageNode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AccessOp {
+enum AccessOp {
     Field(String),
     FieldStar,
     Index,
@@ -87,7 +87,7 @@ struct AccessPath {
 }
 
 impl AccessPath {
-    pub fn nested_path(&self) -> String {
+    fn nested_path(&self) -> String {
         let acc = match &self.path[0] {
             AccessOp::Field(s) => s.clone(),
             AccessOp::FieldStar => "*".to_owned(),
@@ -102,7 +102,7 @@ impl AccessPath {
 }
 
 #[derive(Debug, Clone)]
-pub enum NodeName {
+enum NodeName {
     Anonymous,
     Defined(String),
     Nested(NestedNodeName),
@@ -142,13 +142,13 @@ impl NodeName {
 }
 
 #[derive(Debug, Clone)]
-pub struct NestedNodeName {
+struct NestedNodeName {
     parent: String,
     access_path: AccessPath,
 }
 
 impl NestedNodeName {
-    pub fn nested_path(&self) -> String {
+    fn nested_path(&self) -> String {
         self.access_path
             .path
             .iter()
@@ -161,7 +161,7 @@ impl NestedNodeName {
 }
 
 #[derive(Debug, Clone)]
-pub enum NodeType {
+enum NodeType {
     Unknown,
     Base(String),
     Struct(StructNodeType),
@@ -169,32 +169,32 @@ pub enum NodeType {
 }
 
 #[derive(Debug, Clone)]
-pub struct ArrayNodeType {
-    pub r#type: NodeType,
-    pub input: Vec<ArenaIndex>,
+struct ArrayNodeType {
+    r#type: NodeType,
+    input: Vec<ArenaIndex>,
 }
 
 #[derive(Debug, Clone)]
-pub struct StructNodeType {
-    pub fields: Vec<StructNodeFieldType>,
+struct StructNodeType {
+    fields: Vec<StructNodeFieldType>,
 }
 
 #[derive(Debug, Clone)]
-pub struct StructNodeFieldType {
-    pub name: String,
-    pub r#type: NodeType,
-    pub input: Vec<ArenaIndex>,
+struct StructNodeFieldType {
+    name: String,
+    r#type: NodeType,
+    input: Vec<ArenaIndex>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ContextObject {
+struct ContextObject {
     name: String,
     lineage_nodes: Vec<ArenaIndex>,
     kind: ContextObjectKind,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum ContextObjectKind {
+enum ContextObjectKind {
     TempTable,
     Table,
     Cte,

@@ -1,5 +1,3 @@
-use core::panic;
-
 use anyhow::anyhow;
 use strum::IntoDiscriminant;
 

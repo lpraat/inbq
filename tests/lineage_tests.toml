@@ -1,4 +1,3 @@
-### Test case
 [[tests]]
 sql = """
 insert into proj.dat.out_table
@@ -21,7 +20,6 @@ columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 
-### Test case
 [[tests]]
 sql = """
 insert into proj.dat.out_table
@@ -49,7 +47,44 @@ a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 c = ["proj.dat.in_table->c"]
 
-### Test case
+[[tests]]
+sql = """
+create temp table foo as (
+    select *
+    from proj.dat.in_table
+);
+
+merge into proj.dat.out_table as t
+using (
+    select * from foo
+)
+on false
+when not matched then
+    insert row
+when not matched by source then
+    delete
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b"]
+c = ["proj.dat.in_table->c"]
+
 [[tests]]
 sql = """
 insert into `proj.dat.out_table`
@@ -94,7 +129,6 @@ a = ["proj.dat.t1->a", "proj.dat.t2->a"]
 b = ["proj.dat.t1->b", "proj.dat.t2->b"]
 c = ["proj.dat.t2->c"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.employee_department_report
@@ -259,7 +293,6 @@ region_name = ["proj.dataset.sales_regions->region_name"]
 total_sales = ["proj.dataset.regional_sales->total_sales"]
 market_share = ["proj.dataset.regional_sales->market_share"]
 
-### Test case
 [[tests]]
 sql = """
 create temp table temp_table as (
@@ -306,7 +339,6 @@ a = ["proj.dat.t1->a"]
 b = ["proj.dat.t1->b"]
 c = ["proj.dat.t1->c"]
 
-### Test case
 [[tests]]
 sql = """
 delete from dataset.Inventory T
@@ -323,7 +355,6 @@ columns = [
 [tests.ready_lineage]
 # Empty
 
-### Test case
 [[tests]]
 sql = """
 truncate table dataset.Inventory;
@@ -339,7 +370,6 @@ columns = [
 [tests.ready_lineage]
 # Empty
 
-### Test case
 [[tests]]
 sql = """
 MERGE dataset.Inventory T
@@ -367,7 +397,6 @@ columns = [
 [tests.ready_lineage."dataset.Inventory"]
 quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
 
-### Test case
 [[tests]]
 sql = """
 merge proj.dataset.out_table
@@ -409,7 +438,6 @@ o2 = ["proj.dataset.in_table->f1.a"]
 o3 = ["proj.dataset.in_table->f1.b"]
 o4 = ["proj.dataset.in_table->f2.a.x"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.output_table
@@ -438,7 +466,6 @@ columns = [
 id = ["proj.dataset.array_table->id"]
 item_value = ["proj.dataset.array_table->array_column[]"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.output_table
@@ -477,7 +504,6 @@ id = ["proj.dataset.struct_table->id"]
 field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
 field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.output_table
@@ -516,7 +542,6 @@ id = ["proj.dataset.struct_table->id"]
 field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
 field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.output_table
@@ -557,7 +582,6 @@ full_name = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->
 string_value = ["proj.dataset.input_table->numeric_value"]
 composite_key = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.analytics_results
@@ -603,7 +627,6 @@ normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->def
 end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
 expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
 
-### Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.user_analytics
@@ -713,7 +736,6 @@ device_activity = [
     # "proj.dataset.user_data->user_events[].device_id" -- filter lineage
 ]
 
-### Test case
 [[tests]]
 sql = """
 insert into `proj.dataset.output_table`
