@@ -1,21 +1,30 @@
 {
   "schema_objects": [
     {
-      "name": "proj.dataset.struct_table",
+      "name": "gcp-health-project.patients.records",
       "kind": "table",
       "columns": [
-        {"name": "id", "dtype": "INT64"},
-        {"name": "struct1", "dtype": "STRUCT<field1 STRING, field2 INT64>"},
-        {"name": "struct2", "dtype": "STRUCT<field1 STRING, field2 INT64>"}
+        {"name": "patient_id", "dtype": "STRING"},
+        {"name": "demographics", "dtype": "STRUCT<age INT64, gender STRING>"},
+        {"name": "vital_signs", "dtype": "ARRAY<STRUCT<measurement_type STRING, value FLOAT64, timestamp TIMESTAMP>>"}
       ]
     },
     {
-      "name": "proj.dataset.output_table",
+      "name": "gcp-health-project.reference.diagnostics",
       "kind": "table",
       "columns": [
-        {"name": "id", "dtype": "INT64"},
-        {"name": "field1", "dtype": "STRING"},
-        {"name": "field2", "dtype": "INT64"}
+        {"name": "test_name", "dtype": "STRING"},
+        {"name": "reference_ranges", "dtype": "STRUCT<normal_min FLOAT64, normal_max FLOAT64>"}
+      ]
+    },
+    {
+      "name": "gcp-health-project.analytics.patient_summary",
+      "kind": "table",
+      "columns": [
+        {"name": "patient_id", "dtype": "STRING"},
+        {"name": "age", "dtype": "INT64"},
+        {"name": "total_measurements", "dtype": "INT64"},
+        {"name": "normal_measurements", "dtype": "INT64"}
       ]
     }
   ]

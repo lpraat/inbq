@@ -1,80 +1,27 @@
--- select
---     struct(t.f0 as x).x as K
--- from proj.dataset.in_table t;
+CREATE TEMP TABLE patient_vitals AS
+SELECT 
+  p.patient_id,
+  p.demographics.age,
+  ARRAY(
+    SELECT AS STRUCT 
+      reading.measurement_type,
+      reading.value,
+      d.reference_ranges.normal_min,
+      d.reference_ranges.normal_max
+    FROM UNNEST(p.vital_signs) AS reading
+    JOIN `gcp-health-project.reference.diagnostics` d ON reading.measurement_type = d.test_name
+  ) AS processed_vitals
+FROM `gcp-health-project.patients.records` p;
 
-
--- select struct(f0 as x).x as K
--- from proj.dataset.in_table t;
-
-
--- select 
---     struct(f0 as z, f0 as z2) as k,
---     struct(struct(f0 as x) as s).s.x as z
--- from proj.dataset.in_table t;
-
--- select 
---     -- struct(1 as x, [t.f0,f0] as y).y[0],
---     struct(struct([struct(t.f0 as x)] as sin, struct(t.f1 as y)) as s).s.sin[0].x as k
--- from proj.dataset.in_table t;
-
-
--- select 
---     f1.a as k
--- from proj.dataset.in_table t;
-
-
-
--- select
---     struct(t.f0 as x).x + f1.a as K
--- from proj.dataset.in_table as t;
-
-
-
--- select struct(
---   struct(3 as y) as s1,
---   struct(f0 as z1, 5 as z2) as s2
--- ).s2.z1 as K
--- from proj.dataset.in_table t;
-
--- struct(f1 as x).*
-
--- select 
---     struct(f1 as x).*
---     -- f2.a.y[0],
---     -- struct(struct(f0 as x) as z).z.x
--- from proj.dataset.in_table t;
-
--- with tmp as (
---   select struct(1 as x) as tmp, 3 as z
--- )
-
--- select 
--- f3.a[0].x
-
--- from proj.dataset.in_table t
--- 
-INSERT INTO proj.dataset.output_table
-WITH struct_to_array AS (
-  SELECT 
-    id,
-    [struct1, struct2] AS combined_structs
-  FROM proj.dataset.struct_table
+INSERT INTO gcp-health-project.analytics.patient_summary
+WITH health_summary AS (
+  SELECT
+    patient_id,
+    age,
+    COUNT(vital.measurement_type) AS total_measurements,
+    COUNTIF(vital.value BETWEEN vital.normal_min AND vital.normal_max) AS normal_measurements
+  FROM patient_vitals,
+  UNNEST(processed_vitals) AS vital
+  GROUP BY patient_id, age, processed_vitals
 )
-SELECT
-  s.id,
-  item.field1,
-  item.field2
-FROM 
-  struct_to_array s,
-  s.combined_structs AS item
--- TODO: test same wit h <struct>
--- 
-
--- select 
---    struct<z struct<x int64>, y int64>(struct(f0), f1.a) as S
---    from proj.dataset.in_table
-   
-
--- select 
---     struct(struct(f0 as x) as z, f1.a as y) as S
---     from proj.dataset.in_table
+SELECT * FROM health_summary;
