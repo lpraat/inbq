@@ -666,16 +666,16 @@ impl Context {
         if include_outer_context && !self.stack.is_empty() {
             let prev_ctx = self.stack.last().unwrap();
             for key in prev_ctx.keys() {
-                let ctx_obj = &self.arena_objects[prev_ctx[key]];
                 if !new_ctx.contains_key(key) {
                     new_ctx.insert(key.clone(), prev_ctx[key]);
-                }
-                for node_idx in &ctx_obj.lineage_nodes {
-                    let node = &self.arena_lineage_nodes[*node_idx];
-                    new_columns
-                        .entry(node.name.string().to_lowercase())
-                        .or_default()
-                        .push(prev_ctx[key]);
+                    let ctx_obj = &self.arena_objects[prev_ctx[key]];
+                    for node_idx in &ctx_obj.lineage_nodes {
+                        let node = &self.arena_lineage_nodes[*node_idx];
+                        new_columns
+                            .entry(node.name.string().to_lowercase())
+                            .or_default()
+                            .push(prev_ctx[key]);
+                    }
                 }
             }
         }
