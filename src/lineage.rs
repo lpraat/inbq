@@ -13,8 +13,8 @@ use crate::{
         FunctionExpr, GroupingQueryExpr, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
         Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, ParameterizedType,
         ParseToken, Parser, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr,
-        SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, Statement, StructExpr, Type,
-        UpdateStatement, When, With,
+        SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetSelectQueryExpr,
+        Statement, StructExpr, Type, UpdateStatement, When, With,
     },
     scanner::{Scanner, TokenType},
 };
@@ -2080,6 +2080,61 @@ impl LineageExtractor {
         Ok(())
     }
 
+    fn set_select_query_expr_lin(
+        &mut self,
+        set_select_query_expr: &SetSelectQueryExpr,
+        expand_value_table: bool,
+    ) -> anyhow::Result<()> {
+        let left_consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            this.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)
+        })?;
+
+        let right_consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            this.query_expr_lin(&set_select_query_expr.right_query, expand_value_table)
+        })?;
+
+        let anon_obj_name = self.get_anon_obj_name("anon");
+        let set_obj_idx = self.context.allocate_new_ctx_object(
+            &anon_obj_name,
+            ContextObjectKind::Anonymous,
+            vec![],
+        );
+
+        let nodes_elems = left_consumed_nodes
+            .iter()
+            .zip(right_consumed_nodes.iter())
+            .map(|(l_node_idx, r_node_idx)| {
+                let l_node = &self.context.arena_lineage_nodes[*l_node_idx];
+                (
+                    l_node.name.clone(),
+                    l_node.r#type.clone(),
+                    set_obj_idx,
+                    vec![*l_node_idx, *r_node_idx],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut set_nodes = vec![];
+        for (name, r#type, source_obj, input) in nodes_elems.into_iter() {
+            let node_idx = self
+                .context
+                .allocate_new_lineage_node(name, r#type, source_obj, input)?;
+            set_nodes.push(node_idx);
+        }
+
+        let set_obj = &mut self.context.arena_objects[set_obj_idx];
+        set_obj.lineage_nodes = set_nodes;
+
+        set_obj
+            .lineage_nodes
+            .iter()
+            .for_each(|node| self.context.lineage_stack.push(*node));
+        self.context
+            .update_output_lineage_with_object_nodes(set_obj_idx);
+
+        Ok(())
+    }
+
     fn query_expr_lin(
         &mut self,
         query: &QueryExpr,
@@ -2090,9 +2145,11 @@ impl LineageExtractor {
                 self.grouping_query_expr_lin(grouping_query_expr, expand_value_table)?
             }
             QueryExpr::Select(select_query_expr) => {
-                self.select_query_expr_lin(select_query_expr, expand_value_table)?;
+                self.select_query_expr_lin(select_query_expr, expand_value_table)?
             }
-            QueryExpr::SetSelect(_) => todo!(),
+            QueryExpr::SetSelect(set_select_query_expr) => {
+                self.set_select_query_expr_lin(set_select_query_expr, expand_value_table)?
+            }
         }
 
         Ok(())

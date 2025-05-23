@@ -33,6 +33,10 @@ impl<T> Arena<T> {
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
+
+    pub fn last(&self) -> Option<&T> {
+        self.nodes.last()
+    }
 }
 
 pub struct ArenaIter<'a, T> {

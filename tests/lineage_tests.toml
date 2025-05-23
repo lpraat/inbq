@@ -23,6 +23,36 @@ b = ["proj.dat.in_table->b"]
 [[tests]]
 sql = """
 insert into proj.dat.out_table
+select a1,b1 from proj.dat.in1
+union all
+select a2,b2 from proj.dat.in2
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in1"
+kind = "table"
+columns = [
+    { name = "a1", dtype = "STRING" },
+    { name = "b1", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.in2"
+kind = "table"
+columns = [
+    { name = "a2", dtype = "STRING" },
+    { name = "b2", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in1->a1", "proj.dat.in2->a2"]
+b = ["proj.dat.in1->b1", "proj.dat.in2->b2"]
+
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
 select *
 from proj.dat.in_table
 """
