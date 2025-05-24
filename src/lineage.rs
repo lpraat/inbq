@@ -844,14 +844,17 @@ impl LineageExtractor {
                     ContextObjectKind::Unnest
                 )
             });
-            let using_idx = target_tables.iter().find(|&idx| {
-                matches!(
-                    &self.context.arena_objects[*idx].kind,
-                    ContextObjectKind::UsingTable
-                )
-            });
+            let last_using_idx = target_tables
+                .iter()
+                .filter(|&idx| {
+                    matches!(
+                        &self.context.arena_objects[*idx].kind,
+                        ContextObjectKind::UsingTable
+                    )
+                })
+                .next_back();
 
-            if target_tables.len() > 1 && unnest_idx.is_none() && using_idx.is_none() {
+            if target_tables.len() > 1 && unnest_idx.is_none() && last_using_idx.is_none() {
                 return Err(anyhow!(
                     "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
                     column,
@@ -862,8 +865,7 @@ impl LineageExtractor {
                 ));
             }
             let target_table_idx = if target_tables.len() > 1 {
-                // unnested object
-                *unnest_idx.or(using_idx).unwrap()
+                *unnest_idx.or(last_using_idx).unwrap()
             } else {
                 target_tables[0]
             };

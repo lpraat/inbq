@@ -858,4 +858,4 @@ name = "proj.dat.out_table"
 kind = "table"
 columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->in_arr"]
+arr = ["proj.dat.in_table->in_arr[]"]
