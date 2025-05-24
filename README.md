@@ -82,9 +82,9 @@ cargo install inbq
 2. Run inbq: pass the catalog file and your SQL file(s) to the inbq lineage command.
 ```bash
 inbq lineage \
+    --pretty  # Beautifies output JSON
     --catalog ./examples/lineage/catalog.json  \
     ./examples/lineage/query.sql \ # Path to a single SQL file or a directory of .sql files
-    --pretty  # Beautifies output JSON
 ```
 
 The output is written to stdout.
