@@ -190,7 +190,7 @@ The output is:
 
 
 ### Lineage Graph
-inbq internally builds a comprehensive graph representing the entire lineage flow through all statements and expressions. While the primary JSON output shows input-to-output column lineage for tables in your data catalog, you can inspect the detailed internal graph by setting the RUST_LOG environment:
+inbq internally builds a comprehensive graph representing the entire lineage flow through all statements and expressions. While the primary JSON output shows input-to-output column lineage for tables in your data catalog, you can inspect the detailed internal graph by setting the RUST_LOG environment variable:
 ```bash
 RUST_LOG=debug inbq lineage \
     --catalog ./examples/lineage/catalog.json \
