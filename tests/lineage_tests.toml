@@ -805,3 +805,58 @@ columns = [
 [tests.ready_lineage."proj.dataset.output_table"]
 o1 = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
 o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
+
+[[tests]]
+sql = """
+merge proj.dat.out_table
+using (
+SELECT 
+    ARRAY(select as struct a, b FROM proj.dat.in_table) 
+)
+on false
+when not matched by target then
+    insert row
+when not matched by source then
+    delete
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+[tests.ready_lineage."proj.dat.out_table"]
+arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
+
+[[tests]]
+sql = """
+merge proj.dat.out_table
+using (
+SELECT 
+    ARRAY_AGG(in_arr) 
+FROM proj.dat.in_table, UNNEST(in_arr) as in_arr
+)
+on false
+when not matched by target then
+    insert row
+when not matched by source then
+    delete
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = [
+    { name = "in_arr", dtype = "ARRAY<STRING>" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+[tests.ready_lineage."proj.dat.out_table"]
+arr = ["proj.dat.in_table->in_arr"]
+

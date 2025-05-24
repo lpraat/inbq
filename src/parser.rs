@@ -265,9 +265,16 @@ pub enum FunctionExpr {
     // list of known functions here
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
     Array(ArrayFunctionExpr),
+    ArrayAgg(ArrayAggFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayAggFunctionExpr {
+    pub arg: Box<GenericFunctionExprArg>,
+    pub over: Option<NamedWindowExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -2912,6 +2919,128 @@ impl<'a> Parser<'a> {
         )))
     }
 
+    
+    // array_agg -> ("Identifier" | "QuotedIdentifier") "(" arg ")" ["OVER" named_window_expr]
+    // where:
+    // arg ->
+    //  ["DISTINCT"]
+    //  expr
+    //  [("IGNORE" | "RESPECT") "NULLS"]
+    //  ["HAVING ("MAX" | "MIN") expr]
+    //  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
+    //  ["LIMIT" "Number"]
+    fn parse_array_agg_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+
+        let distinct = self.match_token_type(TokenTypeVariant::Distinct);
+
+        let arg_expr = self.parse_expr()?;
+
+        let nulls =
+            if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
+                Some(match &self.peek_prev().kind {
+                    TokenType::Ignore => FunctionAggregateNulls::Ignore,
+                    TokenType::Respect => FunctionAggregateNulls::Respect,
+                    _ => unreachable!(),
+                })
+            } else {
+                None
+            };
+
+        let having = if self.match_token_type(TokenTypeVariant::Having) {
+            let tok = self.consume_one_of_non_reserved_keywords(&["max", "min"])?;
+            let kind = match &tok.kind {
+                TokenType::Identifier(s) => match s.to_lowercase().as_str() {
+                    "max" => FunctionAggregateHavingKind::Max,
+                    "min" => FunctionAggregateHavingKind::Min,
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            };
+            let expr = self.parse_expr()?;
+            Some(FunctionAggregateHaving {
+                kind,
+                expr: Box::new(expr),
+            })
+        } else {
+            None
+        };
+
+        let order_by = if self.match_token_type(TokenTypeVariant::Order) {
+            self.consume(TokenTypeVariant::By)?;
+            let mut exprs = vec![];
+            loop {
+                let expr = self.parse_expr()?;
+                let sort_direction =
+                    if self.match_token_types(&[TokenTypeVariant::Asc, TokenTypeVariant::Desc]) {
+                        Some(match self.peek_prev().kind {
+                            TokenType::Asc => OrderBySortDirection::Asc,
+                            TokenType::Desc => OrderBySortDirection::Desc,
+                            _ => unreachable!(),
+                        })
+                    } else {
+                        None
+                    };
+                exprs.push(FunctionAggregateOrderBy {
+                    expr: Box::new(expr),
+                    sort_direction,
+                });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(exprs)
+        } else {
+            None
+        };
+
+        let limit = if self.match_token_type(TokenTypeVariant::Limit) {
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+
+        let aggregate = if distinct
+            || nulls.is_some()
+            || having.is_some()
+            || order_by.is_some()
+            || limit.is_some()
+        {
+            Some(FunctionAggregate {
+                distinct,
+                nulls,
+                having,
+                order_by,
+                limit,
+            })
+        } else {
+            None
+        };
+
+        let arg = GenericFunctionExprArg {
+            expr: arg_expr,
+            aggregate,
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        let over = if self.match_token_type(TokenTypeVariant::Over) {
+            Some(self.parse_named_window_expr()?)
+        } else {
+            None
+        };
+
+        Ok(Expr::Function(FunctionExpr::ArrayAgg(
+            ArrayAggFunctionExpr {
+                arg: Box::new(arg),
+                over,
+            },
+        )))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_function_name = match &self.peek().kind {
             TokenType::Identifier(ident) => ident,
@@ -2922,6 +3051,7 @@ impl<'a> Parser<'a> {
         match peek_function_name.as_str() {
             "concat" => self.parse_concat_fn_expr(),
             "safe_cast" => self.parse_safe_cast_fn_expr(),
+            "array_agg" => self.parse_array_agg_fn_expr(),
             _ => self.parse_generic_function(),
         }
     }

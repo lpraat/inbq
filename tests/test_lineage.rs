@@ -50,8 +50,8 @@ fn test_lineage() {
             });
         }
 
-        let ast =
-            parse_sql(&test.sql).unwrap_or_else(|_| panic!("Could not parse sql: {:?}", &test.sql));
+        let ast = parse_sql(&test.sql)
+            .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err));
 
         let lineage = lineage(&ast, &Catalog { schema_objects });
         if let Err(err) = &lineage {

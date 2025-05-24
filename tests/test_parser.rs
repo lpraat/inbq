@@ -223,6 +223,15 @@ fn test_should_parse() {
           SAFE_CAST("apple" AS INT64) AS not_a_number;
       "#,
         r#"
+      SELECT ARRAY_AGG(x) AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x;
+      "#,
+        r#"
+      SELECT
+        x,
+        ARRAY_AGG(x) OVER (ORDER BY ABS(x)) AS array_agg
+      FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
+      "#,
+        r#"
       SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
       FROM Library;
       "#,
