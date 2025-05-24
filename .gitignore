@@ -1,2 +1,8 @@
-/target
+# Editors
 .vscode
+
+# Builds
+/target
+
+# Python
+.venv

@@ -230,7 +230,7 @@ columns = [
 department_id = ["proj.dataset.departments->department_id"]
 department_name = ["proj.dataset.departments->department_name"]
 # NOTE: the location_id lineage goes back to all the tables since the column in the select is not qualified
-location_id = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"] 
+location_id = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"]
 city = ["proj.dataset.locations->city"]
 country = ["proj.dataset.locations->country"]
 employee_count = ["proj.dataset.employees->employee_id"]
@@ -241,22 +241,22 @@ avg_salary = ["proj.dataset.employees->salary"]
 sql = """
 INSERT INTO proj.dataset.product_region_matrix
 WITH top_products AS (
-  SELECT 
-    product_id, 
+  SELECT
+    product_id,
     product_name
-  FROM 
+  FROM
     proj.dataset.products
-  ORDER BY 
+  ORDER BY
     sales_count DESC
   LIMIT 10
 ),
 regions AS (
-  SELECT 
-    DISTINCT region_id, 
+  SELECT
+    DISTINCT region_id,
     region_name
-  FROM 
+  FROM
     proj.dataset.sales_regions
-  WHERE 
+  WHERE
     is_active = TRUE
 )
 SELECT
@@ -500,7 +500,7 @@ item_value = ["proj.dataset.array_table->array_column[]"]
 sql = """
 INSERT INTO proj.dataset.output_table
 WITH struct_to_array AS (
-  SELECT 
+  SELECT
     id,
     [struct1, struct2] AS combined_structs
   FROM proj.dataset.struct_table
@@ -509,7 +509,7 @@ SELECT
   s.id,
   item.field1,
   item.field2
-FROM 
+FROM
   struct_to_array s,
   UNNEST(s.combined_structs) AS item
 """
@@ -538,7 +538,7 @@ field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_tabl
 sql = """
 INSERT INTO proj.dataset.output_table
 WITH struct_to_array AS (
-  SELECT 
+  SELECT
     id,
     [struct1, struct2] AS combined_structs
   FROM `proj.dataset.struct_table`
@@ -547,7 +547,7 @@ SELECT
   s.id,
   item.field1,
   item.field2
-FROM 
+FROM
   struct_to_array s,
   `s`.`combined_structs` AS item
 """
@@ -677,7 +677,7 @@ SELECT
     FROM UNNEST(user_events) AS event
     WHERE event.properties.is_completed = TRUE
   ) AS completed_events,
-  
+
   -- Create new struct with fields from different nested paths
   STRUCT(
     profile.demographics.age AS user_age,
@@ -693,16 +693,16 @@ SELECT
       ORDER BY cat.affinity_score DESC
     ) AS high_affinity_categories
   ) AS user_profile_summary,
-  
+
   -- Complex expressions involving nested fields
   (
-    SELECT 
+    SELECT
       SUM(item.price * item.quantity)
-    FROM UNNEST(user_events) AS event, 
+    FROM UNNEST(user_events) AS event,
     UNNEST(event.properties.cart.items) AS item
     WHERE event.properties.event_type = 'purchase'
   ) AS total_spent,
-  
+
   -- Build struct array derived from multiple sources
   ARRAY(
     SELECT AS STRUCT
@@ -715,7 +715,7 @@ SELECT
       ) AS last_active_time
     FROM UNNEST(profile.devices) AS device
   ) AS device_activity
-  
+
 FROM proj.dataset.user_data
 """
 [[tests.schema_objects]]
@@ -810,8 +810,8 @@ o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
 sql = """
 merge proj.dat.out_table
 using (
-SELECT 
-    ARRAY(select as struct a, b FROM proj.dat.in_table) 
+SELECT
+    ARRAY(select as struct a, b FROM proj.dat.in_table)
 )
 on false
 when not matched by target then
@@ -837,8 +837,8 @@ arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
 sql = """
 merge proj.dat.out_table
 using (
-SELECT 
-    ARRAY_AGG(in_arr) 
+SELECT
+    ARRAY_AGG(in_arr)
 FROM proj.dat.in_table, UNNEST(in_arr) as in_arr
 )
 on false
@@ -859,4 +859,3 @@ kind = "table"
 columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->in_arr"]
-

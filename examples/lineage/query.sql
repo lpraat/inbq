@@ -1,9 +1,9 @@
 CREATE TEMP TABLE patient_vitals AS
-SELECT 
+SELECT
   p.patient_id,
   p.demographics.age,
   ARRAY(
-    SELECT AS STRUCT 
+    SELECT AS STRUCT
       reading.measurement_type,
       reading.value,
       d.reference_ranges.normal_min,

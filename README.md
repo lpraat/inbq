@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()>{
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
     let ast = parser.parse()?;
-    println!("AST: {:?}", ast);
+    println!("Syntax Tree: {:?}", ast);
 
     let data_catalog = Catalog {
         schema_objects: vec![
@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()>{
     };
 
     let output_lineage = lineage(&ast, &data_catalog)?;
-    
+
     println!();
     println!("Raw lineage: {:?}\n", output_lineage.raw);
     println!();
@@ -82,7 +82,7 @@ cargo install inbq
 2. Run inbq: pass the catalog file and your SQL file(s) to the inbq lineage command.
 ```bash
 inbq lineage \
-    --catalog ./examples/lineage/catalog.json  \  
+    --catalog ./examples/lineage/catalog.json  \
     ./examples/lineage/query.sql \ # Path to a single SQL file or a directory of .sql files
     --pretty  # Beautifies output JSON
 ```
@@ -94,11 +94,11 @@ The output is written to stdout.
 Given the [catalog.json](./examples/lineage/catalog.json) and [query.sql](./examples/lineage/query.sql) from the repository's `examples` directory:
 ```sql
 CREATE TEMP TABLE patient_vitals AS
-SELECT 
+SELECT
   p.patient_id,
   p.demographics.age,
   ARRAY(
-    SELECT AS STRUCT 
+    SELECT AS STRUCT
       reading.measurement_type,
       reading.value,
       d.reference_ranges.normal_min,

@@ -2919,7 +2919,6 @@ impl<'a> Parser<'a> {
         )))
     }
 
-    
     // array_agg -> ("Identifier" | "QuotedIdentifier") "(" arg ")" ["OVER" named_window_expr]
     // where:
     // arg ->
