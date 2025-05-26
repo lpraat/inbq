@@ -3,7 +3,6 @@ A Rust library and command-line tool for extracting schema-aware, column-level l
 
 ## Rust Library
 To use `inbq` as a library in your Rust project, add the `inbq` dependency to your `Cargo.toml`:
-Add the inbq dependency:
 ```bash
 cargo add inbq
 ```
