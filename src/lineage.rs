@@ -2758,6 +2758,13 @@ impl LineageExtractor {
                 }
                 Statement::Delete(_) => {}
                 Statement::Truncate(_) => {}
+                Statement::DeclareVar(_) => {
+                    // NOTE: var names are case insensitive (like column names)
+                    todo!()
+                }
+                Statement::SetVar(_) => {
+                    todo!()
+                }
             }
         }
         Ok(())

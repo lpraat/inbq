@@ -397,6 +397,37 @@ fn test_should_parse() {
         r#"
       CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b `BOOL`>);
       "#,
+        r#"
+      DECLARE x INT64;
+      "#,
+        r#"
+      DECLARE d DATE DEFAULT CURRENT_DATE();
+      "#,
+        r#"
+      DECLARE x, y, z INT64 DEFAULT 0;
+      "#,
+        r#"
+      DECLARE item DEFAULT (SELECT item FROM schema1.products LIMIT 1);
+      "#,
+        r#"
+      SET x = 5;
+      "#,
+        r#"
+      SET (a, b, c) = (1 + 3, 'foo', false);
+      "#,
+        r#"
+      DECLARE target_word STRING DEFAULT 'methinks';
+      DECLARE corpus_count, word_count INT64;
+
+      SET (corpus_count, word_count) = (
+        SELECT AS STRUCT COUNT(DISTINCT corpus), SUM(word_count)
+        FROM bigquery-public-data.samples.shakespeare
+        WHERE LOWER(word) = target_word
+      );
+      SELECT
+        FORMAT('Found %d occurrences of "%s" across %d Shakespeare works',
+               word_count, target_word, corpus_count) AS result;
+      "#,
     ];
     for sql in sqls {
         println!("Testing parsing for SQL: {}", sql);

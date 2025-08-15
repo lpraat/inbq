@@ -17,6 +17,21 @@ pub enum Statement {
     Truncate(TruncateStatement),
     Merge(Box<MergeStatement>),
     CreateTable(CreateTableStatement),
+    DeclareVar(DeclareVarStatement),
+    SetVar(SetVarStatement),
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclareVarStatement {
+    pub var_names: Vec<ParseToken>,
+    pub r#type: Option<ParameterizedType>,
+    pub default: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetVarStatement {
+    pub var_names: Vec<ParseToken>,
+    pub exprs: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -900,12 +915,14 @@ impl<'a> Parser<'a> {
             let statement = match &peek.kind {
                 TokenType::Create => self.parse_create_table_statement()?,
                 TokenType::Merge => self.parse_merge_statement()?,
+                TokenType::Set => self.parse_set_var_statement()?,
                 TokenType::Identifier(non_reserved_keyword) => {
                     match non_reserved_keyword.to_lowercase().as_str() {
                         "insert" => self.parse_insert_statement()?,
                         "delete" => self.parse_delete_statement()?,
                         "update" => self.parse_update_statement()?,
                         "truncate" => self.parse_truncate_statement()?,
+                        "declare" => self.parse_declare_var_statement()?,
                         _ => {
                             return Err(anyhow!(self.error(
                                 &peek,
@@ -993,6 +1010,86 @@ impl<'a> Parser<'a> {
     fn parse_query_statement(&mut self) -> anyhow::Result<Statement> {
         let query_expr = self.parse_query_expr()?;
         Ok(Statement::Query(QueryStatement { query: query_expr }))
+    }
+
+    // declare_var_statement -> "DECLARE" var_name ("," var_name)* [bq_parameterized_type] ["DEFAULT" expr]
+    fn parse_declare_var_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("declare")?;
+
+        let mut var_names = vec![];
+        loop {
+            let var_name = self.consume_identifier()?;
+            var_names.push(ParseToken::Single(var_name.clone()));
+
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+
+        let (r#type, default) = if self.match_token_type(TokenTypeVariant::Default) {
+            // type is inferred from default expr
+            (None, Some(self.parse_expr()?))
+        } else {
+            let r#type = self.parse_parameterized_bq_type()?;
+            let default = if self.match_token_type(TokenTypeVariant::Default) {
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            (Some(r#type), default)
+        };
+
+        Ok(Statement::DeclareVar(DeclareVarStatement {
+            var_names,
+            r#type,
+            default,
+        }))
+    }
+
+    // set_var_statement -> "SET" (var_name = expr | "(" var_name ("," var_name)* ")" = "(" expr ("," expr)* ")"
+    fn parse_set_var_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::Set)?;
+
+        let mut var_names: Vec<ParseToken>;
+        let mut exprs: Vec<Expr>;
+        if self.match_token_type(TokenTypeVariant::LeftParen) {
+            // multiple vars
+            var_names = vec![];
+            loop {
+                let var_name = self.consume_identifier()?;
+                var_names.push(ParseToken::Single(var_name.clone()));
+
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            self.consume(TokenTypeVariant::Equal)?;
+
+            exprs = vec![];
+            if self.check_token_type(TokenTypeVariant::LeftParen)
+                && self.peek_next_i(1).kind == TokenType::Select
+            {
+                // Single subquery
+                exprs.push(self.parse_expr()?);
+            } else {
+                self.consume(TokenTypeVariant::LeftParen)?;
+                loop {
+                    let expr = self.parse_expr()?;
+                    exprs.push(expr.clone());
+                    if !self.match_token_type(TokenTypeVariant::Comma) {
+                        break;
+                    }
+                }
+                self.consume(TokenTypeVariant::RightParen)?;
+            }
+        } else {
+            var_names = vec![ParseToken::Single(self.consume_identifier()?.clone())];
+            self.consume(TokenTypeVariant::Equal)?;
+            exprs = vec![self.parse_expr()?];
+        }
+
+        Ok(Statement::SetVar(SetVarStatement { var_names, exprs }))
     }
 
     // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
