@@ -2026,8 +2026,8 @@ impl LineageExtractor {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
         let pushed_empty_cte_ctx = if let Some(with) = select_query_expr.with.as_ref() {
-            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            // self.context.push_new_ctx(IndexMap::new(), false);
+            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
             true
         } else {
@@ -2148,7 +2148,7 @@ impl LineageExtractor {
         expand_value_table: bool,
     ) -> anyhow::Result<()> {
         let pushed_empty_cte_ctx = if let Some(with) = grouping_query_expr.with.as_ref() {
-            // We push and empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
             self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
             true
