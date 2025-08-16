@@ -7,6 +7,7 @@ use inbq::lineage::{Catalog, Lineage, RawLineage, ReadyLineage, lineage};
 use inbq::parser::parse_sql;
 use indexmap::IndexMap;
 use serde::Serialize;
+use std::time::Instant;
 
 #[derive(clap::Parser)]
 #[command(name = "inbq")]
@@ -90,7 +91,6 @@ fn output_lineage(
 }
 
 fn main() -> anyhow::Result<()> {
-    use std::time::Instant;
     let now = Instant::now();
 
     env_logger::init();
