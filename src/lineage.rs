@@ -1404,6 +1404,12 @@ impl LineageExtractor {
                 FunctionExpr::ArrayAgg(array_agg_function_expr) => {
                     self.array_agg_function_expr_lin(array_agg_function_expr, expand_value_table)?;
                 }
+                FunctionExpr::CurrentDate(current_date_function_expr) => {
+                    if let Some(timezone_expr) = &current_date_function_expr.timezone {
+                        self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
+                    }
+                }
+                FunctionExpr::CurrentTimestamp => {}
             },
             Expr::Star => {
                 // Handled by select_expr_all_lin and select_expr_col_all_lin

@@ -277,6 +277,16 @@ fn test_should_parse() {
       select 1 + case when true then 1 else 2 end
       "#,
         r#"
+      select
+        current_date,
+        `current_date`,
+        `current_date`(),
+        current_date('America/Los_Angeles'),
+        current_timestamp,
+        `current_timestamp`,
+        `current_timestamp`()
+      "#,
+        r#"
       INSERT dataset.Inventory (product, quantity)
       VALUES('top load washer', 10),
             ('front load washer', 20),

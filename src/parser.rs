@@ -284,6 +284,13 @@ pub enum FunctionExpr {
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
+    CurrentDate(CurrentDateFunctionExpr),
+    CurrentTimestamp,
+}
+
+#[derive(Debug, Clone)]
+pub struct CurrentDateFunctionExpr {
+    pub timezone: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone)]
@@ -3137,6 +3144,44 @@ impl<'a> Parser<'a> {
         )))
     }
 
+    // current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
+    fn parse_current_date_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+
+        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                None
+            } else {
+                Some(Box::new(self.parse_expr()?))
+            };
+            self.consume(TokenTypeVariant::RightParen)?;
+            timezone
+        } else {
+            None
+        };
+
+        Ok(Expr::Function(FunctionExpr::CurrentDate(
+            CurrentDateFunctionExpr { timezone },
+        )))
+    }
+
+    // current_timestamp -> "CURRENT_TIMESTAMP" | "CURRENT_TIMESTAMP" "(" ")"
+    fn parse_current_timestamp_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+
+        if self.match_token_type(TokenTypeVariant::LeftParen) {
+            self.consume(TokenTypeVariant::RightParen)?;
+        }
+
+        Ok(Expr::Function(FunctionExpr::CurrentTimestamp))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_function_name = match &self.peek().kind {
             TokenType::Identifier(ident) => ident,
@@ -3148,6 +3193,8 @@ impl<'a> Parser<'a> {
             "concat" => self.parse_concat_fn_expr(),
             "safe_cast" => self.parse_safe_cast_fn_expr(),
             "array_agg" => self.parse_array_agg_fn_expr(),
+            "current_date" => self.parse_current_date_fn_expr(),
+            "current_timestamp" => self.parse_current_timestamp_fn_expr(),
             _ => self.parse_generic_function(),
         }
     }
@@ -3367,61 +3414,74 @@ impl<'a> Parser<'a> {
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::Identifier(ident) => {
-                if self.peek_next_i(1).kind == TokenType::LeftParen {
+                let lower_ident = ident.to_lowercase();
+                if self.peek_next_i(1).kind == TokenType::LeftParen
+                    || lower_ident == "current_date"
+                    || lower_ident == "current_timestamp"
+                {
                     return self.parse_function_expr();
                 } else if self.peek_prev().kind != TokenType::Dot {
-                    if ident.to_lowercase() == "date" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(date_str) => Expr::Date(date_str.clone()),
-                            _ => unreachable!(),
+                    match lower_ident.as_str() {
+                        "date" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(date_str) => Expr::Date(date_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "timestamp" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
-                            _ => unreachable!(),
+                        "timestamp" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "datetime" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
-                            _ => unreachable!(),
+                        "datetime" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "time" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(date_str) => Expr::Time(date_str.clone()),
-                            _ => unreachable!(),
+                        "time" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(date_str) => Expr::Time(date_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "numeric" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
-                            _ => unreachable!(),
+                        "numeric" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "bignumeric" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
-                            _ => unreachable!(),
+                        "bignumeric" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else if ident.to_lowercase() == "json" {
-                        self.advance();
-                        let curr = self.consume(TokenTypeVariant::String)?;
-                        match &curr.kind {
-                            TokenType::String(json_str) => Expr::Json(json_str.clone()),
-                            _ => unreachable!(),
+                        "json" => {
+                            self.advance();
+                            let curr = self.consume(TokenTypeVariant::String)?;
+                            match &curr.kind {
+                                TokenType::String(json_str) => Expr::Json(json_str.clone()),
+                                _ => unreachable!(),
+                            }
                         }
-                    } else {
-                        self.advance();
-                        Expr::Identifier(ident)
+                        _ => {
+                            self.advance();
+                            Expr::Identifier(ident)
+                        }
                     }
                 } else {
                     self.advance();
