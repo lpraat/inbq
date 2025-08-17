@@ -438,6 +438,22 @@ fn test_should_parse() {
         FORMAT('Found %d occurrences of "%s" across %d Shakespeare works',
                word_count, target_word, corpus_count) AS result;
       "#,
+        r#"
+      begin
+      exception when error then
+      end;
+      "#,
+        r#"
+      begin
+      end;
+      "#,
+        r#"
+      begin
+        select 1/0;
+      exception when error then
+        select 1;
+      end;
+      "#,
     ];
     for sql in sqls {
         println!("Testing parsing for SQL: {}", sql);

@@ -859,3 +859,70 @@ kind = "table"
 columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->in_arr[]"]
+
+[[tests]]
+sql = """
+begin
+    declare x struct<f1 int64> default (select s from proj.dat.in_table);
+    declare y,z int64 default 10;
+    declare s string default (select a from proj.dat.in_table);
+
+    set (y, z) = ((select s.f1 + x.f1 from proj.dat.in_table limit 1), (select 3));
+    set s = "foo";
+
+    insert into proj.dat.out_table
+    select
+    s as a,
+    x.f1 as f1,
+    y+z as f2;
+end;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "string" },
+    { name = "s", dtype = "struct<f1 int64, f2 int64>"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [
+    { name = "a", dtype = "string" },
+    { name = "f1", dtype = "int64"},
+    { name = "f2", dtype = "int64"}
+]
+[tests.ready_lineage."proj.dat.out_table"]
+f1 = ["proj.dat.in_table->s.f1"]
+f2 = ["proj.dat.in_table->s.f1"]
+
+[[tests]]
+sql = """
+begin
+
+declare x, y int64;
+set (x, y) = (select as struct sum(ix), sum(iy)+sum(ix) from proj.dat.in_table);
+
+insert into proj.dat.out_table
+select
+    x, y;
+
+end;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind = "table"
+columns = [
+    { name = "ix", dtype = "int64" },
+    { name = "iy", dtype = "int64"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind = "table"
+columns = [
+    { name = "ox", dtype = "int64" },
+    { name = "oy", dtype = "int64"}
+]
+[tests.ready_lineage."proj.dat.out_table"]
+ox = ["proj.dat.in_table->ix"]
+oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]

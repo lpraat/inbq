@@ -19,6 +19,13 @@ pub enum Statement {
     CreateTable(CreateTableStatement),
     DeclareVar(DeclareVarStatement),
     SetVar(SetVarStatement),
+    Block(StatementsBlock),
+}
+
+#[derive(Debug, Clone)]
+pub struct StatementsBlock {
+    pub statements: Vec<Statement>,
+    pub exception_statements: Option<Vec<Statement>>,
 }
 
 #[derive(Debug, Clone)]
@@ -903,7 +910,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // query -> query_statement (; query_statement [";"])*
+    // query -> statement (; statement [";"])*
     fn parse_query(&mut self) -> anyhow::Result<Ast> {
         let mut statements = vec![];
 
@@ -917,33 +924,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            let peek = self.peek().clone();
-
-            let statement = match &peek.kind {
-                TokenType::Create => self.parse_create_table_statement()?,
-                TokenType::Merge => self.parse_merge_statement()?,
-                TokenType::Set => self.parse_set_var_statement()?,
-                TokenType::Identifier(non_reserved_keyword) => {
-                    match non_reserved_keyword.to_lowercase().as_str() {
-                        "insert" => self.parse_insert_statement()?,
-                        "delete" => self.parse_delete_statement()?,
-                        "update" => self.parse_update_statement()?,
-                        "truncate" => self.parse_truncate_statement()?,
-                        "declare" => self.parse_declare_var_statement()?,
-                        _ => {
-                            return Err(anyhow!(self.error(
-                                &peek,
-                                &format!(
-                                    "Unexpected non reserved keyword: `{}`.",
-                                    non_reserved_keyword
-                                ),
-                            )));
-                        }
-                    }
-                }
-                _ => self.parse_query_statement()?,
-            };
-            statements.push(statement);
+            statements.push(self.parse_statement()?);
 
             if !self.match_token_type(TokenTypeVariant::Semicolon) {
                 break;
@@ -952,6 +933,67 @@ impl<'a> Parser<'a> {
 
         self.consume(TokenTypeVariant::Eof)?;
         Ok(Ast { statements })
+    }
+
+    fn parse_statement(&mut self) -> anyhow::Result<Statement> {
+        let peek = self.peek().clone();
+
+        let statement = match &peek.kind {
+            TokenType::Create => self.parse_create_table_statement()?,
+            TokenType::Merge => self.parse_merge_statement()?,
+            TokenType::Set => self.parse_set_var_statement()?,
+            TokenType::Identifier(non_reserved_keyword) => {
+                match non_reserved_keyword.to_lowercase().as_str() {
+                    "insert" => self.parse_insert_statement()?,
+                    "delete" => self.parse_delete_statement()?,
+                    "update" => self.parse_update_statement()?,
+                    "truncate" => self.parse_truncate_statement()?,
+                    "declare" => self.parse_declare_var_statement()?,
+                    "begin" => self.parse_statements_block()?,
+                    _ => {
+                        return Err(anyhow!(self.error(
+                            &peek,
+                            &format!(
+                                "Unexpected non reserved keyword: `{}`.",
+                                non_reserved_keyword
+                            ),
+                        )));
+                    }
+                }
+            }
+            _ => self.parse_query_statement()?,
+        };
+        Ok(statement)
+    }
+
+    // statements_block -> "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END"
+    fn parse_statements_block(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("begin")?;
+
+        let mut statements = vec![];
+        let mut exception_statements: Option<Vec<Statement>> = None;
+        let mut curr_vec = &mut statements;
+        loop {
+            if self.match_token_type(TokenTypeVariant::End) {
+                break;
+            }
+            if self.match_non_reserved_keyword("exception") {
+                self.consume(TokenTypeVariant::When)?;
+                self.consume_non_reserved_keyword("error")?;
+                self.consume(TokenTypeVariant::Then)?;
+                exception_statements = Some(vec![]);
+                curr_vec = exception_statements.as_mut().unwrap();
+                continue;
+            }
+
+            curr_vec.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+        }
+
+        Ok(Statement::Block(StatementsBlock {
+            statements,
+            exception_statements,
+        }))
     }
 
     // TODO: add collate, partition, etc...

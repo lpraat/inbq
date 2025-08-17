@@ -10,12 +10,12 @@ use crate::{
     arena::{Arena, ArenaIndex},
     parser::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CreateTableStatement,
-        Cte, Expr, FromExpr, FromPathExpr, FunctionExpr, GroupingQueryExpr, InsertStatement,
-        IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement,
-        MergeUpdate, ParameterizedType, ParseToken, Parser, QueryExpr, QueryStatement,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetSelectQueryExpr, Statement, StructExpr, Type, UpdateStatement, When,
-        With,
+        Cte, DeclareVarStatement, Expr, FromExpr, FromPathExpr, FunctionExpr, GroupingQueryExpr,
+        InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource,
+        MergeStatement, MergeUpdate, ParameterizedType, ParseToken, Parser, QueryExpr,
+        QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, Statement, StatementsBlock,
+        StructExpr, Type, UpdateStatement, When, With,
     },
     scanner::{Scanner, TokenType},
 };
@@ -206,6 +206,7 @@ enum ContextObjectKind {
     AnonymousStruct,
     AnonymousArray,
     Unnest,
+    Var,
 }
 
 impl From<ContextObjectKind> for String {
@@ -220,6 +221,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::AnonymousStruct => "anonymous_struct".to_owned(),
             ContextObjectKind::AnonymousArray => "anonymous_array".to_owned(),
             ContextObjectKind::Unnest => "unnest".to_owned(),
+            ContextObjectKind::Var => "var".to_owned(),
         }
     }
 }
@@ -232,6 +234,7 @@ struct Context {
     objects_stack: Vec<ArenaIndex>,
     stack: Vec<IndexMap<String, ArenaIndex>>,
     columns_stack: Vec<IndexMap<String, Vec<ArenaIndex>>>,
+    vars: IndexMap<String, ArenaIndex>,
     lineage_stack: Vec<ArenaIndex>,
     struct_node_field_types_stack: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
@@ -797,6 +800,16 @@ impl LineageExtractor {
         Ok(())
     }
 
+    fn is_column_in_context(&self, col_name: &str) -> bool {
+        self.context
+            .curr_columns_stack()
+            .is_some_and(|map| map.contains_key(&col_name.to_lowercase()))
+    }
+
+    fn get_var_from_scope(&self, var_name: &str) -> Option<&ArenaIndex> {
+        self.context.vars.get(&var_name.to_lowercase())
+    }
+
     fn get_column_source(
         &mut self,
         table: Option<&String>,
@@ -835,8 +848,7 @@ impl LineageExtractor {
         } else if let Some(target_tables) = self
             .context
             .curr_columns_stack()
-            .unwrap_or(&IndexMap::new())
-            .get(&column)
+            .and_then(|map| map.get(&column))
         {
             let unnest_idx = target_tables.iter().find(|&idx| {
                 matches!(
@@ -918,16 +930,19 @@ impl LineageExtractor {
                     ) => {
                         assert!(op == ".");
                         if access_path.path.is_empty() {
-                            if self
-                                .context
-                                .curr_columns_stack()
-                                .unwrap_or(&IndexMap::new())
-                                .contains_key(&left_ident.to_lowercase())
-                            {
+                            if self.is_column_in_context(left_ident) {
                                 // col.struct
                                 let col_source_idx = self.get_column_source(None, left_ident)?;
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 let node = &self.context.arena_lineage_nodes[col_source_idx];
+                                let nested_node_idx = node.access(&access_path)?;
+                                self.nested_node_lin(&access_path, nested_node_idx);
+                            } else if let Some(var_node_idx) = self.get_var_from_scope(left_ident) {
+                                // var.struct
+                                // TODO: write a method for these 4 lines (repeated above for column)
+                                // Or use a get_or_var_node_idx() method
+                                access_path.path.push(AccessOp::Field(right_ident.clone()));
+                                let node = &self.context.arena_lineage_nodes[*var_node_idx];
                                 let nested_node_idx = node.access(&access_path)?;
                                 self.nested_node_lin(&access_path, nested_node_idx);
                             } else {
@@ -938,15 +953,14 @@ impl LineageExtractor {
                             }
                             break;
                         } else {
-                            let col_source_idx = if self
-                                .context
-                                .curr_columns_stack()
-                                .unwrap_or(&IndexMap::new())
-                                .contains_key(&left_ident.to_lowercase())
-                            {
+                            let col_source_idx = if self.is_column_in_context(left_ident) {
                                 // col.struct
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 self.get_column_source(None, left_ident)?
+                            } else if let Some(var_node_idx) = self.get_var_from_scope(left_ident) {
+                                // var.struct
+                                access_path.path.push(AccessOp::Field(right_ident.clone()));
+                                *var_node_idx
                             } else {
                                 // table.col
                                 let col_name = right_ident.clone();
@@ -1034,12 +1048,7 @@ impl LineageExtractor {
                             }
                             _ => unreachable!(),
                         };
-                        if self
-                            .context
-                            .curr_columns_stack()
-                            .unwrap_or(&IndexMap::new())
-                            .contains_key(ident)
-                        {
+                        if self.is_column_in_context(ident) {
                             // struct.array_field
                             let col_name = ident;
 
@@ -1049,6 +1058,15 @@ impl LineageExtractor {
 
                             let col_source_idx = self.get_column_source(None, col_name)?;
                             let node = &self.context.arena_lineage_nodes[col_source_idx];
+                            let nested_node_idx = node.access(&access_path)?;
+                            self.nested_node_lin(&access_path, nested_node_idx);
+                        } else if let Some(var_node_idx) = self.get_var_from_scope(ident) {
+                            // struct_var.array_field
+                            access_path.path.push(AccessOp::Index);
+                            access_path.path.push(AccessOp::Field(array_field));
+                            access_path.path.reverse();
+
+                            let node = &self.context.arena_lineage_nodes[*var_node_idx];
                             let nested_node_idx = node.access(&access_path)?;
                             self.nested_node_lin(&access_path, nested_node_idx);
                         } else {
@@ -1085,18 +1103,21 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Identifier(ident) | Expr::QuotedIdentifier(ident), Expr::Star) => {
-                        if self
-                            .context
-                            .curr_columns_stack()
-                            .unwrap_or(&IndexMap::new())
-                            .contains_key(&ident.to_lowercase())
-                        {
+                        if self.is_column_in_context(ident) {
                             let col_source_idx = self.get_column_source(None, ident)?;
                             let col = &self.context.arena_lineage_nodes[col_source_idx];
                             let access_path = AccessPath {
                                 path: vec![AccessOp::FieldStar],
                             };
                             let nested_node_idx = col.access(&access_path)?;
+                            self.nested_node_lin(&access_path, nested_node_idx);
+                        } else if let Some(var_node_idx) = self.get_var_from_scope(ident) {
+                            // TODO: code is same as above
+                            let var = &self.context.arena_lineage_nodes[*var_node_idx];
+                            let access_path = AccessPath {
+                                path: vec![AccessOp::FieldStar],
+                            };
+                            let nested_node_idx = var.access(&access_path)?;
                             self.nested_node_lin(&access_path, nested_node_idx);
                         } else {
                             let source_obj_idx = *self
@@ -1115,13 +1136,22 @@ impl LineageExtractor {
                     (Expr::Identifier(ident) | Expr::QuotedIdentifier(ident), Expr::Number(_)) => {
                         // array[]
                         assert!(op == "[]");
-                        let col_source_idx = self.get_column_source(None, ident)?;
-                        let col = &self.context.arena_lineage_nodes[col_source_idx];
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Index],
-                        };
-                        let nested_node_idx = col.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
+                        if self.is_column_in_context(ident) {
+                            let col_source_idx = self.get_column_source(None, ident)?;
+                            let col = &self.context.arena_lineage_nodes[col_source_idx];
+                            let access_path = AccessPath {
+                                path: vec![AccessOp::Index],
+                            };
+                            let nested_node_idx = col.access(&access_path)?;
+                            self.nested_node_lin(&access_path, nested_node_idx);
+                        } else if let Some(var_node_idx) = self.get_var_from_scope(ident) {
+                            let var = &self.context.arena_lineage_nodes[*var_node_idx];
+                            let access_path = AccessPath {
+                                path: vec![AccessOp::Index],
+                            };
+                            let nested_node_idx = var.access(&access_path)?;
+                            self.nested_node_lin(&access_path, nested_node_idx);
+                        }
                         break;
                     }
                     (
@@ -1354,9 +1384,13 @@ impl LineageExtractor {
                 self.select_expr_col_expr_lin(&grouping_expr.expr, expand_value_table)?
             }
             Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
-                let col_name = ident.clone();
-                let col_source_idx = self.get_column_source(None, &col_name)?;
-                self.context.lineage_stack.push(col_source_idx);
+                if self.is_column_in_context(ident) {
+                    let col_name = ident.clone();
+                    let col_source_idx = self.get_column_source(None, &col_name)?;
+                    self.context.lineage_stack.push(col_source_idx);
+                } else if let Some(var_node_idx) = self.get_var_from_scope(ident) {
+                    self.context.lineage_stack.push(*var_node_idx);
+                }
             }
             Expr::Interval(interval_expr) => match interval_expr {
                 IntervalExpr::Interval { value, .. } => {
@@ -2748,31 +2782,137 @@ impl LineageExtractor {
         Ok(())
     }
 
-    fn ast_lin(&mut self, query: &Ast) -> anyhow::Result<()> {
-        for statement in &query.statements {
+    fn declare_var_statement_lin(
+        &mut self,
+        declare_var_statement: &DeclareVarStatement,
+    ) -> anyhow::Result<Vec<ArenaIndex>> {
+        let declared_vars = Vec::with_capacity(declare_var_statement.var_names.len());
+
+        let input_lineage_nodes = if let Some(default_expr) = &declare_var_statement.default {
+            self.call_func_and_consume_lineage_nodes(|this| {
+                this.select_expr_col_expr_lin(default_expr, false)
+            })?
+        } else {
+            vec![]
+        };
+
+        for var in &declare_var_statement.var_names {
+            // Var names are case insensitive (like column names)
+            let var_ident = var.identifier().to_lowercase();
+            let obj_name = format!("!var_{}", var_ident);
+
+            let object_idx = self.context.allocate_new_ctx_object(
+                &obj_name,
+                ContextObjectKind::Var,
+                vec![(
+                    NodeName::Defined(var_ident.clone()),
+                    declare_var_statement.r#type.as_ref().map_or_else(
+                        || NodeType::Unknown,
+                        node_type_from_parser_parameterized_type,
+                    ),
+                    input_lineage_nodes.clone(),
+                )],
+            );
+            let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
+            self.context.vars.insert(var_ident, var_node_idx);
+            self.context.output.push(var_node_idx);
+            self.context.add_object(object_idx);
+        }
+
+        Ok(declared_vars)
+    }
+
+    /// Remove vars from current scope
+    fn remove_scope_vars(&mut self, vars: &[ArenaIndex]) {
+        vars.iter().for_each(|obj_idx| {
+            self.context.pop_object();
+            let var_obj = &self.context.arena_objects[*obj_idx];
+            let var_node = &self.context.arena_lineage_nodes[var_obj.lineage_nodes[0]];
+            self.context.vars.swap_remove(var_node.name.string());
+        });
+    }
+
+    fn statements_block_lin(&mut self, statements_block: &StatementsBlock) -> anyhow::Result<()> {
+        let mut declared_vars = vec![];
+
+        for statement in &statements_block.statements {
             match statement {
-                Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
-                Statement::Update(update_statement) => {
-                    self.update_statement_lin(update_statement)?
+                Statement::DeclareVar(declare_var_statement) => {
+                    declared_vars.extend(self.declare_var_statement_lin(declare_var_statement)?);
                 }
-                Statement::Insert(insert_statement) => {
-                    self.insert_statement_lin(insert_statement)?
-                }
-                Statement::Merge(merge_statement) => self.merge_statement_lin(merge_statement)?,
-                Statement::CreateTable(create_table_statement) => {
-                    self.create_table_statement_lin(create_table_statement)?
-                }
-                Statement::Delete(_) => {}
-                Statement::Truncate(_) => {}
-                Statement::DeclareVar(_) => {
-                    // NOTE: var names are case insensitive (like column names)
-                    todo!()
-                }
-                Statement::SetVar(_) => {
-                    todo!()
-                }
+                _ => self.statement_lin(statement)?,
             }
         }
+
+        if let Some(exception_statements) = &statements_block.exception_statements {
+            for statement in exception_statements {
+                // A declare statement can't be here as variable declarations
+                // must appear at the start of a block
+                self.statement_lin(statement)?;
+            }
+        }
+
+        self.remove_scope_vars(&declared_vars);
+        Ok(())
+    }
+
+    fn statement_lin(&mut self, statement: &Statement) -> anyhow::Result<()> {
+        match statement {
+            Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
+            Statement::Update(update_statement) => self.update_statement_lin(update_statement)?,
+            Statement::Insert(insert_statement) => self.insert_statement_lin(insert_statement)?,
+            Statement::Merge(merge_statement) => self.merge_statement_lin(merge_statement)?,
+            Statement::CreateTable(create_table_statement) => {
+                self.create_table_statement_lin(create_table_statement)?
+            }
+            Statement::Delete(_) => {}
+            Statement::Truncate(_) => {}
+            Statement::DeclareVar(declare_var_statement) => {
+                self.declare_var_statement_lin(declare_var_statement)?;
+            }
+            Statement::SetVar(set_var_statement) => {
+                if set_var_statement.var_names.len() > 1 && set_var_statement.exprs.len() == 1 {
+                    let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                        this.select_expr_col_expr_lin(&set_var_statement.exprs[0], true)
+                    })?;
+
+                    for (i, var) in set_var_statement.var_names.iter().enumerate() {
+                        let var_node_idx = self.context.vars.get(&var.identifier()).unwrap();
+                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        var_node.input = vec![consumed_nodes[i]];
+                    }
+                } else {
+                    assert!(set_var_statement.var_names.len() == set_var_statement.exprs.len());
+                    for (var, expr) in set_var_statement
+                        .var_names
+                        .iter()
+                        .zip(&set_var_statement.exprs)
+                    {
+                        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                            this.select_expr_col_expr_lin(expr, false)
+                        })?;
+                        let var_node_idx = self.context.vars.get(&var.identifier()).unwrap();
+                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        var_node.input = consumed_nodes;
+                    }
+                }
+            }
+            Statement::Block(statements_block) => self.statements_block_lin(statements_block)?,
+        }
+        Ok(())
+    }
+
+    fn ast_lin(&mut self, query: &Ast) -> anyhow::Result<()> {
+        let mut declared_vars = vec![];
+        for statement in &query.statements {
+            match statement {
+                Statement::DeclareVar(declare_var_statement) => {
+                    declared_vars.extend(self.declare_var_statement_lin(declare_var_statement)?);
+                }
+                _ => self.statement_lin(statement)?,
+            }
+        }
+        self.remove_scope_vars(&declared_vars);
         Ok(())
     }
 }
