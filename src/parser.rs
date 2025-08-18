@@ -16,10 +16,11 @@ pub enum Statement {
     Update(UpdateStatement),
     Truncate(TruncateStatement),
     Merge(Box<MergeStatement>),
-    CreateTable(CreateTableStatement),
     DeclareVar(DeclareVarStatement),
     SetVar(SetVarStatement),
     Block(StatementsBlock),
+    CreateTable(CreateTableStatement),
+    DropTableStatement(DropTableStatement),
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +50,12 @@ pub struct CreateTableStatement {
     pub is_temporary: bool,
     pub if_not_exists: bool,
     pub query: Option<QueryExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableStatement {
+    pub name: ParseToken,
+    pub if_exists: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -936,7 +943,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> anyhow::Result<Statement> {
-        let peek = self.peek().clone();
+        let peek = self.peek();
 
         let statement = match &peek.kind {
             TokenType::Create => self.parse_create_table_statement()?,
@@ -950,9 +957,10 @@ impl<'a> Parser<'a> {
                     "truncate" => self.parse_truncate_statement()?,
                     "declare" => self.parse_declare_var_statement()?,
                     "begin" => self.parse_statements_block()?,
+                    "drop" => self.parse_drop_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
-                            &peek,
+                            peek,
                             &format!(
                                 "Unexpected non reserved keyword: `{}`.",
                                 non_reserved_keyword
@@ -964,6 +972,49 @@ impl<'a> Parser<'a> {
             _ => self.parse_query_statement()?,
         };
         Ok(statement)
+    }
+
+    fn parse_drop_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("drop")?;
+
+        let peek = self.peek();
+        let statement = match &peek.kind {
+            TokenType::Identifier(non_reserved_keyword) => {
+                match non_reserved_keyword.to_lowercase().as_str() {
+                    "table" => self.parse_drop_table_statement()?,
+                    _ => {
+                        return Err(anyhow!(self.error(
+                            peek,
+                            &format!(
+                                "Unexpected non reserved keyword while parsing drop statement: `{}`.",
+                                non_reserved_keyword
+                            ),
+                        )));
+                    }
+                }
+            }
+            _ => return Err(anyhow!("Unexpected token.")),
+        };
+        Ok(statement)
+    }
+
+    // drop_table_statement -> "DROP" "TABLE" ["IF" "EXISTS"] table_name
+    fn parse_drop_table_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("table")?;
+
+        let if_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_path()?.expr;
+
+        Ok(Statement::DropTableStatement(DropTableStatement {
+            name,
+            if_exists,
+        }))
     }
 
     // statements_block -> "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END"

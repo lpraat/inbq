@@ -408,6 +408,15 @@ fn test_should_parse() {
       CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b `BOOL`>);
       "#,
         r#"
+      DROP TABLE some_temp_table
+      "#,
+        r#"
+      DROP TABLE IF EXISTS some_temp_table
+      "#,
+        r#"
+      DROP TABLE proj.dat.table
+      "#,
+        r#"
       DECLARE x INT64;
       "#,
         r#"
