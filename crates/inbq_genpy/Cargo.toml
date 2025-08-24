@@ -1,0 +1,17 @@
+[package]
+name = "inbq_genpy"
+description = "Utilities to generate python objects for inbq"
+documentation = {workspace = true}
+homepage = {workspace = true}
+repository = {workspace = true}
+version = {workspace = true}
+edition = {workspace = true}
+authors = {workspace = true}
+license = {workspace = true}
+
+exclude = ["/examples", "/tests"]
+
+
+[dependencies]
+anyhow = "1.0.93"
+inbq = {workspace = true}

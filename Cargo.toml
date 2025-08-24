@@ -1,27 +1,32 @@
-[package]
-name = "inbq"
-description = """
-inbq is a rust library and command-line tool for extracting schema-aware,
-column-level lineage (including through nested structs/arrays)
-from multi-statement BigQuery queries.
-"""
+[workspace]
+resolver = "3"
+members = [
+    "crates/*",
+]
+
+default-members = ["crates/*"]
+
+
+[workspace.package]
 documentation = "https://github.com/lpraat/inbq"
 homepage = "https://github.com/lpraat/inbq"
 repository = "https://github.com/lpraat/inbq"
 version = "0.1.0"
 edition = "2024"
 authors = ["Lorenzo Pratissoli <pratissolil@gmail.com>"]
-exclude = ["/examples", "/tests"]
 license = "MIT"
 
-[dependencies]
+[workspace.dependencies]
+inbq = {version="0.1.0", path="crates/inbq"}
+
 anyhow = "1.0.93"
-clap = { version = "4.5.36", features = ["derive"] }
+clap = { version = "4.5.36" }
 env_logger = "0.11.8"
-indexmap = {version = "2.9.0", features = ["serde"] }
+indexmap = { version = "2.9.0" }
 log = "0.4.27"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.219" }
 serde_json = "1.0.140"
 strum = "0.27.1"
 strum_macros = "0.27.1"
 toml = "0.8.20"
+pyo3 = "0.25.1"

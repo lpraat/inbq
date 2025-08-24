@@ -1,4 +1,9 @@
+# MacOs
+.DS_Store
+
 # Editors
+.vscode
+.idea
 .vscode
 
 # Builds
@@ -6,3 +11,11 @@
 
 # Python
 .venv
+.pytest_cache/
+*.py[cod]
+__pycache__
+.python-version
+.ropeproject
+
+# Libs
+*.so

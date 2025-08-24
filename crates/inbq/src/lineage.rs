@@ -1,15 +1,16 @@
 use crate::{
     arena::{Arena, ArenaIndex},
-    parser::{
+    ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CreateTableStatement,
         Cte, DeclareVarStatement, DropTableStatement, Expr, FromExpr, FromPathExpr, FunctionExpr,
         GroupingQueryExpr, InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge,
         MergeInsert, MergeSource, MergeStatement, MergeUpdate, ParameterizedType, ParseToken,
-        Parser, QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr,
-        SelectExpr, SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement,
-        Statement, StatementsBlock, StructExpr, Type, UpdateStatement, When, With,
+        QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, Statement,
+        StatementsBlock, StructExpr, TokenType, Type, UpdateStatement, When, With,
     },
-    scanner::{Scanner, TokenType},
+    parser::Parser,
+    scanner::Scanner,
 };
 use anyhow::anyhow;
 use indexmap::IndexMap;
@@ -2307,7 +2308,7 @@ impl LineageExtractor {
     }
 
     #[allow(clippy::wrong_self_convention)]
-    fn from_lin(&mut self, from: &crate::parser::From) -> anyhow::Result<()> {
+    fn from_lin(&mut self, from: &crate::ast::From) -> anyhow::Result<()> {
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
 
