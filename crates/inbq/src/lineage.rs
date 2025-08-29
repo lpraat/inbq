@@ -1383,9 +1383,9 @@ impl LineageExtractor {
                 if let Some(case) = &case_expr.case {
                     self.select_expr_col_expr_lin(case, expand_value_table)?;
                 }
-                for (when, then) in &case_expr.when_thens {
-                    self.select_expr_col_expr_lin(when, expand_value_table)?;
-                    self.select_expr_col_expr_lin(then, expand_value_table)?;
+                for when_then in &case_expr.when_thens {
+                    self.select_expr_col_expr_lin(&when_then.when, expand_value_table)?;
+                    self.select_expr_col_expr_lin(&when_then.then, expand_value_table)?;
                 }
                 self.select_expr_col_expr_lin(&case_expr.r#else, expand_value_table)?;
             }
@@ -2962,7 +2962,7 @@ pub struct Lineage {
 
 fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) -> NodeType {
     let r#type = match param_type {
-        Type::Array(r#type) => NodeType::Array(Box::new(ArrayNodeType {
+        Type::Array { r#type } => NodeType::Array(Box::new(ArrayNodeType {
             r#type: node_type_from_parser_type(r#type, types_vec),
             input: vec![],
         })),
@@ -2977,10 +2977,10 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
         Type::Interval => NodeType::Base("INTERVAL".to_owned()),
         Type::Json => NodeType::Base("JSON".to_owned()),
         Type::Numeric => NodeType::Base("NUMERIC".to_owned()),
-        Type::Range(_) => NodeType::Base("RANGE".to_owned()),
+        Type::Range { r#type: _ } => NodeType::Base("RANGE".to_owned()),
         Type::String => NodeType::Base("STRING".to_owned()),
-        Type::Struct(vec) => NodeType::Struct(StructNodeType {
-            fields: vec
+        Type::Struct { fields } => NodeType::Struct(StructNodeType {
+            fields: fields
                 .iter()
                 .map(|field| StructNodeFieldType {
                     name: field
@@ -3001,13 +3001,18 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
 
 fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> NodeType {
     match param_type {
-        ParameterizedType::Array(parameterized_type) => NodeType::Array(Box::new(ArrayNodeType {
+        ParameterizedType::Array {
+            r#type: parameterized_type,
+        } => NodeType::Array(Box::new(ArrayNodeType {
             r#type: node_type_from_parser_parameterized_type(parameterized_type),
             input: vec![],
         })),
-        ParameterizedType::BigNumeric(_, _) => NodeType::Base("BIGNUMERIC".to_owned()),
+        ParameterizedType::BigNumeric {
+            precision: _,
+            scale: _,
+        } => NodeType::Base("BIGNUMERIC".to_owned()),
         ParameterizedType::Bool => NodeType::Base("BOOLEAN".to_owned()),
-        ParameterizedType::Bytes(_) => NodeType::Base("BYTES".to_owned()),
+        ParameterizedType::Bytes { max_length: _ } => NodeType::Base("BYTES".to_owned()),
         ParameterizedType::Date => NodeType::Base("DATE".to_owned()),
         ParameterizedType::Datetime => NodeType::Base("DATETIME".to_owned()),
         ParameterizedType::Float64 => NodeType::Base("FLOAT64".to_owned()),
@@ -3015,11 +3020,14 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
         ParameterizedType::Int64 => NodeType::Base("INT64".to_owned()),
         ParameterizedType::Interval => NodeType::Base("INTERVAL".to_owned()),
         ParameterizedType::Json => NodeType::Base("JSON".to_owned()),
-        ParameterizedType::Numeric(_, _) => NodeType::Base("NUMERIC".to_owned()),
-        ParameterizedType::Range(_) => NodeType::Base("RANGE".to_owned()),
-        ParameterizedType::String(_) => NodeType::Base("STRING".to_owned()),
-        ParameterizedType::Struct(vec) => NodeType::Struct(StructNodeType {
-            fields: vec
+        ParameterizedType::Numeric {
+            precision: _,
+            scale: _,
+        } => NodeType::Base("NUMERIC".to_owned()),
+        ParameterizedType::Range { r#type: _ } => NodeType::Base("RANGE".to_owned()),
+        ParameterizedType::String { max_length: _ } => NodeType::Base("STRING".to_owned()),
+        ParameterizedType::Struct { fields } => NodeType::Struct(StructNodeType {
+            fields: fields
                 .iter()
                 .map(|field| StructNodeFieldType {
                     name: field.name.identifier(),

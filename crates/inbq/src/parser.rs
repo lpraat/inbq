@@ -17,8 +17,8 @@ use crate::ast::{
     SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, Statement,
     StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
     TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnnestExpr, UpdateItem,
-    UpdateStatement, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, Where,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    UpdateStatement, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen,
+    Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -1991,7 +1991,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_bq_type()?;
         self.consume(TokenTypeVariant::Greater)?;
-        Ok(Type::Array(Box::new(array_type)))
+        Ok(Type::Array {
+            r#type: Box::new(array_type),
+        })
     }
 
     // range_type -> "<" bq_type ">"
@@ -1999,7 +2001,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Less)?;
         let range_type = self.parse_bq_type()?;
         self.consume(TokenTypeVariant::Greater)?;
-        Ok(Type::Range(Box::new(range_type)))
+        Ok(Type::Range {
+            r#type: Box::new(range_type),
+        })
     }
 
     // struct_type -> "<" ["field_name"] bq_type ("," ["field_name"] bq_type)* ">"
@@ -2037,7 +2041,9 @@ impl<'a> Parser<'a> {
         }
         self.consume(TokenTypeVariant::Greater)?;
 
-        Ok(Type::Struct(struct_field_types))
+        Ok(Type::Struct {
+            fields: struct_field_types,
+        })
     }
 
     // bq_type ->
@@ -2123,7 +2129,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Less)?;
         let range_type = self.parse_parameterized_range_type()?;
         self.consume(TokenTypeVariant::Greater)?;
-        Ok(ParameterizedType::Range(Box::new(range_type)))
+        Ok(ParameterizedType::Range {
+            r#type: Box::new(range_type),
+        })
     }
 
     // array_type -> "<" bq_paramterized_type ">"
@@ -2131,7 +2139,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_parameterized_bq_type()?;
         self.consume(TokenTypeVariant::Greater)?;
-        Ok(ParameterizedType::Array(Box::new(array_type)))
+        Ok(ParameterizedType::Array {
+            r#type: Box::new(array_type),
+        })
     }
 
     // struct_type -> "<" field_name bq_paramterized_type ("," field_name bq_paramterized_type)* ">"
@@ -2159,7 +2169,9 @@ impl<'a> Parser<'a> {
         }
         self.consume(TokenTypeVariant::Greater)?;
 
-        Ok(ParameterizedType::Struct(struct_field_types))
+        Ok(ParameterizedType::Struct {
+            fields: struct_field_types,
+        })
     }
 
     // parameterized_bq_type ->
@@ -2210,7 +2222,7 @@ impl<'a> Parser<'a> {
                 } else {
                     (None, None)
                 };
-                Ok(ParameterizedType::BigNumeric(precision, scale))
+                Ok(ParameterizedType::BigNumeric {precision, scale})
             }
             "bool" | "boolean" => Ok(ParameterizedType::Bool),
             "bytes" => {
@@ -2225,7 +2237,7 @@ impl<'a> Parser<'a> {
                     None
                 };
 
-                Ok(ParameterizedType::Bytes(max_len))
+                Ok(ParameterizedType::Bytes{max_length: max_len})
             }
             "date" => Ok(ParameterizedType::Date),
             "datetime" => Ok(ParameterizedType::Datetime),
@@ -2256,7 +2268,7 @@ impl<'a> Parser<'a> {
                 } else {
                     (None, None)
                 };
-                Ok(ParameterizedType::Numeric(precision, scale))
+                Ok(ParameterizedType::Numeric{precision, scale})
             }
             "range" => {
                 // we cannot use range as a quotedidentifier
@@ -2278,7 +2290,7 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
-                Ok(ParameterizedType::String(max_len))
+                Ok(ParameterizedType::String{max_length: max_len})
             }
             "time" => Ok(ParameterizedType::Time),
             "timestamp" => Ok(ParameterizedType::Timestamp),
@@ -2713,11 +2725,11 @@ impl<'a> Parser<'a> {
 
         loop {
             self.consume(TokenTypeVariant::When)?;
-            let when_expr = self.parse_expr()?;
+            let when = self.parse_expr()?;
             self.consume(TokenTypeVariant::Then)?;
-            let then_expr = self.parse_expr()?;
+            let then = self.parse_expr()?;
 
-            when_thens.push((when_expr, then_expr));
+            when_thens.push(WhenThen { when, then });
 
             if self.match_token_type(TokenTypeVariant::Else) {
                 break;

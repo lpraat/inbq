@@ -64,10 +64,17 @@ pub struct ColumnSchema {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParameterizedType {
-    Array(Box<ParameterizedType>),
-    BigNumeric(Option<String>, Option<String>),
+    Array {
+        r#type: Box<ParameterizedType>,
+    },
+    BigNumeric {
+        precision: Option<String>,
+        scale: Option<String>,
+    },
     Bool,
-    Bytes(Option<String>),
+    Bytes {
+        max_length: Option<String>,
+    },
     Date,
     Datetime,
     Float64,
@@ -75,10 +82,19 @@ pub enum ParameterizedType {
     Int64,
     Interval,
     Json,
-    Numeric(Option<String>, Option<String>),
-    Range(Box<ParameterizedType>),
-    String(Option<String>),
-    Struct(Vec<StructParameterizedFieldType>),
+    Numeric {
+        precision: Option<String>,
+        scale: Option<String>,
+    },
+    Range {
+        r#type: Box<ParameterizedType>,
+    },
+    String {
+        max_length: Option<String>,
+    },
+    Struct {
+        fields: Vec<StructParameterizedFieldType>,
+    },
     Time,
     Timestamp,
 }
@@ -91,7 +107,7 @@ pub struct StructParameterizedFieldType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Type {
-    Array(Box<Type>),
+    Array { r#type: Box<Type> },
     BigNumeric,
     Bool,
     Bytes,
@@ -103,9 +119,9 @@ pub enum Type {
     Interval,
     Json,
     Numeric,
-    Range(Box<Type>),
+    Range { r#type: Box<Type> },
     String,
-    Struct(Vec<StructFieldType>),
+    Struct { fields: Vec<StructFieldType> },
     Time,
     Timestamp,
 }
@@ -250,8 +266,14 @@ pub enum Expr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaseExpr {
     pub case: Option<Box<Expr>>,
-    pub when_thens: Vec<(Expr, Expr)>,
+    pub when_thens: Vec<WhenThen>,
     pub r#else: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhenThen {
+    pub when: Expr,
+    pub then: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
