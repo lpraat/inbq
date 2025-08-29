@@ -5,25 +5,25 @@ inbq is a rust library and command-line tool for extracting schema-aware,
 column-level lineage (including through nested structs/arrays)
 from multi-statement BigQuery queries.
 """
-documentation = {workspace = true}
-homepage = {workspace = true}
-repository = {workspace = true}
-version = {workspace = true}
-edition = {workspace = true}
-authors = {workspace = true}
-license = {workspace = true}
+documentation = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
 
 exclude = ["/examples", "/tests"]
 
 
 [dependencies]
-anyhow = {workspace = true}
+anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-env_logger = {workspace = true}
-indexmap = {workspace = true,features = ["serde"] }
-log = {workspace = true}
+env_logger = { workspace = true }
+indexmap = { workspace = true, features = ["serde"] }
+log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = {workspace = true}
-strum = {workspace = true}
-strum_macros = {workspace = true}
-toml = {workspace = true}
+serde_json = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+toml = { workspace = true }

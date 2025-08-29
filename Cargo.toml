@@ -1,10 +1,8 @@
 [workspace]
 resolver = "3"
-members = [
-    "crates/*",
-]
+members = ["crates/*"]
 
-default-members = ["crates/*"]
+default-members = ["crates/inbq", "crates/inbq_genpy"]
 
 
 [workspace.package]
@@ -17,7 +15,7 @@ authors = ["Lorenzo Pratissoli <pratissolil@gmail.com>"]
 license = "MIT"
 
 [workspace.dependencies]
-inbq = {version="0.1.0", path="crates/inbq"}
+inbq = { version = "0.1.0", path = "crates/inbq" }
 
 anyhow = "1.0.93"
 clap = { version = "4.5.36" }
@@ -30,3 +28,4 @@ strum = "0.27.1"
 strum_macros = "0.27.1"
 toml = "0.8.20"
 pyo3 = "0.25.1"
+syn = "2.0.106"
