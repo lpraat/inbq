@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use clap::Parser as ClapParser;
 use clap::Subcommand;
-use inbq::lineage::{Catalog, Lineage, RawLineage, ReadyLineage, lineage};
+use inbq::lineage::{Catalog, RawLineage, ReadyLineage, extract_lineage};
 use inbq::parser::parse_sql;
 use indexmap::IndexMap;
 use serde::Serialize;
@@ -20,7 +20,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Extract lineage from one or more SQL files.
-    Lineage(LineageCommand),
+    ExtractLineage(LineageCommand),
 }
 
 #[derive(clap::Args)]
@@ -37,11 +37,6 @@ struct LineageCommand {
     /// Pretty-print the output lineage.
     #[arg(long)]
     pretty: bool,
-}
-
-fn extract_lineage(catalog: &Catalog, sql: &str) -> anyhow::Result<Lineage> {
-    let ast = parse_sql(sql)?;
-    lineage(&ast, catalog)
 }
 
 #[derive(Serialize)]
@@ -69,7 +64,7 @@ fn output_lineage(
             sql_file_path.display().to_string()
         )
     })?;
-    let lineage = extract_lineage(catalog, &sql);
+    let lineage = extract_lineage(&parse_sql(&sql)?, catalog);
     let out_lineage = match lineage {
         Ok(lineage) => OutLineage::Ok(OkLineage {
             lineage: lineage.ready,
@@ -97,7 +92,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Lineage(lineage_command) => {
+        Commands::ExtractLineage(lineage_command) => {
             let sql_file_or_dir = &lineage_command.sql;
             let catalog = serde_json::from_str(
                 &std::fs::read_to_string(&lineage_command.catalog).map_err(|_| {

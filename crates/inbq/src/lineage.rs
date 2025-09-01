@@ -3054,7 +3054,7 @@ fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
     Ok(node_type_from_parser_parameterized_type(&r#type))
 }
 
-pub fn lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
+pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
     let mut ctx = Context::default();
     let mut source_objects = IndexMap::new();
     for schema_object in &catalog.schema_objects {

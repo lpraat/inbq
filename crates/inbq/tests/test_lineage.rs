@@ -27,7 +27,7 @@ const LINEAGE_TESTS_FILE: &str = "tests/lineage_tests.toml";
 
 #[test]
 fn test_lineage() {
-    use inbq::{lineage::lineage, parser::parse_sql};
+    use inbq::{lineage::extract_lineage, parser::parse_sql};
 
     let lineage_data_file =
         std::fs::read_to_string(LINEAGE_TESTS_FILE).expect("Cannot open lineage test cases");
@@ -53,7 +53,7 @@ fn test_lineage() {
         let ast = parse_sql(&test.sql)
             .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err));
 
-        let lineage = lineage(&ast, &Catalog { schema_objects });
+        let lineage = extract_lineage(&ast, &Catalog { schema_objects });
         if let Err(err) = &lineage {
             println!("Could not extract lineage due to: {}", err);
         }

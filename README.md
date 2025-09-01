@@ -10,7 +10,7 @@ cargo add inbq
 Then, in your code:
 ```rust
 use inbq::{
-    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, lineage},
+    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, extract_lineage},
     parser::Parser,
     scanner::Scanner,
 };
@@ -54,7 +54,7 @@ fn main() -> anyhow::Result<()>{
         ],
     };
 
-    let output_lineage = lineage(&ast, &data_catalog)?;
+    let output_lineage = extract_lineage(&ast, &data_catalog)?;
 
     println!();
     println!("Raw lineage: {:?}\n", output_lineage.raw);
@@ -80,7 +80,7 @@ cargo install inbq
 
 2. Run inbq: pass the catalog file and your SQL file(s) to the inbq lineage command.
 ```bash
-inbq lineage \
+inbq extract_lineage \
     --pretty  # Beautifies output JSON
     --catalog ./examples/lineage/catalog.json  \
     ./examples/lineage/query.sql \ # Path to a single SQL file or a directory of .sql files

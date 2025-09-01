@@ -1,5 +1,5 @@
 use inbq::{
-    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, lineage},
+    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind},
     parser::Parser,
     scanner::Scanner,
 };
@@ -7,6 +7,10 @@ use inbq::{
 fn main() -> anyhow::Result<()> {
     let sql = r#"
         select (select 1);
+        select null;
+        declare x bignumeric(3,2);
+        select *;
+        select 1-1;
     "#;
     env_logger::init();
 
