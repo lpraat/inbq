@@ -301,6 +301,7 @@ version = "0.1.0"
 dependencies = [
  "inbq",
  "pyo3",
+ "serde_json",
 ]
 
 [[package]]

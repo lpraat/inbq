@@ -2,7 +2,7 @@
 .DS_Store
 
 # Editors
-.vscode
+.zed
 .idea
 .vscode
 
@@ -16,6 +16,7 @@
 __pycache__
 .python-version
 .ropeproject
+.mypy_cache
 
 # Libs
 *.so
