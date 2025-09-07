@@ -1,5 +1,5 @@
 from inbq._inbq import rs_parse_sql
-from inbq.ast_nodes import Ast
+from inbq.ast_nodes import *
 
 
 def parse_sql(sql: str) -> Ast:
