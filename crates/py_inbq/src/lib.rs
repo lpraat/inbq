@@ -4,23 +4,27 @@ use pyo3::{
     exceptions::{PyModuleNotFoundError, PyRuntimeError, PyValueError},
     intern,
     prelude::*,
-    types::{PyBool, PyDict, PyInt, PyList, PyNone, PyString, PyTuple},
+    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyNone, PyString, PyTuple},
 };
 
 use inbq::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CaseExpr,
-    CastFunctionExpr, ConcatFunctionExpr, CrossJoinExpr, Cte, CurrentDateFunctionExpr, Expr,
+    CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
+    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
     FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IntervalExpr,
-    IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, NamedWindow, NamedWindowExpr,
-    NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
-    ParseToken, PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, Statement, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, Type, UnaryExpr, UnnestExpr, WhenThen, Where,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge, MergeInsert,
+    MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte,
+    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken,
+    PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
+    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, Statement,
+    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
+    TokenType, TruncateStatement, Type, UnaryExpr, UnnestExpr, UpdateItem, UpdateStatement, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -49,6 +53,17 @@ macro_rules! get_class {
     };
 }
 
+macro_rules! kwarg {
+    ($py_ctx:expr, $py_field:expr, $rs_field:expr) => {
+        (
+            intern!($py_ctx.py, $py_field),
+            $rs_field.to_py_obj($py_ctx)?,
+        )
+    };
+}
+
+static VARIANT_FIELD_NAME: &str = "value";
+
 trait RsToPyObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>>;
 }
@@ -56,7 +71,7 @@ trait RsToPyObject {
 fn instantiate_py_class<'py>(
     py_ctx: &PyContext<'py>,
     cls: Bound<'py, PyAny>,
-    kwargs: &[(&str, Bound<'py, PyAny>)],
+    kwargs: &[(&Bound<'py, PyString>, Bound<'py, PyAny>)],
 ) -> anyhow::Result<Bound<'py, PyAny>> {
     let py_kwargs = PyDict::new(py_ctx.py);
     for (key, value) in kwargs {
@@ -97,14 +112,45 @@ impl RsToPyObject for String {
 
 impl<T: RsToPyObject> RsToPyObject for Vec<T> {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        Ok(PyList::new(
-            py_ctx.py,
-            self.iter().map(|el| el.to_py_obj(py_ctx).unwrap()),
-        )?
-        .as_any()
-        .to_owned())
+        let mut py_list = vec![];
+        for el in self {
+            py_list.push(el.to_py_obj(py_ctx)?);
+        }
+        Ok(PyList::new(py_ctx.py, py_list)?.as_any().to_owned())
     }
 }
+
+impl RsToPyObject for f32 {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyFloat::new(py_ctx.py, *self as f64).as_any().to_owned())
+    }
+}
+
+impl RsToPyObject for f64 {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyFloat::new(py_ctx.py, *self).as_any().to_owned())
+    }
+}
+
+impl RsToPyObject for u16 {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyInt::new(py_ctx.py, self).as_any().to_owned())
+    }
+}
+
+impl RsToPyObject for u32 {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyInt::new(py_ctx.py, self).as_any().to_owned())
+    }
+}
+
+impl RsToPyObject for u64 {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyInt::new(py_ctx.py, self).as_any().to_owned())
+    }
+}
+
+// TODO: below we have a lot of boilerplate code we could autogenerate in the inbq_genpy crate
 
 impl RsToPyObject for TokenType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
@@ -198,7 +244,7 @@ impl RsToPyObject for TokenType {
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::LessEqual)?, &[])
             }
             TokenType::QuotedIdentifier(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, TokenType::QuotedIdentifier)?,
@@ -206,27 +252,27 @@ impl RsToPyObject for TokenType {
                 )
             }
             TokenType::Identifier(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::Identifier)?, kwargs)
             }
             TokenType::String(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::String)?, kwargs)
             }
             TokenType::RawString(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::RawString)?, kwargs)
             }
             TokenType::Bytes(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::Bytes)?, kwargs)
             }
             TokenType::RawBytes(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::RawBytes)?, kwargs)
             }
             TokenType::Number(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::Number)?, kwargs)
             }
             TokenType::Eof => {
@@ -504,10 +550,10 @@ impl RsToPyObject for TokenType {
 impl RsToPyObject for Token {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("kind", self.kind.to_py_obj(py_ctx)?),
-            ("lexeme", self.kind.to_py_obj(py_ctx)?),
-            ("line", self.kind.to_py_obj(py_ctx)?),
-            ("col", self.kind.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "kind", self.kind),
+            kwarg!(py_ctx, "lexeme", self.lexeme),
+            kwarg!(py_ctx, "line", self.line),
+            kwarg!(py_ctx, "col", self.col),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Token)?, kwargs)
     }
@@ -517,11 +563,11 @@ impl RsToPyObject for ParseToken {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             ParseToken::Single(token) => {
-                let kwargs = &[("value", token.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, token)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, ParseToken::Single)?, kwargs)
             }
             ParseToken::Multiple(tokens) => {
-                let kwargs = &[("value", tokens.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, tokens)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, ParseToken::Multiple)?, kwargs)
             }
         }
@@ -531,8 +577,8 @@ impl RsToPyObject for ParseToken {
 impl RsToPyObject for StructFieldType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "type_", self.r#type),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, StructFieldType)?, kwargs)
     }
@@ -542,7 +588,7 @@ impl RsToPyObject for Type {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Type::Array { r#type } => {
-                let kwargs = &[("type_", r#type.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Array)?, kwargs)
             }
             Type::BigNumeric => {
@@ -565,12 +611,12 @@ impl RsToPyObject for Type {
             Type::Json => instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Json)?, &[]),
             Type::Numeric => instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Numeric)?, &[]),
             Type::Range { r#type } => {
-                let kwargs = &[("type_", r#type.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Range)?, kwargs)
             }
             Type::String => instantiate_py_class(py_ctx, get_class!(py_ctx, Type::String)?, &[]),
             Type::Struct { fields } => {
-                let kwargs = &[("fields", fields.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "fields", fields)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Struct)?, kwargs)
             }
             Type::Time => instantiate_py_class(py_ctx, get_class!(py_ctx, Type::Time)?, &[]),
@@ -584,8 +630,8 @@ impl RsToPyObject for Type {
 impl RsToPyObject for StructParameterizedFieldType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "type_", self.r#type),
         ];
         instantiate_py_class(
             py_ctx,
@@ -599,7 +645,7 @@ impl RsToPyObject for ParameterizedType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             ParameterizedType::Array { r#type } => {
-                let kwargs = &[("type_", r#type.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, ParameterizedType::Array)?,
@@ -608,8 +654,8 @@ impl RsToPyObject for ParameterizedType {
             }
             ParameterizedType::BigNumeric { precision, scale } => {
                 let kwargs = &[
-                    ("precision", precision.to_py_obj(py_ctx)?),
-                    ("scale", scale.to_py_obj(py_ctx)?),
+                    kwarg!(py_ctx, "precision", precision),
+                    kwarg!(py_ctx, "scale", scale),
                 ];
                 instantiate_py_class(
                     py_ctx,
@@ -621,7 +667,7 @@ impl RsToPyObject for ParameterizedType {
                 instantiate_py_class(py_ctx, get_class!(py_ctx, ParameterizedType::Bool)?, &[])
             }
             ParameterizedType::Bytes { max_length } => {
-                let kwargs = &[("max_length", max_length.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "max_length", max_length)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, ParameterizedType::Bytes)?,
@@ -657,8 +703,8 @@ impl RsToPyObject for ParameterizedType {
             }
             ParameterizedType::Numeric { precision, scale } => {
                 let kwargs = &[
-                    ("precision", precision.to_py_obj(py_ctx)?),
-                    ("scale", scale.to_py_obj(py_ctx)?),
+                    kwarg!(py_ctx, "precision", precision),
+                    kwarg!(py_ctx, "scale", scale),
                 ];
                 instantiate_py_class(
                     py_ctx,
@@ -667,7 +713,7 @@ impl RsToPyObject for ParameterizedType {
                 )
             }
             ParameterizedType::Range { r#type } => {
-                let kwargs = &[("type_", r#type.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, ParameterizedType::Range)?,
@@ -675,7 +721,7 @@ impl RsToPyObject for ParameterizedType {
                 )
             }
             ParameterizedType::String { max_length } => {
-                let kwargs = &[("max_length", max_length.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "max_length", max_length)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, ParameterizedType::String)?,
@@ -683,7 +729,7 @@ impl RsToPyObject for ParameterizedType {
                 )
             }
             ParameterizedType::Struct { fields } => {
-                let kwargs = &[("fields", fields.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, "fields", fields)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, ParameterizedType::Struct)?,
@@ -705,9 +751,9 @@ impl RsToPyObject for ParameterizedType {
 impl RsToPyObject for BinaryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("left", self.left.to_py_obj(py_ctx)?),
-            ("operator", self.operator.to_py_obj(py_ctx)?),
-            ("right", self.right.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "left", self.left),
+            kwarg!(py_ctx, "operator", self.operator),
+            kwarg!(py_ctx, "right", self.right),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryExpr)?, kwargs)
     }
@@ -716,8 +762,8 @@ impl RsToPyObject for BinaryExpr {
 impl RsToPyObject for UnaryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("operator", self.operator.to_py_obj(py_ctx)?),
-            ("right", self.right.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "operator", self.operator),
+            kwarg!(py_ctx, "right", self.right),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryExpr)?, kwargs)
     }
@@ -725,7 +771,7 @@ impl RsToPyObject for UnaryExpr {
 
 impl RsToPyObject for GroupingExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GroupingExpr)?, kwargs)
     }
 }
@@ -733,8 +779,8 @@ impl RsToPyObject for GroupingExpr {
 impl RsToPyObject for ArrayExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
-            ("exprs", self.exprs.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "exprs", self.exprs),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, ArrayExpr)?, kwargs)
     }
@@ -743,8 +789,8 @@ impl RsToPyObject for ArrayExpr {
 impl RsToPyObject for StructField {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("alias", self.alias.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "alias", self.alias),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, StructField)?, kwargs)
     }
@@ -753,8 +799,8 @@ impl RsToPyObject for StructField {
 impl RsToPyObject for StructExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
-            ("fields", self.fields.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "fields", self.fields),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, StructExpr)?, kwargs)
     }
@@ -763,8 +809,8 @@ impl RsToPyObject for StructExpr {
 impl RsToPyObject for RangeExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
-            ("value", self.value.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "value", self.value),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, RangeExpr)?, kwargs)
     }
@@ -811,10 +857,7 @@ impl RsToPyObject for IntervalExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             IntervalExpr::Interval { value, part } => {
-                let kwargs = &[
-                    ("value", value.to_py_obj(py_ctx)?),
-                    ("part", part.to_py_obj(py_ctx)?),
-                ];
+                let kwargs = &[kwarg!(py_ctx, "value", value), kwarg!(py_ctx, "part", part)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, IntervalExpr::Interval)?, kwargs)
             }
             IntervalExpr::IntervalRange {
@@ -823,9 +866,9 @@ impl RsToPyObject for IntervalExpr {
                 end_part,
             } => {
                 let kwargs = &[
-                    ("value", value.to_py_obj(py_ctx)?),
-                    ("start_part", start_part.to_py_obj(py_ctx)?),
-                    ("end_part", end_part.to_py_obj(py_ctx)?),
+                    kwarg!(py_ctx, "value", value),
+                    kwarg!(py_ctx, "start_part", start_part),
+                    kwarg!(py_ctx, "end_part", end_part),
                 ];
                 instantiate_py_class(
                     py_ctx,
@@ -840,8 +883,8 @@ impl RsToPyObject for IntervalExpr {
 impl RsToPyObject for WhenThen {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("when", self.when.to_py_obj(py_ctx)?),
-            ("then", self.then.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "when", self.when),
+            kwarg!(py_ctx, "then", self.then),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, WhenThen)?, kwargs)
     }
@@ -850,9 +893,9 @@ impl RsToPyObject for WhenThen {
 impl RsToPyObject for CaseExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("case_", self.case.to_py_obj(py_ctx)?),
-            ("when_thens", self.when_thens.to_py_obj(py_ctx)?),
-            ("else_", self.r#else.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "case_", self.case),
+            kwarg!(py_ctx, "when_thens", self.when_thens),
+            kwarg!(py_ctx, "else_", self.r#else),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, CaseExpr)?, kwargs)
     }
@@ -895,8 +938,8 @@ impl RsToPyObject for FunctionAggregateHavingKind {
 impl RsToPyObject for FunctionAggregateHaving {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("kind", self.kind.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "kind", self.kind),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionAggregateHaving)?, kwargs)
     }
@@ -918,8 +961,8 @@ impl RsToPyObject for OrderBySortDirection {
 impl RsToPyObject for FunctionAggregateOrderBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("sort_direction", self.sort_direction.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "sort_direction", self.sort_direction),
         ];
         instantiate_py_class(
             py_ctx,
@@ -932,11 +975,11 @@ impl RsToPyObject for FunctionAggregateOrderBy {
 impl RsToPyObject for FunctionAggregate {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("distinct", self.distinct.to_py_obj(py_ctx)?),
-            ("nulls", self.nulls.to_py_obj(py_ctx)?),
-            ("having", self.having.to_py_obj(py_ctx)?),
-            ("order_by", self.order_by.to_py_obj(py_ctx)?),
-            ("limit", self.limit.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "distinct", self.distinct),
+            kwarg!(py_ctx, "nulls", self.nulls),
+            kwarg!(py_ctx, "having", self.having),
+            kwarg!(py_ctx, "order_by", self.order_by),
+            kwarg!(py_ctx, "limit", self.limit),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionAggregate)?, kwargs)
     }
@@ -945,8 +988,8 @@ impl RsToPyObject for FunctionAggregate {
 impl RsToPyObject for GenericFunctionExprArg {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("aggregate", self.aggregate.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "aggregate", self.aggregate),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GenericFunctionExpr)?, kwargs)
     }
@@ -955,8 +998,8 @@ impl RsToPyObject for GenericFunctionExprArg {
 impl RsToPyObject for WindowOrderByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("asc_desc", self.asc_desc.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "asc_desc", self.asc_desc),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, WindowOrderByExpr)?, kwargs)
     }
@@ -984,7 +1027,7 @@ impl RsToPyObject for FrameBound {
                 &[],
             ),
             FrameBound::Preceding(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FrameBound::Preceding)?, kwargs)
             }
             FrameBound::UnboundedFollowing => instantiate_py_class(
@@ -993,7 +1036,7 @@ impl RsToPyObject for FrameBound {
                 &[],
             ),
             FrameBound::Following(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FrameBound::Following)?, kwargs)
             }
             FrameBound::CurrentRow => {
@@ -1006,9 +1049,9 @@ impl RsToPyObject for FrameBound {
 impl RsToPyObject for WindowFrame {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("kind", self.kind.to_py_obj(py_ctx)?),
-            ("start", self.start.to_py_obj(py_ctx)?),
-            ("end", self.end.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "kind", self.kind),
+            kwarg!(py_ctx, "start", self.start),
+            kwarg!(py_ctx, "end", self.end),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, WindowFrame)?, kwargs)
     }
@@ -1017,10 +1060,10 @@ impl RsToPyObject for WindowFrame {
 impl RsToPyObject for WindowSpec {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("window_name", self.window_name.to_py_obj(py_ctx)?),
-            ("partition_by", self.partition_by.to_py_obj(py_ctx)?),
-            ("order_by", self.order_by.to_py_obj(py_ctx)?),
-            ("frame", self.frame.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "window_name", self.window_name),
+            kwarg!(py_ctx, "partition_by", self.partition_by),
+            kwarg!(py_ctx, "order_by", self.order_by),
+            kwarg!(py_ctx, "frame", self.frame),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, WindowSpec)?, kwargs)
     }
@@ -1030,7 +1073,7 @@ impl RsToPyObject for NamedWindowExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             NamedWindowExpr::Reference(parse_token) => {
-                let kwargs = &[("value", parse_token.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_token)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, NamedWindowExpr::Reference)?,
@@ -1038,7 +1081,7 @@ impl RsToPyObject for NamedWindowExpr {
                 )
             }
             NamedWindowExpr::WindowSpec(window_spec) => {
-                let kwargs = &[("value", window_spec.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, window_spec)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, NamedWindowExpr::WindowSpec)?,
@@ -1052,9 +1095,9 @@ impl RsToPyObject for NamedWindowExpr {
 impl RsToPyObject for GenericFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("arguments", self.arguments.to_py_obj(py_ctx)?),
-            ("over", self.over.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "arguments", self.arguments),
+            kwarg!(py_ctx, "over", self.over),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GenericFunctionExpr)?, kwargs)
     }
@@ -1062,7 +1105,7 @@ impl RsToPyObject for GenericFunctionExpr {
 
 impl RsToPyObject for ArrayFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("query", self.query.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, ArrayFunctionExpr)?, kwargs)
     }
 }
@@ -1070,8 +1113,8 @@ impl RsToPyObject for ArrayFunctionExpr {
 impl RsToPyObject for ArrayAggFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("arg", self.arg.to_py_obj(py_ctx)?),
-            ("over", self.over.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "arg", self.arg),
+            kwarg!(py_ctx, "over", self.over),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, ArrayAggFunctionExpr)?, kwargs)
     }
@@ -1079,7 +1122,7 @@ impl RsToPyObject for ArrayAggFunctionExpr {
 
 impl RsToPyObject for ConcatFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("values", self.values.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "values", self.values)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, ConcatFunctionExpr)?, kwargs)
     }
 }
@@ -1087,9 +1130,9 @@ impl RsToPyObject for ConcatFunctionExpr {
 impl RsToPyObject for CastFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
-            ("format", self.format.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "format", self.format),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, CastFunctionExpr)?, kwargs)
     }
@@ -1098,9 +1141,9 @@ impl RsToPyObject for CastFunctionExpr {
 impl RsToPyObject for SafeCastFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("type_", self.r#type.to_py_obj(py_ctx)?),
-            ("format", self.format.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "format", self.format),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SafeCastFunctionExpr)?, kwargs)
     }
@@ -1108,7 +1151,7 @@ impl RsToPyObject for SafeCastFunctionExpr {
 
 impl RsToPyObject for CurrentDateFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("timezone", self.timezone.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, CurrentDateFunctionExpr)?, kwargs)
     }
 }
@@ -1117,27 +1160,31 @@ impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             FunctionExpr::Array(array_function_expr) => {
-                let kwargs = &[("value", array_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Array)?, kwargs)
             }
             FunctionExpr::ArrayAgg(array_agg_function_expr) => {
-                let kwargs = &[("value", array_agg_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_agg_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::ArrayAgg)?, kwargs)
             }
             FunctionExpr::Concat(concat_function_expr) => {
-                let kwargs = &[("value", concat_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, concat_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Concat)?, kwargs)
             }
             FunctionExpr::Cast(cast_function_expr) => {
-                let kwargs = &[("value", cast_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, cast_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Cast)?, kwargs)
             }
             FunctionExpr::SafeCast(safe_cast_function_expr) => {
-                let kwargs = &[("value", safe_cast_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, safe_cast_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::SafeCast)?, kwargs)
             }
             FunctionExpr::CurrentDate(current_date_function_expr) => {
-                let kwargs = &[("value", current_date_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    current_date_function_expr
+                )];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, FunctionExpr::CurrentDate)?,
@@ -1157,79 +1204,79 @@ impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Expr::Binary(binary_expr) => {
-                let kwargs = &[("value", binary_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, binary_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Binary)?, kwargs)
             }
             Expr::Unary(unary_expr) => {
-                let kwargs = &[(")value", unary_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unary_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Unary)?, kwargs)
             }
             Expr::Grouping(grouping_expr) => {
-                let kwargs = &[("value", grouping_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Grouping)?, kwargs)
             }
             Expr::Array(array_expr) => {
-                let kwargs = &[("value", array_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Array)?, kwargs)
             }
             Expr::Struct(struct_expr) => {
-                let kwargs = &[("value", struct_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, struct_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Struct)?, kwargs)
             }
             Expr::Identifier(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Identifier)?, kwargs)
             }
             Expr::QuotedIdentifier(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::QuotedIdentifier)?, kwargs)
             }
             Expr::String(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::String)?, kwargs)
             }
             Expr::Bytes(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Bytes)?, kwargs)
             }
             Expr::Numeric(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Numeric)?, kwargs)
             }
             Expr::BigNumeric(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::BigNumeric)?, kwargs)
             }
             Expr::Number(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Number)?, kwargs)
             }
             Expr::Bool(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Bool)?, kwargs)
             }
             Expr::Date(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Date)?, kwargs)
             }
             Expr::Time(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Time)?, kwargs)
             }
             Expr::Datetime(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Datetime)?, kwargs)
             }
             Expr::Timestamp(value) => {
-                let kwargs = &[("value", value.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Timestamp)?, kwargs)
             }
             Expr::Range(range_expr) => {
-                let kwargs = &[("value", range_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, range_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Range)?, kwargs)
             }
             Expr::Interval(interval_expr) => {
-                let kwargs = &[("value", interval_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, interval_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Interval)?, kwargs)
             }
             Expr::Json(_) => todo!(),
@@ -1237,19 +1284,19 @@ impl RsToPyObject for Expr {
             Expr::Null => todo!(),
             Expr::Star => todo!(),
             Expr::Query(query_expr) => {
-                let kwargs = &[("value", query_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Query)?, kwargs)
             }
             Expr::Case(case_expr) => {
-                let kwargs = &[("value", case_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, case_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Case)?, kwargs)
             }
             Expr::GenericFunction(generic_function_expr) => {
-                let kwargs = &[("value", generic_function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, generic_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::GenericFunction)?, kwargs)
             }
             Expr::Function(function_expr) => {
-                let kwargs = &[("value", function_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Function)?, kwargs)
             }
         }
@@ -1259,8 +1306,8 @@ impl RsToPyObject for Expr {
 impl RsToPyObject for Limit {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("count", self.count.to_py_obj(py_ctx)?),
-            ("offset", self.offset.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "count", self.count),
+            kwarg!(py_ctx, "offset", self.offset),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Limit)?, kwargs)
     }
@@ -1269,8 +1316,8 @@ impl RsToPyObject for Limit {
 impl RsToPyObject for NonRecursiveCte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("query", self.query.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "query", self.query),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, NonRecursiveCte)?, kwargs)
     }
@@ -1279,9 +1326,9 @@ impl RsToPyObject for NonRecursiveCte {
 impl RsToPyObject for RecursiveCte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("base_query", self.base_query.to_py_obj(py_ctx)?),
-            ("recursive_query", self.recursive_query.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "base_query", self.base_query),
+            kwarg!(py_ctx, "recursive_query", self.recursive_query),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, RecursiveCte)?, kwargs)
     }
@@ -1291,11 +1338,11 @@ impl RsToPyObject for Cte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Cte::NonRecursive(non_recursive_cte) => {
-                let kwargs = &[("value", non_recursive_cte.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, non_recursive_cte)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Cte::NonRecursive)?, kwargs)
             }
             Cte::Recursive(recursive_cte) => {
-                let kwargs = &[("value", recursive_cte.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, recursive_cte)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Cte::Recursive)?, kwargs)
             }
         }
@@ -1304,7 +1351,7 @@ impl RsToPyObject for Cte {
 
 impl RsToPyObject for With {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("ctes", self.ctes.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "ctes", self.ctes)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, With)?, kwargs)
     }
 }
@@ -1325,9 +1372,9 @@ impl RsToPyObject for OrderByNulls {
 impl RsToPyObject for OrderByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("sort_direction", self.sort_direction.to_py_obj(py_ctx)?),
-            ("nulls", self.nulls.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "sort_direction", self.sort_direction),
+            kwarg!(py_ctx, "nulls", self.nulls),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, OrderByExpr)?, kwargs)
     }
@@ -1335,7 +1382,7 @@ impl RsToPyObject for OrderByExpr {
 
 impl RsToPyObject for OrderBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("exprs", self.exprs.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "exprs", self.exprs)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, OrderBy)?, kwargs)
     }
 }
@@ -1343,10 +1390,10 @@ impl RsToPyObject for OrderBy {
 impl RsToPyObject for GroupingQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("with_", self.with.to_py_obj(py_ctx)?),
-            ("query", self.query.to_py_obj(py_ctx)?),
-            ("order_by", self.order_by.to_py_obj(py_ctx)?),
-            ("limit", self.limit.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "with_", self.with),
+            kwarg!(py_ctx, "query", self.query),
+            kwarg!(py_ctx, "order_by", self.order_by),
+            kwarg!(py_ctx, "limit", self.limit),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GroupingQueryExpr)?, kwargs)
     }
@@ -1368,8 +1415,8 @@ impl RsToPyObject for SelectTableValue {
 impl RsToPyObject for SelectColExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("alias", self.alias.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "alias", self.alias),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SelectColExpr)?, kwargs)
     }
@@ -1378,8 +1425,8 @@ impl RsToPyObject for SelectColExpr {
 impl RsToPyObject for SelectColAllExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("expr", self.expr.to_py_obj(py_ctx)?),
-            ("except_", self.except.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "except_", self.except),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SelectColAllExpr)?, kwargs)
     }
@@ -1387,7 +1434,7 @@ impl RsToPyObject for SelectColAllExpr {
 
 impl RsToPyObject for SelectAllExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("except_", self.except.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "except_", self.except)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SelectAllExpr)?, kwargs)
     }
 }
@@ -1396,15 +1443,15 @@ impl RsToPyObject for SelectExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             SelectExpr::Col(select_col_expr) => {
-                let kwargs = &[("value", select_col_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_col_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, SelectExpr::Col)?, kwargs)
             }
             SelectExpr::ColAll(select_col_all_expr) => {
-                let kwargs = &[("value", select_col_all_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_col_all_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, SelectExpr::ColAll)?, kwargs)
             }
             SelectExpr::All(select_all_expr) => {
-                let kwargs = &[("value", select_all_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_all_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, SelectExpr::All)?, kwargs)
             }
         }
@@ -1434,11 +1481,11 @@ impl RsToPyObject for JoinCondition {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             JoinCondition::On(expr) => {
-                let kwargs = &[("value", expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, JoinCondition::On)?, kwargs)
             }
             JoinCondition::Using(parse_tokens) => {
-                let kwargs = &[("value", parse_tokens.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_tokens)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, JoinCondition::Using)?, kwargs)
             }
         }
@@ -1448,10 +1495,10 @@ impl RsToPyObject for JoinCondition {
 impl RsToPyObject for JoinExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("kind", self.kind.to_py_obj(py_ctx)?),
-            ("left", self.left.to_py_obj(py_ctx)?),
-            ("right", self.right.to_py_obj(py_ctx)?),
-            ("cond", self.cond.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "kind", self.kind),
+            kwarg!(py_ctx, "left", self.left),
+            kwarg!(py_ctx, "right", self.right),
+            kwarg!(py_ctx, "cond", self.cond),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, JoinExpr)?, kwargs)
     }
@@ -1460,8 +1507,8 @@ impl RsToPyObject for JoinExpr {
 impl RsToPyObject for CrossJoinExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("left", self.left.to_py_obj(py_ctx)?),
-            ("right", self.right.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "left", self.left),
+            kwarg!(py_ctx, "right", self.right),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, CrossJoinExpr)?, kwargs)
     }
@@ -1469,7 +1516,7 @@ impl RsToPyObject for CrossJoinExpr {
 
 impl RsToPyObject for PathExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, PathExpr)?, kwargs)
     }
 }
@@ -1477,8 +1524,8 @@ impl RsToPyObject for PathExpr {
 impl RsToPyObject for FromPathExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("path", self.path.to_py_obj(py_ctx)?),
-            ("alias", self.alias.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "path", self.path),
+            kwarg!(py_ctx, "alias", self.alias),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, FromPathExpr)?, kwargs)
     }
@@ -1487,10 +1534,10 @@ impl RsToPyObject for FromPathExpr {
 impl RsToPyObject for UnnestExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("array", self.array.to_py_obj(py_ctx)?),
-            ("alias", self.alias.to_py_obj(py_ctx)?),
-            ("with_offset", self.with_offset.to_py_obj(py_ctx)?),
-            ("offset_alias", self.offset_alias.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "array", self.array),
+            kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "with_offset", self.with_offset),
+            kwarg!(py_ctx, "offset_alias", self.offset_alias),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, UnnestExpr)?, kwargs)
     }
@@ -1499,8 +1546,8 @@ impl RsToPyObject for UnnestExpr {
 impl RsToPyObject for FromGroupingQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("query", self.query.to_py_obj(py_ctx)?),
-            ("alias", self.alias.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "query", self.query),
+            kwarg!(py_ctx, "alias", self.alias),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, FromGroupingQueryExpr)?, kwargs)
     }
@@ -1508,7 +1555,7 @@ impl RsToPyObject for FromGroupingQueryExpr {
 
 impl RsToPyObject for GroupingFromExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("query", self.query.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GroupingFromExpr)?, kwargs)
     }
 }
@@ -1517,39 +1564,39 @@ impl RsToPyObject for FromExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             FromExpr::Join(join_expr) => {
-                let kwargs = &[("value", join_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::Join)?, kwargs)
             }
             FromExpr::FullJoin(join_expr) => {
-                let kwargs = &[("value", join_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::FullJoin)?, kwargs)
             }
             FromExpr::LeftJoin(join_expr) => {
-                let kwargs = &[("value", join_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::LeftJoin)?, kwargs)
             }
             FromExpr::RightJoin(join_expr) => {
-                let kwargs = &[("value", join_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::RightJoin)?, kwargs)
             }
             FromExpr::CrossJoin(cross_join_expr) => {
-                let kwargs = &[("value", cross_join_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, cross_join_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::CrossJoin)?, kwargs)
             }
             FromExpr::Path(from_path_expr) => {
-                let kwargs = &[("value", from_path_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, from_path_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::Path)?, kwargs)
             }
             FromExpr::Unnest(unnest_expr) => {
-                let kwargs = &[("value", unnest_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unnest_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::Unnest)?, kwargs)
             }
             FromExpr::GroupingQuery(from_grouping_query_expr) => {
-                let kwargs = &[("value", from_grouping_query_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, from_grouping_query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::GroupingQuery)?, kwargs)
             }
             FromExpr::GroupingFrom(grouping_from_expr) => {
-                let kwargs = &[("value", grouping_from_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_from_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FromExpr::GroupingFrom)?, kwargs)
             }
         }
@@ -1558,14 +1605,14 @@ impl RsToPyObject for FromExpr {
 
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, From)?, kwargs)
     }
 }
 
 impl RsToPyObject for Where {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Where)?, kwargs)
     }
 }
@@ -1574,7 +1621,7 @@ impl RsToPyObject for GroupByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             GroupByExpr::Items(exprs) => {
-                let kwargs = &[("value", exprs.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, exprs)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, GroupByExpr::Items)?, kwargs)
             }
             GroupByExpr::All => {
@@ -1586,21 +1633,21 @@ impl RsToPyObject for GroupByExpr {
 
 impl RsToPyObject for GroupBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, GroupBy)?, kwargs)
     }
 }
 
 impl RsToPyObject for Having {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Having)?, kwargs)
     }
 }
 
 impl RsToPyObject for Qualify {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("expr", self.expr.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Qualify)?, kwargs)
     }
 }
@@ -1608,8 +1655,8 @@ impl RsToPyObject for Qualify {
 impl RsToPyObject for NamedWindow {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("name", self.name.to_py_obj(py_ctx)?),
-            ("window", self.window.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "window", self.window),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, NamedWindow)?, kwargs)
     }
@@ -1617,7 +1664,7 @@ impl RsToPyObject for NamedWindow {
 
 impl RsToPyObject for Window {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("named_windows", self.named_windows.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "named_windows", self.named_windows)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Window)?, kwargs)
     }
 }
@@ -1625,15 +1672,15 @@ impl RsToPyObject for Window {
 impl RsToPyObject for Select {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("distinct", self.distinct.to_py_obj(py_ctx)?),
-            ("table_value", self.table_value.to_py_obj(py_ctx)?),
-            ("exprs", self.exprs.to_py_obj(py_ctx)?),
-            ("from_", self.from.to_py_obj(py_ctx)?),
-            ("where", self.r#where.to_py_obj(py_ctx)?),
-            ("group_by", self.group_by.to_py_obj(py_ctx)?),
-            ("having", self.having.to_py_obj(py_ctx)?),
-            ("qualify", self.qualify.to_py_obj(py_ctx)?),
-            ("window", self.window.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "distinct", self.distinct),
+            kwarg!(py_ctx, "table_value", self.table_value),
+            kwarg!(py_ctx, "exprs", self.exprs),
+            kwarg!(py_ctx, "from_", self.from),
+            kwarg!(py_ctx, "where", self.r#where),
+            kwarg!(py_ctx, "group_by", self.group_by),
+            kwarg!(py_ctx, "having", self.having),
+            kwarg!(py_ctx, "qualify", self.qualify),
+            kwarg!(py_ctx, "window", self.window),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Select)?, kwargs)
     }
@@ -1642,10 +1689,49 @@ impl RsToPyObject for Select {
 impl RsToPyObject for SelectQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            ("with_", self.with.to_py_obj(py_ctx)?),
-            ("select", self.select.to_py_obj(py_ctx)?),
-            ("order_by", self.select.to_py_obj(py_ctx)?),
-            ("limit", self.limit.to_py_obj(py_ctx)?),
+            kwarg!(py_ctx, "with_", self.with),
+            kwarg!(py_ctx, "select", self.select),
+            kwarg!(py_ctx, "order_by", self.select),
+            kwarg!(py_ctx, "limit", self.limit),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, SelectQueryExpr)?, kwargs)
+    }
+}
+
+impl RsToPyObject for SetQueryOperator {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            SetQueryOperator::Union => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, SetQueryOperator::Union)?, &[])
+            }
+            SetQueryOperator::UnionDistinct => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, SetQueryOperator::UnionDistinct)?,
+                &[],
+            ),
+            SetQueryOperator::IntersectDistinct => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, SetQueryOperator::IntersectDistinct)?,
+                &[],
+            ),
+            SetQueryOperator::ExceptDistinct => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, SetQueryOperator::ExceptDistinct)?,
+                &[],
+            ),
+        }
+    }
+}
+
+impl RsToPyObject for SetSelectQueryExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "with_", self.with),
+            kwarg!(py_ctx, "left_query", self.left_query),
+            kwarg!(py_ctx, "set_operator", self.set_operator),
+            kwarg!(py_ctx, "right_query", self.right_query),
+            kwarg!(py_ctx, "order_by", self.order_by),
+            kwarg!(py_ctx, "limit", self.limit),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SelectQueryExpr)?, kwargs)
     }
@@ -1655,22 +1741,273 @@ impl RsToPyObject for QueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             QueryExpr::Grouping(grouping_query_expr) => {
-                let kwargs = &[("value", grouping_query_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, QueryExpr::Grouping)?, kwargs)
             }
             QueryExpr::Select(select_query_expr) => {
-                let kwargs = &[("value", select_query_expr.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, QueryExpr::Select)?, kwargs)
             }
-            QueryExpr::SetSelect(set_select_query_expr) => todo!(),
+            QueryExpr::SetSelect(set_select_query_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, set_select_query_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, QueryExpr::SetSelect)?, kwargs)
+            }
         }
     }
 }
 
 impl RsToPyObject for QueryStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("query", self.query.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, QueryStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for InsertStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "table", self.table),
+            kwarg!(py_ctx, "columns", self.columns),
+            kwarg!(py_ctx, "values", self.values),
+            kwarg!(py_ctx, "query", self.query),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, InsertStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for DeleteStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "table", self.table),
+            kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "cond", self.cond),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, DeleteStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for UpdateItem {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "column", self.column),
+            kwarg!(py_ctx, "expr", self.expr),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, UpdateItem)?, kwargs)
+    }
+}
+
+impl RsToPyObject for UpdateStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "table", self.table),
+            kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "update_items", self.update_items),
+            kwarg!(py_ctx, "from_", self.from),
+            kwarg!(py_ctx, "where", self.r#where),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, UpdateStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for TruncateStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "table", self.table)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, TruncateStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for MergeSource {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            MergeSource::Table(parse_token) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_token)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, MergeSource::Table)?, kwargs)
+            }
+            MergeSource::Subquery(query_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, MergeSource::Subquery)?, kwargs)
+            }
+        }
+    }
+}
+
+impl RsToPyObject for MergeUpdate {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "update_items", self.update_items)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, MergeUpdate)?, kwargs)
+    }
+}
+
+impl RsToPyObject for MergeInsert {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "columns", self.columns),
+            kwarg!(py_ctx, "columns", self.values),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, MergeInsert)?, kwargs)
+    }
+}
+
+impl RsToPyObject for Merge {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            Merge::Update(merge_update) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_update)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Merge::Update)?, kwargs)
+            }
+            Merge::Insert(merge_insert) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_insert)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Merge::Insert)?, kwargs)
+            }
+            Merge::InsertRow => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Merge::InsertRow)?, &[])
+            }
+            Merge::Delete => instantiate_py_class(py_ctx, get_class!(py_ctx, Merge::Delete)?, &[]),
+        }
+    }
+}
+
+impl RsToPyObject for WhenMatched {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "search_condition", self.search_condition),
+            kwarg!(py_ctx, "merge", self.merge),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, WhenMatched)?, kwargs)
+    }
+}
+
+impl RsToPyObject for WhenNotMatchedByTarget {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "search_condition", self.search_condition),
+            kwarg!(py_ctx, "merge", self.merge),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, WhenNotMatchedByTarget)?, kwargs)
+    }
+}
+
+impl RsToPyObject for WhenNotMatchedBySource {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "search_condition", self.search_condition),
+            kwarg!(py_ctx, "merge", self.merge),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, WhenNotMatchedBySource)?, kwargs)
+    }
+}
+
+impl RsToPyObject for When {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            When::Matched(when_matched) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, when_matched)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, When::Matched)?, kwargs)
+            }
+            When::NotMatchedByTarget(when_not_matched_by_target) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    when_not_matched_by_target
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, When::NotMatchedByTarget)?,
+                    kwargs,
+                )
+            }
+            When::NotMatchedBySource(when_not_matched_by_source) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    when_not_matched_by_source
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, When::NotMatchedBySource)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
+impl RsToPyObject for MergeStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "target_table", self.target_table),
+            kwarg!(py_ctx, "target_alias", self.target_alias),
+            kwarg!(py_ctx, "source", self.source),
+            kwarg!(py_ctx, "source_alias", self.source_alias),
+            kwarg!(py_ctx, "condition", self.condition),
+            kwarg!(py_ctx, "whens", self.whens),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, MergeStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for DeclareVarStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "var_names", self.var_names),
+            kwarg!(py_ctx, "type_", self.r#type),
+            kwarg!(py_ctx, "default", self.default),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, DeclareVarStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for SetVarStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "var_names", self.var_names),
+            kwarg!(py_ctx, "exprs", self.exprs),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, SetVarStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for StatementsBlock {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "statements", self.statements),
+            kwarg!(py_ctx, "exception_statements", self.exception_statements),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, StatementsBlock)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ColumnSchema {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "type_", self.r#type),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, ColumnSchema)?, kwargs)
+    }
+}
+
+impl RsToPyObject for CreateTableStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "schema", self.schema),
+            kwarg!(py_ctx, "replace", self.replace),
+            kwarg!(py_ctx, "is_temporary", self.is_temporary),
+            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
+            kwarg!(py_ctx, "query", self.query),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, CreateTableStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for DropTableStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "if_exists", self.if_exists),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, DropTableStatement)?, kwargs)
     }
 }
 
@@ -1678,23 +2015,66 @@ impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Statement::Query(query_statement) => {
-                let kwargs = &[("value", query_statement.to_py_obj(py_ctx)?)];
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_statement)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Query)?, kwargs)
             }
-            _ => todo!(),
+            Statement::Insert(insert_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, insert_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Insert)?, kwargs)
+            }
+            Statement::Delete(delete_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, delete_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Delete)?, kwargs)
+            }
+            Statement::Update(update_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, update_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Update)?, kwargs)
+            }
+            Statement::Truncate(truncate_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, truncate_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Truncate)?, kwargs)
+            }
+            Statement::Merge(merge_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Merge)?, kwargs)
+            }
+            Statement::DeclareVar(declare_var_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, declare_var_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::DeclareVar)?, kwargs)
+            }
+            Statement::SetVar(set_var_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, set_var_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::SetVar)?, kwargs)
+            }
+            Statement::Block(statements_block) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, statements_block)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Block)?, kwargs)
+            }
+            Statement::CreateTable(create_table_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_table_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::CreateTable)?, kwargs)
+            }
+            Statement::DropTableStatement(drop_table_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_table_statement)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, Statement::DropTableStatement)?,
+                    kwargs,
+                )
+            }
         }
     }
 }
 
 impl RsToPyObject for Ast {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[("statements", self.statements.to_py_obj(py_ctx)?)];
+        let kwargs = &[kwarg!(py_ctx, "statements", self.statements)];
         instantiate_py_class(py_ctx, get_class!(py_ctx, Ast)?, kwargs)
     }
 }
 
 #[pyfunction]
-fn rs_parse_sql_fast(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
+fn parse_sql(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     let inbq_module = py
         .import(intern!(py, "inbq"))
         .map_err(|e| PyModuleNotFoundError::new_err(e.to_string()))?;
@@ -1706,17 +2086,8 @@ fn rs_parse_sql_fast(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     Ok(rs_ast.into())
 }
 
-#[pyfunction]
-fn rs_parse_sql(sql: &str) -> PyResult<String> {
-    let rs_ast = inbq::parser::parse_sql(sql).map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let json_ast =
-        serde_json::to_string(&rs_ast).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    Ok(json_ast)
-}
-
 #[pymodule]
 fn _inbq(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(rs_parse_sql, m)?)?;
-    m.add_function(wrap_pyfunction!(rs_parse_sql_fast, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_sql, m)?)?;
     Ok(())
 }
