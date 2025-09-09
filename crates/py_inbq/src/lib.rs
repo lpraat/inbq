@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use pyo3::{
-    BoundObject, IntoPyObjectExt,
     exceptions::{PyModuleNotFoundError, PyRuntimeError, PyValueError},
     intern,
     prelude::*,
