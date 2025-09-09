@@ -32,7 +32,7 @@ fn test_lineage() {
     let lineage_data_file =
         std::fs::read_to_string(LINEAGE_TESTS_FILE).expect("Cannot open lineage test cases");
     let test_lineage_data: LineageTestData =
-        toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in yaml");
+        toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in toml");
 
     for test in test_lineage_data.tests {
         println!("Testing lineage for SQL: {}", &test.sql);

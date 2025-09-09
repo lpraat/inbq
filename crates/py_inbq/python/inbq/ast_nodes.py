@@ -369,26 +369,25 @@ class AstNode:
     @classmethod
     def from_dict(cls, data: dict) -> Self:
         cls_dict = dict()
-        ty_hints = get_type_hints(cls)
+        ty_hints = {
+            k: v for k, v in get_type_hints(cls).items() if not k.startswith("_")
+        }
+
+        if "_" in cls.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
+            # Tuple Variant
+            ty = ty_hints["value"]
+            if ty in cls._PRIMITIVE_TYPES:
+                cls_dict["value"] = ty(data)
+            elif get_origin(ty) is list:
+                cls_dict["value"] = [
+                    cls._instantiate_typed_field(el, get_args(ty)[0]) for el in data
+                ]
+            else:
+                cls_dict["value"] = cls._instantiate_typed_field(data, ty)
+
+            return cls(**cls_dict)
+
         for field, ty in ty_hints.items():
-            if field.startswith("_"):
-                # Ignore private attributes
-                continue
-
-            if "_" in cls.__name__ and field == "value" and field not in data:
-                # Tuple Variant
-                ty = ty_hints["value"]
-                if ty in cls._PRIMITIVE_TYPES:
-                    cls_dict["value"] = ty(data)
-                elif get_origin(ty) is list:
-                    cls_dict["value"] = [
-                        cls._instantiate_typed_field(el, get_args(ty)[0]) for el in data
-                    ]
-                else:
-                    cls_dict["value"] = cls._instantiate_typed_field(data, ty)
-
-                break
-
             # Handle reserved keywords (e.g., from_)
             original_field = field
             if field.endswith("_"):
@@ -441,6 +440,10 @@ class AstNode:
         # first element is the class, second element is NoneType
         if args[0] in cls._PRIMITIVE_TYPES:
             return args[0](data)
+        elif get_origin(args[0]) is list:
+            return [
+                cls._instantiate_typed_field(el, get_args(args[0])[0]) for el in data
+            ]
         return args[0].from_dict(data)
 
 

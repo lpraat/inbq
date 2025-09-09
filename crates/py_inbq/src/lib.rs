@@ -991,7 +991,7 @@ impl RsToPyObject for GenericFunctionExprArg {
             kwarg!(py_ctx, "expr", self.expr),
             kwarg!(py_ctx, "aggregate", self.aggregate),
         ];
-        instantiate_py_class(py_ctx, get_class!(py_ctx, GenericFunctionExpr)?, kwargs)
+        instantiate_py_class(py_ctx, get_class!(py_ctx, GenericFunctionExprArg)?, kwargs)
     }
 }
 
@@ -1279,10 +1279,13 @@ impl RsToPyObject for Expr {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, interval_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Interval)?, kwargs)
             }
-            Expr::Json(_) => todo!(),
-            Expr::Default => todo!(),
-            Expr::Null => todo!(),
-            Expr::Star => todo!(),
+            Expr::Json(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Json)?, kwargs)
+            }
+            Expr::Default => instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Default)?, &[]),
+            Expr::Null => instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Null)?, &[]),
+            Expr::Star => instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Star)?, &[]),
             Expr::Query(query_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Query)?, kwargs)
@@ -1691,7 +1694,7 @@ impl RsToPyObject for SelectQueryExpr {
         let kwargs = &[
             kwarg!(py_ctx, "with_", self.with),
             kwarg!(py_ctx, "select", self.select),
-            kwarg!(py_ctx, "order_by", self.select),
+            kwarg!(py_ctx, "order_by", self.order_by),
             kwarg!(py_ctx, "limit", self.limit),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SelectQueryExpr)?, kwargs)
@@ -1733,7 +1736,7 @@ impl RsToPyObject for SetSelectQueryExpr {
             kwarg!(py_ctx, "order_by", self.order_by),
             kwarg!(py_ctx, "limit", self.limit),
         ];
-        instantiate_py_class(py_ctx, get_class!(py_ctx, SelectQueryExpr)?, kwargs)
+        instantiate_py_class(py_ctx, get_class!(py_ctx, SetSelectQueryExpr)?, kwargs)
     }
 }
 
@@ -1842,7 +1845,7 @@ impl RsToPyObject for MergeInsert {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "columns", self.columns),
-            kwarg!(py_ctx, "columns", self.values),
+            kwarg!(py_ctx, "values", self.values),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, MergeInsert)?, kwargs)
     }
@@ -2074,6 +2077,14 @@ impl RsToPyObject for Ast {
 }
 
 #[pyfunction]
+fn parse_sql_out_json(sql: &str) -> PyResult<String> {
+    let rs_ast = inbq::parser::parse_sql(sql).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let json_ast =
+        serde_json::to_string(&rs_ast).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+    Ok(json_ast)
+}
+
+#[pyfunction]
 fn parse_sql(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     let inbq_module = py
         .import(intern!(py, "inbq"))
@@ -2088,6 +2099,7 @@ fn parse_sql(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
 
 #[pymodule]
 fn _inbq(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(parse_sql_out_json, m)?)?;
     m.add_function(wrap_pyfunction!(parse_sql, m)?)?;
     Ok(())
 }
