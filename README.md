@@ -15,7 +15,7 @@ use inbq::{
     scanner::Scanner,
 };
 
-fn main() -> anyhow::Result<()>{
+fn main() -> anyhow::Result<()> {
     let sql = r#"
         insert into proj.dat.out_table
         select
@@ -34,23 +34,40 @@ fn main() -> anyhow::Result<()>{
         schema_objects: vec![
             SchemaObject {
                 name: "proj.dat.in_table".to_owned(),
-                kind: SchemaObjectKind::Table,
-                columns: vec![
-                    // dtype is case insensitive and can be retrieved, for example, using
-                    // the INFORMATION_SCHEMA.COLUMNS view (https://cloud.google.com/bigquery/docs/information-schema-columns)
-                    Column { name: "a".to_owned(), dtype: "STRING".to_owned() },
-                    Column { name: "s".to_owned(), dtype: "STRUCT<f1 INT64, f2 INT64>".to_owned() },
-                ]
+                kind: SchemaObjectKind::Table {
+                    columns: vec![
+                        // dtype is case insensitive and can be retrieved, for example, using
+                        // the INFORMATION_SCHEMA.COLUMNS view (https://cloud.google.com/bigquery/docs/information-schema-columns)
+                        Column {
+                            name: "a".to_owned(),
+                            dtype: "STRING".to_owned(),
+                        },
+                        Column {
+                            name: "s".to_owned(),
+                            dtype: "STRUCT<f1 INT64, f2 INT64>".to_owned(),
+                        },
+                    ],
+                },
             },
             SchemaObject {
                 name: "proj.dat.out_table".to_owned(),
-                kind: SchemaObjectKind::Table,
-                columns: vec![
-                    Column { name: "a".to_owned(), dtype: "STRING".to_owned() },
-                    Column { name: "f1".to_owned(), dtype: "INT64".to_owned() },
-                    Column { name: "f2".to_owned(), dtype: "INT64".to_owned() },
-                ]
-            }
+                kind: SchemaObjectKind::Table {
+                    columns: vec![
+                        Column {
+                            name: "a".to_owned(),
+                            dtype: "STRING".to_owned(),
+                        },
+                        Column {
+                            name: "f1".to_owned(),
+                            dtype: "INT64".to_owned(),
+                        },
+                        Column {
+                            name: "f2".to_owned(),
+                            dtype: "INT64".to_owned(),
+                        },
+                    ],
+                },
+            },
         ],
     };
 
@@ -66,7 +83,6 @@ fn main() -> anyhow::Result<()>{
     // ReadyLineageNode { name: "f2", input: [ReadyLineageNodeInput { obj_name: "proj.dat.in_table", node_name: "s.f2" }] }] }] }
     Ok(())
 }
-
 ```
 
 ## Command-line tool

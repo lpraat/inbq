@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use inbq::lineage::{Catalog, Column};
+use inbq::lineage::{Catalog, SchemaObject};
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -9,13 +9,6 @@ struct LineageTest {
     sql: String,
     schema_objects: Vec<SchemaObject>,
     ready_lineage: HashMap<String, HashMap<String, Vec<String>>>,
-}
-
-#[derive(Deserialize, Debug)]
-struct SchemaObject {
-    name: String,
-    kind: String,
-    columns: Vec<Column>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -36,24 +29,15 @@ fn test_lineage() {
 
     for test in test_lineage_data.tests {
         println!("Testing lineage for SQL: {}", &test.sql);
-
-        let mut schema_objects: Vec<inbq::lineage::SchemaObject> = vec![];
-        for schema_object in test.schema_objects {
-            schema_objects.push(inbq::lineage::SchemaObject {
-                name: schema_object.name,
-                kind: match schema_object.kind.as_str() {
-                    "table" => inbq::lineage::SchemaObjectKind::Table,
-                    "view" => inbq::lineage::SchemaObjectKind::View,
-                    _ => panic!(),
-                },
-                columns: schema_object.columns,
-            });
-        }
-
         let ast = parse_sql(&test.sql)
             .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err));
 
-        let lineage = extract_lineage(&ast, &Catalog { schema_objects });
+        let lineage = extract_lineage(
+            &ast,
+            &Catalog {
+                schema_objects: test.schema_objects,
+            },
+        );
         if let Err(err) = &lineage {
             println!("Could not extract lineage due to: {}", err);
         }

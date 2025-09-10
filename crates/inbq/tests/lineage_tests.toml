@@ -6,16 +6,14 @@ from proj.dat.in_table
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
@@ -29,22 +27,19 @@ select a2,b2 from proj.dat.in2
 """
 [[tests.schema_objects]]
 name = "proj.dat.in1"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a1", dtype = "STRING" },
     { name = "b1", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.in2"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a2", dtype = "STRING" },
     { name = "b2", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in1->a1", "proj.dat.in2->a2"]
 b = ["proj.dat.in1->b1", "proj.dat.in2->b2"]
@@ -58,16 +53,14 @@ from proj.dat.in_table
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
@@ -96,16 +89,14 @@ when not matched by source then
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
@@ -132,24 +123,21 @@ from tmp inner join tmp2 using (a,b)
 """
 [[tests.schema_objects]]
 name = "proj.dat.t1"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.t2"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
@@ -185,8 +173,7 @@ GROUP BY
 """
 [[tests.schema_objects]]
 name = "proj.dataset.employees"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "employee_id", dtype = "INT64" },
     { name = "first_name", dtype = "STRING" },
     { name = "last_name", dtype = "STRING" },
@@ -197,8 +184,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.departments"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "department_id", dtype = "INT64" },
     { name = "department_name", dtype = "STRING" },
     { name = "location_id", dtype = "INT64" },
@@ -206,8 +192,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.locations"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "location_id", dtype = "INT64" },
     { name = "street_address", dtype = "STRING" },
     { name = "city", dtype = "STRING" },
@@ -216,8 +201,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.employee_department_report"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "department_id", dtype = "INT64" },
     { name = "department_name", dtype = "STRING" },
     { name = "location_id", dtype = "INT64" },
@@ -278,8 +262,7 @@ ON
 """
 [[tests.schema_objects]]
 name = "proj.dataset.products"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product_id", dtype = "STRING" },
     { name = "product_name", dtype = "STRING" },
     { name = "sales_count", dtype = "INT64" },
@@ -287,8 +270,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.sales_regions"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "region_id", dtype = "STRING" },
     { name = "region_name", dtype = "STRING" },
     { name = "country_code", dtype = "STRING" },
@@ -296,8 +278,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.regional_sales"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product_id", dtype = "STRING" },
     { name = "region_id", dtype = "STRING" },
     { name = "total_sales", dtype = "FLOAT64" },
@@ -306,8 +287,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.product_region_matrix"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product_id", dtype = "STRING" },
     { name = "product_name", dtype = "STRING" },
     { name = "region_id", dtype = "STRING" },
@@ -342,24 +322,21 @@ when not matched by source then
 """
 [[tests.schema_objects]]
 name = "proj.dat.t1"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.t2"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
     { name = "c", dtype = "STRING" },
@@ -376,8 +353,7 @@ where T.product = "foo"
 """
 [[tests.schema_objects]]
 name = "dataset.Inventory"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product", dtype = "STRING" },
     { name = "quantity", dtype = "INT64" },
     { name = "last_updated", dtype = "TIMESTAMP" },
@@ -391,8 +367,7 @@ truncate table dataset.Inventory;
 """
 [[tests.schema_objects]]
 name = "dataset.Inventory"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product", dtype = "STRING" },
     { name = "quantity", dtype = "INT64" },
     { name = "last_updated", dtype = "TIMESTAMP" },
@@ -410,16 +385,14 @@ WHEN MATCHED THEN
 """
 [[tests.schema_objects]]
 name = "dataset.Inventory"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product", dtype = "STRING" },
     { name = "quantity", dtype = "INT64" },
     { name = "last_updated", dtype = "TIMESTAMP" },
 ]
 [[tests.schema_objects]]
 name = "dataset.NewArrivals"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "product", dtype = "STRING" },
     { name = "quantity", dtype = "INT64" },
     { name = "arrival_date", dtype = "DATE" },
@@ -446,8 +419,7 @@ when not matched by source then
 """
 [[tests.schema_objects]]
 name = "proj.dataset.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     {"name" = "f0", "dtype" = "int64"},
     {"name" = "f1", "dtype" = "struct<a int64, b array<int64>>"},
     {"name" = "f2", "dtype" = "struct<a struct<x int64, y array<int64>>>"},
@@ -455,8 +427,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     {"name" = "o1", "dtype" = "int64"},
     {"name" = "o2", "dtype" = "int64"},
     {"name" = "o3", "dtype" = "array<int64>"},
@@ -480,15 +451,13 @@ FROM
 """
 [[tests.schema_objects]]
 name = "proj.dataset.array_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "array_column", dtype = "ARRAY<STRING>" }
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.output_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "item_value", dtype = "STRING" }
 ]
@@ -515,16 +484,14 @@ FROM
 """
 [[tests.schema_objects]]
 name = "proj.dataset.struct_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
     { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.output_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "field1", dtype = "STRING" },
     { name = "field2", dtype = "INT64" }
@@ -553,16 +520,14 @@ FROM
 """
 [[tests.schema_objects]]
 name = "proj.dataset.struct_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
     { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.output_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "field1", dtype = "STRING" },
     { name = "field2", dtype = "INT64" }
@@ -590,8 +555,7 @@ FROM proj.dataset.input_table
 """
 [[tests.schema_objects]]
 name = "proj.dataset.input_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "first_name", dtype = "STRING" },
     { name = "last_name", dtype = "STRING" },
@@ -599,8 +563,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.output_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "id", dtype = "INT64" },
     { name = "full_name", dtype = "STRING" },
     { name = "string_value", dtype = "STRING" },
@@ -629,8 +592,7 @@ GROUP BY category, last_value, default_value, event_time, duration_minutes, last
 """
 [[tests.schema_objects]]
 name = "proj.dataset.events"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "category", dtype = "STRING" },
     { name = "user_id", dtype = "STRING" },
     { name = "last_value", dtype = "FLOAT64" },
@@ -642,8 +604,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.analytics_results"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "category", dtype = "STRING" },
     { name = "unique_users", dtype = "INT64" },
     { name = "normalized_value", dtype = "FLOAT64" },
@@ -720,16 +681,14 @@ FROM proj.dataset.user_data
 """
 [[tests.schema_objects]]
 name = "proj.dataset.user_data"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "user_id", dtype = "STRING" },
     { name = "profile", dtype = "STRUCT<demographics STRUCT<age INT64, gender STRING, country STRING>, preferences STRUCT<theme STRING, language STRING, category_affinities ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>, devices ARRAY<STRUCT<device_id STRING, platform STRING, model STRING, last_used_date DATE>>>" },
     { name = "user_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, device_id STRING, properties STRUCT<event_type STRING, page_name STRING, is_completed BOOL, session STRUCT<session_id STRING, duration INT64>, cart STRUCT<cart_id STRING, items ARRAY<STRUCT<product_id STRING, quantity INT64, price FLOAT64>>>>>>" }
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.user_analytics"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "user_id", dtype = "STRING" },
     { name = "completed_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, page_name STRING, duration INT64, purchased_products ARRAY<STRING>>>" },
     { name = "user_profile_summary", dtype = "STRUCT<user_age INT64, user_country STRING, device_count INT64, preferred_theme STRING, high_affinity_categories ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>" },
@@ -788,8 +747,7 @@ from tmp;
 """
 [[tests.schema_objects]]
 name = "proj.dataset.input_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "INT64" },
     { name = "b", dtype = "INT64" },
     { name = "c", dtype = "INT64" },
@@ -797,8 +755,7 @@ columns = [
 ]
 [[tests.schema_objects]]
 name = "proj.dataset.output_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "o1", dtype = "INT64" },
     { name = "o2", dtype = "INT64" },
 ]
@@ -821,15 +778,13 @@ when not matched by source then
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "STRING" },
     { name = "b", dtype = "STRING" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
 
@@ -849,14 +804,12 @@ when not matched by source then
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "in_arr", dtype = "ARRAY<STRING>" },
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->in_arr[]"]
 
@@ -879,15 +832,13 @@ end;
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "string" },
     { name = "s", dtype = "struct<f1 int64, f2 int64>"}
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "a", dtype = "string" },
     { name = "f1", dtype = "int64"},
     { name = "f2", dtype = "int64"}
@@ -911,15 +862,13 @@ end;
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "ix", dtype = "int64" },
     { name = "iy", dtype = "int64"}
 ]
 [[tests.schema_objects]]
 name = "proj.dat.out_table"
-kind = "table"
-columns = [
+kind.table.columns = [
     { name = "ox", dtype = "int64" },
     { name = "oy", dtype = "int64"}
 ]

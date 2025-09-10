@@ -2937,9 +2937,8 @@ pub struct Column {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SchemaObject {
-    pub name: String,
+    pub name: String, // This is the project.dataset.name uid
     pub kind: SchemaObjectKind,
-    pub columns: Vec<Column>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -2950,8 +2949,8 @@ pub struct Catalog {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SchemaObjectKind {
-    Table,
-    View,
+    Table { columns: Vec<Column> },
+    View { columns: Vec<Column> },
 }
 
 #[derive(Debug, Clone)]
@@ -3064,66 +3063,68 @@ pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> 
                 schema_object.name
             ));
         }
-        let context_object_kind = match schema_object.kind {
-            SchemaObjectKind::Table => ContextObjectKind::Table,
-            SchemaObjectKind::View => ContextObjectKind::Table,
-        };
 
-        let mut unique_columns = HashSet::new();
-        let mut duplicate_columns = vec![];
-        let are_columns_unique = schema_object.columns.iter().all(|col| {
-            let is_unique = unique_columns.insert(&col.name);
-            if !is_unique {
-                duplicate_columns.push(&col.name);
-            }
-            is_unique
-        });
-        if !are_columns_unique {
-            return Err(anyhow!(
-                "Found duplicate columns in schema object `{}`: `{:?}`.",
-                &schema_object.name,
-                duplicate_columns
-            ));
-        }
+        match &schema_object.kind {
+            SchemaObjectKind::Table { columns } | SchemaObjectKind::View { columns } => {
+                let context_object_kind = ContextObjectKind::Table;
 
-        let mut nodes = vec![];
-
-        for col in &schema_object.columns {
-            let node_type = parse_column_dtype(col).map_err(|e| {
-                anyhow!(
-                    "Cannot retrieve node type from column {:?} due to: {}",
-                    col,
-                    e
-                )
-            })?;
-
-            // Check that struct field names are unique
-            if let NodeType::Struct(ref struct_node_type) = node_type {
-                let mut set = HashSet::new();
-
-                for field in &struct_node_type.fields {
-                    if set.contains(&field.name) {
-                        return Err(anyhow!(
-                            "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
-                            &col.name,
-                            &schema_object.name,
-                            &field.name
-                        ));
+                let mut unique_columns = HashSet::new();
+                let mut duplicate_columns = vec![];
+                let are_columns_unique = columns.iter().all(|col| {
+                    let is_unique = unique_columns.insert(&col.name);
+                    if !is_unique {
+                        duplicate_columns.push(&col.name);
                     }
-                    set.insert(&field.name);
+                    is_unique
+                });
+                if !are_columns_unique {
+                    return Err(anyhow!(
+                        "Found duplicate columns in schema object `{}`: `{:?}`.",
+                        &schema_object.name,
+                        duplicate_columns
+                    ));
                 }
+
+                let mut nodes = vec![];
+
+                for col in columns {
+                    let node_type = parse_column_dtype(col).map_err(|e| {
+                        anyhow!(
+                            "Cannot retrieve node type from column {:?} due to: {}",
+                            col,
+                            e
+                        )
+                    })?;
+
+                    // Check that struct field names are unique
+                    if let NodeType::Struct(ref struct_node_type) = node_type {
+                        let mut set = HashSet::new();
+
+                        for field in &struct_node_type.fields {
+                            if set.contains(&field.name) {
+                                return Err(anyhow!(
+                                    "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
+                                    &col.name,
+                                    &schema_object.name,
+                                    &field.name
+                                ));
+                            }
+                            set.insert(&field.name);
+                        }
+                    }
+
+                    nodes.push((
+                        NodeName::Defined(col.name.to_lowercase()),
+                        node_type,
+                        vec![],
+                    ));
+                }
+
+                let table_idx =
+                    ctx.allocate_new_ctx_object(&schema_object.name, context_object_kind, nodes);
+                source_objects.insert(schema_object.name.clone(), table_idx);
             }
-
-            nodes.push((
-                NodeName::Defined(col.name.to_lowercase()),
-                node_type,
-                vec![],
-            ));
         }
-
-        let table_idx =
-            ctx.allocate_new_ctx_object(&schema_object.name, context_object_kind, nodes);
-        source_objects.insert(schema_object.name.clone(), table_idx);
     }
     ctx.source_objects = source_objects;
 
