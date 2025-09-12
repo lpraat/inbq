@@ -1692,11 +1692,9 @@ impl<'a> Parser<'a> {
                         right: match right_literal.kind {
                             TokenType::True => Box::new(Expr::Bool(true)),
                             TokenType::False => {
-                                self.advance();
                                 Box::new(Expr::Bool(false))
                             }
                             TokenType::Null => {
-                                self.advance();
                                 Box::new(Expr::Null)
                             }
                             _ => {

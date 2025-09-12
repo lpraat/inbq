@@ -84,6 +84,16 @@ SELECT
 
 [[tests]]
 sql = """
+select null is not null
+"""
+
+[[tests]]
+sql = """
+select null is null
+"""
+
+[[tests]]
+sql = """
 select
   * except (id1, id2)
 from table
@@ -279,6 +289,14 @@ select
     CAST('2016-02-01' AS DATE),
     CAST(b'\\x48\\x65\\x6c\\x6c\\x6f' AS STRING FORMAT (select "ASCII")),
     SAFE_CAST("apple" AS INT64) AS not_a_number;
+"""
+
+[[tests]]
+sql = """
+select
+    CASE
+      WHEN SAFE_CAST(CPU_COUNT AS INT64) IS NOT NULL THEN SAFE_CAST(CPU_COUNT AS INT64)
+    END
 """
 
 [[tests]]
