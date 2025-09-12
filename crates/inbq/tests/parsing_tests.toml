@@ -314,6 +314,12 @@ FROM UNNEST([2, 1, -2, 3, -2, 1, 2]) AS x;
 
 [[tests]]
 sql = """
+SELECT ARRAY_AGG(x IGNORE NULLS) AS array_agg
+FROM UNNEST([NULL, 1, -2, 3, -2, 1, NULL]) AS x
+"""
+
+[[tests]]
+sql = """
 SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
 FROM Library;
 """
@@ -325,6 +331,14 @@ SELECT book, LAST_VALUE(book)
     ORDER BY year
     RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 FROM Library;
+"""
+
+[[tests]]
+sql = """
+SELECT
+  last_value(x RESPECT NULLS) OVER() AS foo,
+  last_value(x ignore nulls) OVER() AS foo,
+FROM UNNEST([0, 3, NULL, 1, 2]) AS x LIMIT 1;
 """
 
 [[tests]]

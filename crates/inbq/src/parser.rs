@@ -2418,11 +2418,13 @@ impl<'a> Parser<'a> {
 
         let nulls =
             if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
-                Some(match &self.peek_prev().kind {
+                let nulls = Some(match &self.peek_prev().kind {
                     TokenType::Ignore => FunctionAggregateNulls::Ignore,
                     TokenType::Respect => FunctionAggregateNulls::Respect,
                     _ => unreachable!(),
-                })
+                });
+                self.consume(TokenTypeVariant::Nulls)?;
+                nulls
             } else {
                 None
             };
@@ -2605,11 +2607,13 @@ impl<'a> Parser<'a> {
 
             let nulls =
                 if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
-                    Some(match &self.peek_prev().kind {
+                    let nulls = Some(match &self.peek_prev().kind {
                         TokenType::Ignore => FunctionAggregateNulls::Ignore,
                         TokenType::Respect => FunctionAggregateNulls::Respect,
                         _ => unreachable!(),
-                    })
+                    });
+                    self.consume(TokenTypeVariant::Nulls)?;
+                    nulls
                 } else {
                     None
                 };
