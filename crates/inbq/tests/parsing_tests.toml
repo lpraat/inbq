@@ -357,6 +357,11 @@ select 1 + case when true then 1 else 2 end
 
 [[tests]]
 sql = """
+select case when true then 1 end
+"""
+
+[[tests]]
+sql = """
 select
   current_date,
   `current_date`,

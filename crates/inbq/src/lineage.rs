@@ -1387,7 +1387,9 @@ impl LineageExtractor {
                     self.select_expr_col_expr_lin(&when_then.when, expand_value_table)?;
                     self.select_expr_col_expr_lin(&when_then.then, expand_value_table)?;
                 }
-                self.select_expr_col_expr_lin(&case_expr.r#else, expand_value_table)?;
+                if let Some(else_expr) = &case_expr.r#else {
+                    self.select_expr_col_expr_lin(else_expr, expand_value_table)?;
+                }
             }
             Expr::GenericFunction(function_expr) => {
                 for arg in &function_expr.arguments {

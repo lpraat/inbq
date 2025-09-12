@@ -267,7 +267,7 @@ pub enum Expr {
 pub struct CaseExpr {
     pub case: Option<Box<Expr>>,
     pub when_thens: Vec<WhenThen>,
-    pub r#else: Box<Expr>,
+    pub r#else: Option<Box<Expr>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

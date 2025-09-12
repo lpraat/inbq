@@ -2731,6 +2731,14 @@ impl<'a> Parser<'a> {
 
             when_thens.push(WhenThen { when, then });
 
+            if self.match_token_type(TokenTypeVariant::End) {
+                return Ok(Expr::Case(CaseExpr {
+                    case,
+                    when_thens,
+                    r#else: None,
+                }))
+            }
+
             if self.match_token_type(TokenTypeVariant::Else) {
                 break;
             }
@@ -2743,7 +2751,7 @@ impl<'a> Parser<'a> {
         Ok(Expr::Case(CaseExpr {
             case,
             when_thens,
-            r#else: Box::new(r#else),
+            r#else: Some(Box::new(r#else)),
         }))
     }
 
