@@ -141,10 +141,39 @@ class AstNode:
             "ArrayAgg": "FunctionExpr_ArrayAgg",
             "Concat": "FunctionExpr_Concat",
             "Cast": "FunctionExpr_Cast",
+            "Extract": "FunctionExpr_Extract",
             "If": "FunctionExpr_If",
             "SafeCast": "FunctionExpr_SafeCast",
             "CurrentDate": "FunctionExpr_CurrentDate",
             "CurrentTimestamp": "FunctionExpr_CurrentTimestamp",
+        },
+        "ExtractFunctionPart": {
+            "MicroSecond": "ExtractFunctionPart_MicroSecond",
+            "MilliSecond": "ExtractFunctionPart_MilliSecond",
+            "Second": "ExtractFunctionPart_Second",
+            "Minute": "ExtractFunctionPart_Minute",
+            "Hour": "ExtractFunctionPart_Hour",
+            "DayOfWeek": "ExtractFunctionPart_DayOfWeek",
+            "Day": "ExtractFunctionPart_Day",
+            "DayOfYear": "ExtractFunctionPart_DayOfYear",
+            "Week": "ExtractFunctionPart_Week",
+            "WeekWithBegin": "ExtractFunctionPart_WeekWithBegin",
+            "IsoWeek": "ExtractFunctionPart_IsoWeek",
+            "Month": "ExtractFunctionPart_Month",
+            "Quarter": "ExtractFunctionPart_Quarter",
+            "Year": "ExtractFunctionPart_Year",
+            "IsoYear": "ExtractFunctionPart_IsoYear",
+            "Date": "ExtractFunctionPart_Date",
+            "Time": "ExtractFunctionPart_Time",
+        },
+        "WeekBegin": {
+            "Sunday": "WeekBegin_Sunday",
+            "Monday": "WeekBegin_Monday",
+            "Tuesday": "WeekBegin_Tuesday",
+            "Wednesday": "WeekBegin_Wednesday",
+            "Thursday": "WeekBegin_Thursday",
+            "Friday": "WeekBegin_Friday",
+            "Saturday": "WeekBegin_Saturday",
         },
         "FunctionAggregateNulls": {
             "Ignore": "FunctionAggregateNulls_Ignore",
@@ -646,6 +675,12 @@ class WhenThen(AstNode):
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
+
+
+@dataclass
+class ExtractFunctionExpr(AstNode):
+    part: "ExtractFunctionPart"
+    expr: "Expr"
 
 
 @dataclass
@@ -1451,6 +1486,11 @@ class FunctionExpr_Cast(AstNode):
 
 
 @dataclass
+class FunctionExpr_Extract(AstNode):
+    value: "ExtractFunctionExpr"
+
+
+@dataclass
 class FunctionExpr_If(AstNode):
     value: "IfFunctionExpr"
 
@@ -1469,7 +1509,110 @@ class FunctionExpr_CurrentDate(AstNode):
 class FunctionExpr_CurrentTimestamp(AstNode): ...
 
 
-FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp"
+FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_Extract | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp"
+
+
+@dataclass
+class ExtractFunctionPart_MicroSecond(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_MilliSecond(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Second(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Minute(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Hour(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_DayOfWeek(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Day(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_DayOfYear(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Week(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_WeekWithBegin(AstNode):
+    value: "WeekBegin"
+
+
+@dataclass
+class ExtractFunctionPart_IsoWeek(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Month(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Quarter(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Year(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_IsoYear(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Date(AstNode): ...
+
+
+@dataclass
+class ExtractFunctionPart_Time(AstNode): ...
+
+
+ExtractFunctionPart: TypeAlias = "ExtractFunctionPart_MicroSecond | ExtractFunctionPart_MilliSecond | ExtractFunctionPart_Second | ExtractFunctionPart_Minute | ExtractFunctionPart_Hour | ExtractFunctionPart_DayOfWeek | ExtractFunctionPart_Day | ExtractFunctionPart_DayOfYear | ExtractFunctionPart_Week | ExtractFunctionPart_WeekWithBegin | ExtractFunctionPart_IsoWeek | ExtractFunctionPart_Month | ExtractFunctionPart_Quarter | ExtractFunctionPart_Year | ExtractFunctionPart_IsoYear | ExtractFunctionPart_Date | ExtractFunctionPart_Time"
+
+
+@dataclass
+class WeekBegin_Sunday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Monday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Tuesday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Wednesday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Thursday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Friday(AstNode): ...
+
+
+@dataclass
+class WeekBegin_Saturday(AstNode): ...
+
+
+WeekBegin: TypeAlias = "WeekBegin_Sunday | WeekBegin_Monday | WeekBegin_Tuesday | WeekBegin_Wednesday | WeekBegin_Thursday | WeekBegin_Friday | WeekBegin_Saturday"
 
 
 @dataclass

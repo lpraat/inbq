@@ -10,20 +10,20 @@ use inbq::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
     CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
     CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
-    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, ParseToken, PathExpr, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr,
+    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, IfFunctionExpr, InsertStatement, IntervalExpr, IntervalPart,
+    JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
+    MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
+    RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
+    SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
+    SetVarStatement, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-    UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched,
+    UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
     WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
     WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
@@ -1315,6 +1315,125 @@ impl RsToPyObject for IfFunctionExpr {
     }
 }
 
+impl RsToPyObject for WeekBegin {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            WeekBegin::Sunday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Sunday)?, &[])
+            }
+            WeekBegin::Monday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Monday)?, &[])
+            }
+            WeekBegin::Tuesday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Tuesday)?, &[])
+            }
+            WeekBegin::Wednesday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Wednesday)?, &[])
+            }
+            WeekBegin::Thursday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Thursday)?, &[])
+            }
+            WeekBegin::Friday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Friday)?, &[])
+            }
+            WeekBegin::Saturday => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, WeekBegin::Saturday)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for ExtractFunctionPart {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            ExtractFunctionPart::MicroSecond => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::MicroSecond)?,
+                &[],
+            ),
+            ExtractFunctionPart::MilliSecond => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::MilliSecond)?,
+                &[],
+            ),
+            ExtractFunctionPart::Second => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::Second)?,
+                &[],
+            ),
+            ExtractFunctionPart::Minute => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::Minute)?,
+                &[],
+            ),
+            ExtractFunctionPart::Hour => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Hour)?, &[])
+            }
+            ExtractFunctionPart::DayOfWeek => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::DayOfWeek)?,
+                &[],
+            ),
+            ExtractFunctionPart::Day => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Day)?, &[])
+            }
+            ExtractFunctionPart::DayOfYear => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::DayOfYear)?,
+                &[],
+            ),
+            ExtractFunctionPart::Week => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Week)?, &[])
+            }
+            ExtractFunctionPart::WeekWithBegin(week_begin) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, week_begin)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, ExtractFunctionPart::WeekWithBegin)?,
+                    kwargs,
+                )
+            }
+            ExtractFunctionPart::IsoWeek => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::IsoWeek)?,
+                &[],
+            ),
+            ExtractFunctionPart::Month => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Month)?, &[])
+            }
+            ExtractFunctionPart::Quarter => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::Quarter)?,
+                &[],
+            ),
+            ExtractFunctionPart::Year => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Year)?, &[])
+            }
+            ExtractFunctionPart::IsoYear => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, ExtractFunctionPart::IsoYear)?,
+                &[],
+            ),
+            ExtractFunctionPart::Date => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Date)?, &[])
+            }
+            ExtractFunctionPart::Time => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionPart::Time)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for ExtractFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "part", self.part),
+            kwarg!(py_ctx, "expr", self.expr),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, ExtractFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1353,6 +1472,10 @@ impl RsToPyObject for FunctionExpr {
             FunctionExpr::If(if_function_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::If)?, kwargs)
+            }
+            FunctionExpr::Extract(extract_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, extract_function_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Extract)?, kwargs)
             }
             FunctionExpr::CurrentTimestamp => instantiate_py_class(
                 py_ctx,

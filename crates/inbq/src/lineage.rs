@@ -1433,6 +1433,9 @@ impl LineageExtractor {
                     )?;
                 }
                 FunctionExpr::CurrentTimestamp => {}
+                FunctionExpr::Extract(extract_function_expr) => {
+                    self.select_expr_col_expr_lin(&extract_function_expr.expr, expand_value_table)?
+                }
             },
             Expr::Star => {
                 // Handled by select_expr_all_lin and select_expr_col_all_lin

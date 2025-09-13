@@ -5,22 +5,22 @@ use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
     CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
     CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
-    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, ParseToken, PathExpr, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr,
+    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, IfFunctionExpr, InsertStatement, IntervalExpr, IntervalPart,
+    JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
+    MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
+    RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
+    SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
+    SetVarStatement, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -2834,6 +2834,78 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    // extract_expr -> "EXTRACT" "(" part "FROM" expr ")"
+    // where part -> "MICROSECOND" | "MILLISECOND" | "SECOND" | "MINUTE" | "HOUR" | "DAYOFWEEK"
+    //  | "DAY" | "DAYOFYEAR" | "WEEK" | "WEEK" "(" ("SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY"
+    //  | "THURSDAY" | "FRIDAY" | "SATURDAY") ")" | "ISOWEEK" | "MONTH" | "QUARTER" | "YEAR" | "ISOYEAR"
+    fn parse_extract_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Extract)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+
+        let part_keyword = match &self.advance().kind {
+            TokenType::Identifier(ident) => ident,
+            TokenType::QuotedIdentifier(qident) => qident,
+            _ => unreachable!(),
+        }
+        .to_lowercase();
+        let part = match part_keyword.as_str() {
+            "microsecond" => ExtractFunctionPart::MicroSecond,
+            "millisecond" => ExtractFunctionPart::MilliSecond,
+            "second" => ExtractFunctionPart::Second,
+            "minute" => ExtractFunctionPart::Minute,
+            "hour" => ExtractFunctionPart::Hour,
+            "dayofweek" => ExtractFunctionPart::DayOfWeek,
+            "day" => ExtractFunctionPart::Day,
+            "dayofyear" => ExtractFunctionPart::DayOfYear,
+            "week" => {
+                if self.match_token_type(TokenTypeVariant::LeftParen) {
+                    let week_begin_keyword = match &self.advance().kind {
+                        TokenType::Identifier(ident) => ident,
+                        TokenType::QuotedIdentifier(qident) => qident,
+                        _ => unreachable!(),
+                    }
+                    .to_lowercase();
+                    let week_begin = match week_begin_keyword.as_str() {
+                        "sunday" => WeekBegin::Sunday,
+                        "monday" => WeekBegin::Monday,
+                        "tuesday" => WeekBegin::Tuesday,
+                        "wednesday" => WeekBegin::Wednesday,
+                        "thursday" => WeekBegin::Thursday,
+                        "friday" => WeekBegin::Friday,
+                        "saturday" => WeekBegin::Saturday,
+                        _ => Err(anyhow!(
+                            "Found unexpected day of week: `{}`",
+                            week_begin_keyword
+                        ))?,
+                    };
+                    self.consume(TokenTypeVariant::RightParen)?;
+                    ExtractFunctionPart::WeekWithBegin(week_begin)
+                } else {
+                    ExtractFunctionPart::Week
+                }
+            }
+            "isoweek" => ExtractFunctionPart::IsoWeek,
+            "month" => ExtractFunctionPart::Month,
+            "quarter" => ExtractFunctionPart::Quarter,
+            "year" => ExtractFunctionPart::Year,
+            "isoyear" => ExtractFunctionPart::IsoYear,
+            "date" => ExtractFunctionPart::Date,
+            "time" => ExtractFunctionPart::Time,
+            _ => Err(anyhow!(
+                "Found unexpected extract part: `{}`.",
+                part_keyword
+            ))?,
+        };
+
+        self.consume(TokenTypeVariant::From)?;
+        let expr = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(FunctionExpr::Extract(ExtractFunctionExpr {
+            part,
+            expr: Box::new(expr),
+        })))
+    }
+
     // quantified_like_expr -> ("ANY" | "SOME" | "ALL") (pattern_expression_list | pattern_array)
     // where:
     // pattern_expression_list -> "(" expr ("," expr)* ")"
@@ -2929,6 +3001,7 @@ impl<'a> Parser<'a> {
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::If => self.parse_if_fn_expr()?,
+            TokenType::Extract => self.parse_extract_fn_expr()?,
             TokenType::Identifier(ident) => {
                 let lower_ident = ident.to_lowercase();
                 if self.peek_next_i(1).kind == TokenType::LeftParen

@@ -335,6 +335,21 @@ SELECT IF(true,1,0)
 
 [[tests]]
 sql = """
+SELECT EXTRACT(HOUR FROM DATETIME(2008, 12, 25, 15, 30, 00)) as hour;
+"""
+
+[[tests]]
+sql = """
+SELECT EXTRACT(WEEK(MONDAY) FROM DATETIME(2008, 12, 25, 15, 30, 00)) as hour;
+"""
+
+[[tests]]
+sql = """
+SELECT EXTRACT(`WEEK`(`MONDAY`) FROM DATETIME(2008, 12, 25, 15, 30, 00)) as hour;
+"""
+
+[[tests]]
+sql = """
 SELECT COUNT(*)
 """
 

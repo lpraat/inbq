@@ -318,10 +318,49 @@ pub enum FunctionExpr {
     ArrayAgg(ArrayAggFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
+    Extract(ExtractFunctionExpr),
     If(IfFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
     CurrentDate(CurrentDateFunctionExpr),
     CurrentTimestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractFunctionExpr {
+    pub part: ExtractFunctionPart,
+    pub expr: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExtractFunctionPart {
+    MicroSecond,
+    MilliSecond,
+    Second,
+    Minute,
+    Hour,
+    DayOfWeek,
+    Day,
+    DayOfYear,
+    Week,
+    WeekWithBegin(WeekBegin),
+    IsoWeek,
+    Month,
+    Quarter,
+    Year,
+    IsoYear,
+    Date,
+    Time,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WeekBegin {
+    Sunday,
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
