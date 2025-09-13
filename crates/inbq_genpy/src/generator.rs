@@ -371,7 +371,6 @@ from typing import (
     get_args,
     get_origin,
     get_type_hints,
-    Type
 )
 from types import UnionType, NoneType
 "#
@@ -407,7 +406,7 @@ class AstNode:
         return cls._instantiate_type_from_data(cls, data)
 
     @classmethod
-    def _decode_enum_variant(cls, first_type: Type, data: dict) -> Any:
+    def _decode_enum_variant(cls, first_type: typing.Type, data: dict) -> Any:
         if "_" in first_type.__name__:
             # Find the py_class of the enum variant
             # from args which contains all the variants
@@ -424,7 +423,7 @@ class AstNode:
             return cls._instantiate_type_from_data(first_type, data)
 
     @classmethod
-    def _instantiate_type_from_data(cls, ty: Type, data: dict) -> Any:
+    def _instantiate_type_from_data(cls, ty: typing.Type, data: dict) -> Any:
         if ty in cls._PRIMITIVE_TYPES:
             return ty(data)
 

@@ -317,6 +317,7 @@ pub enum FunctionExpr {
     ArrayAgg(ArrayAggFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
+    If(IfFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
     CurrentDate(CurrentDateFunctionExpr),
     CurrentTimestamp,
@@ -355,6 +356,13 @@ pub struct SafeCastFunctionExpr {
     pub expr: Box<Expr>,
     pub r#type: ParameterizedType,
     pub format: Option<Box<Expr>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IfFunctionExpr {
+    pub condition: Box<Expr>,
+    pub true_result: Box<Expr>,
+    pub false_result: Box<Expr>,
 }
 
 /// Generic function call, whose signature is not yet implemented in the parser

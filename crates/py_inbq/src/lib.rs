@@ -13,17 +13,17 @@ use inbq::ast::{
     FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge, MergeInsert,
-    MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte,
-    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken,
-    PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
-    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, Statement,
-    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
-    TokenType, TruncateStatement, Type, UnaryExpr, UnnestExpr, UpdateItem, UpdateStatement, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge,
+    MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr,
+    NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
+    ParseToken, PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
+    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr, UnnestExpr,
+    UpdateItem, UpdateStatement, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -1155,6 +1155,17 @@ impl RsToPyObject for CurrentDateFunctionExpr {
     }
 }
 
+impl RsToPyObject for IfFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "condition", self.condition),
+            kwarg!(py_ctx, "true_result", self.true_result),
+            kwarg!(py_ctx, "false_result", self.false_result),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, IfFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1189,6 +1200,10 @@ impl RsToPyObject for FunctionExpr {
                     get_class!(py_ctx, FunctionExpr::CurrentDate)?,
                     kwargs,
                 )
+            }
+            FunctionExpr::If(if_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_function_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::If)?, kwargs)
             }
             FunctionExpr::CurrentTimestamp => instantiate_py_class(
                 py_ctx,

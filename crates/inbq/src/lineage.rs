@@ -1419,6 +1419,17 @@ impl LineageExtractor {
                         self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
                     }
                 }
+                FunctionExpr::If(if_function_expr) => {
+                    self.select_expr_col_expr_lin(&if_function_expr.condition, expand_value_table)?;
+                    self.select_expr_col_expr_lin(
+                        &if_function_expr.true_result,
+                        expand_value_table,
+                    )?;
+                    self.select_expr_col_expr_lin(
+                        &if_function_expr.false_result,
+                        expand_value_table,
+                    )?;
+                }
                 FunctionExpr::CurrentTimestamp => {}
             },
             Expr::Star => {

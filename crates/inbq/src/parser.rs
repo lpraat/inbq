@@ -8,17 +8,18 @@ use crate::ast::{
     FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge, MergeInsert,
-    MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte,
-    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken,
-    PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
-    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, Statement,
-    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
-    TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnnestExpr, UpdateItem,
-    UpdateStatement, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen,
-    Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge,
+    MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr,
+    NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
+    ParseToken, PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
+    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
+    UnaryExpr, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched, WhenNotMatchedBySource,
+    WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame, WindowFrameKind,
+    WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -2559,6 +2560,23 @@ impl<'a> Parser<'a> {
         Ok(Expr::Function(FunctionExpr::CurrentTimestamp))
     }
 
+    // if -> "IF" "(" expr "," expr "," expr ")"
+    fn parse_if_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::If)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let condition = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let true_result = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let false_result = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(FunctionExpr::If(IfFunctionExpr {
+            condition: Box::new(condition),
+            true_result: Box::new(true_result),
+            false_result: Box::new(false_result),
+        })))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_function_name = match &self.peek().kind {
             TokenType::Identifier(ident) => ident,
@@ -2800,6 +2818,7 @@ impl<'a> Parser<'a> {
             TokenType::Case => self.parse_case_expr()?,
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
+            TokenType::If => self.parse_if_fn_expr()?,
             TokenType::Identifier(ident) => {
                 let lower_ident = ident.to_lowercase();
                 if self.peek_next_i(1).kind == TokenType::LeftParen
