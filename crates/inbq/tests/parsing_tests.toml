@@ -317,6 +317,12 @@ SELECT IF(true,1,0)
 
 [[tests]]
 sql = """
+SELECT COUNT(*)
+"""
+
+
+[[tests]]
+sql = """
 SELECT ARRAY_AGG(x) AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x;
 """
 

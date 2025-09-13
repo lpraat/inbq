@@ -2778,7 +2778,7 @@ impl<'a> Parser<'a> {
     }
 
     // primary_expr ->
-    // "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
+    // "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
     // | NUMERIC "Number" | BIGNUMERIC "Number"
     // | DATE "String" | TIMESTAMP "String" | DATETIME "String" | TIME "String"
     // | "RANGE" "<" bq_parameterized_type ">" "String"
@@ -2790,6 +2790,10 @@ impl<'a> Parser<'a> {
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
+            TokenType::Star => {
+                self.advance();
+                Expr::Star
+            }
             TokenType::True => {
                 self.advance();
                 Expr::Bool(true)
