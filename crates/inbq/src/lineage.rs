@@ -1,13 +1,14 @@
 use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
-        ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CreateTableStatement,
-        Cte, DeclareVarStatement, DropTableStatement, Expr, FromExpr, FromPathExpr, FunctionExpr,
-        GroupingQueryExpr, InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge,
-        MergeInsert, MergeSource, MergeStatement, MergeUpdate, ParameterizedType, ParseToken,
-        QueryExpr, QueryStatement, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, Statement,
-        StatementsBlock, StructExpr, TokenType, Type, UpdateStatement, When, With,
+        ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
+        CreateTableStatement, Cte, DeclareVarStatement, DropTableStatement, Expr, FromExpr,
+        FromPathExpr, FunctionExpr, GroupingQueryExpr, InsertStatement, IntervalExpr,
+        JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+        ParameterizedType, ParseToken, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+        SelectTableValue, SetSelectQueryExpr, SetVarStatement, Statement, StatementsBlock,
+        StructExpr, TokenType, Type, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -938,15 +939,16 @@ impl LineageExtractor {
         loop {
             let left = &*b.left;
             let right = &*b.right;
-            let op = b.operator.lexeme(Some(""));
+            let op = &b.operator;
 
-            if op == "." || op == "[]" {
+            if matches!(op, BinaryOperator::FieldAccess) || matches!(op, BinaryOperator::ArrayIndex)
+            {
                 match (left, right) {
                     (
                         Expr::Identifier(left_ident) | Expr::QuotedIdentifier(left_ident),
                         Expr::Identifier(right_ident) | Expr::QuotedIdentifier(right_ident),
                     ) => {
-                        assert!(op == ".");
+                        assert!(matches!(op, BinaryOperator::FieldAccess));
                         if access_path.path.is_empty() {
                             if let Ok(col_or_node_idx) = self.get_col_or_var(left_ident) {
                                 // col.struct (or var.struct)
@@ -981,10 +983,10 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Binary(left), right) => {
-                        assert!(op == ".");
+                        assert!(matches!(op, BinaryOperator::FieldAccess));
                         match right {
                             Expr::Binary(binary_expr)
-                                if binary_expr.operator.lexeme(Some("")) == "[]" =>
+                                if matches!(binary_expr.operator, BinaryOperator::ArrayIndex) =>
                             {
                                 let field_name = match &binary_expr.left.as_ref() {
                                     Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
@@ -1011,7 +1013,7 @@ impl LineageExtractor {
                         b = left;
                     }
                     (Expr::Function(function_expr), _)
-                        if op == "[]"
+                        if (matches!(op, BinaryOperator::ArrayIndex))
                             && matches!(
                                 function_expr,
                                 FunctionExpr::Array(_) | FunctionExpr::ArrayAgg(_)
@@ -1036,7 +1038,7 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Array(array_expr), _) => {
-                        assert!(op == "[]");
+                        assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
                         let node_idx = self.array_expr_lin(array_expr)?;
@@ -1078,7 +1080,7 @@ impl LineageExtractor {
                         Expr::Struct(struct_expr),
                         Expr::Identifier(ident) | Expr::QuotedIdentifier(ident),
                     ) => {
-                        assert!(op == ".");
+                        assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
@@ -1089,7 +1091,7 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Struct(struct_expr), Expr::Star) => {
-                        assert!(op == ".");
+                        assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
@@ -1123,7 +1125,7 @@ impl LineageExtractor {
                     }
                     (Expr::Identifier(ident) | Expr::QuotedIdentifier(ident), Expr::Number(_)) => {
                         // array[]
-                        assert!(op == "[]");
+                        assert!(matches!(op, BinaryOperator::ArrayIndex));
                         let col_or_var_idx = self.get_col_or_var(ident)?;
                         let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                         let access_path = AccessPath {
@@ -1138,7 +1140,7 @@ impl LineageExtractor {
                         Expr::Identifier(ident) | Expr::QuotedIdentifier(ident),
                     ) => {
                         // select (select struct(1 as a, 2 as b)).a
-                        assert!(op == ".");
+                        assert!(matches!(op, BinaryOperator::FieldAccess));
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(left, false)
                         })?;
@@ -1155,7 +1157,7 @@ impl LineageExtractor {
                     }
                     (Expr::Grouping(_) | Expr::Query(_), Expr::Number(_)) => {
                         // select (select [1,2,3])[0]
-                        assert!(op == "[]");
+                        assert!(matches!(op, BinaryOperator::ArrayIndex));
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(left, false)
                         })?;
@@ -1436,6 +1438,16 @@ impl LineageExtractor {
                 // Handled by select_expr_all_lin and select_expr_col_all_lin
                 unreachable!()
             }
+            Expr::QuantifiedLike(quantified_like_expr) => match &quantified_like_expr.pattern {
+                QuantifiedLikeExprPattern::ExprList { exprs } => {
+                    for expr in exprs {
+                        self.select_expr_col_expr_lin(expr, expand_value_table)?
+                    }
+                }
+                QuantifiedLikeExprPattern::ArrayUnnest { expr } => {
+                    self.select_expr_col_expr_lin(expr, expand_value_table)?
+                }
+            },
         }
 
         Ok(())

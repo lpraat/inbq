@@ -118,6 +118,7 @@ class AstNode:
             "Case": "Expr_Case",
             "GenericFunction": "Expr_GenericFunction",
             "Function": "Expr_Function",
+            "QuantifiedLike": "Expr_QuantifiedLike",
         },
         "IntervalExpr": {
             "Interval": "IntervalExpr_Interval",
@@ -152,6 +153,58 @@ class AstNode:
         "FunctionAggregateHavingKind": {
             "Max": "FunctionAggregateHavingKind_Max",
             "Min": "FunctionAggregateHavingKind_Min",
+        },
+        "UnaryOperator": {
+            "Plus": "UnaryOperator_Plus",
+            "Minus": "UnaryOperator_Minus",
+            "BitwiseNot": "UnaryOperator_BitwiseNot",
+            "IsNull": "UnaryOperator_IsNull",
+            "IsNotNull": "UnaryOperator_IsNotNull",
+            "IsTrue": "UnaryOperator_IsTrue",
+            "IsNotTrue": "UnaryOperator_IsNotTrue",
+            "IsFalse": "UnaryOperator_IsFalse",
+            "IsNotFalse": "UnaryOperator_IsNotFalse",
+            "Not": "UnaryOperator_Not",
+        },
+        "BinaryOperator": {
+            "BitwiseNot": "BinaryOperator_BitwiseNot",
+            "Star": "BinaryOperator_Star",
+            "Slash": "BinaryOperator_Slash",
+            "Concat": "BinaryOperator_Concat",
+            "Plus": "BinaryOperator_Plus",
+            "Minus": "BinaryOperator_Minus",
+            "BitwiseLeftShift": "BinaryOperator_BitwiseLeftShift",
+            "BitwiseRightShift": "BinaryOperator_BitwiseRightShift",
+            "BitwiseAnd": "BinaryOperator_BitwiseAnd",
+            "BitwiseXor": "BinaryOperator_BitwiseXor",
+            "BitwiseOr": "BinaryOperator_BitwiseOr",
+            "Equal": "BinaryOperator_Equal",
+            "LessThan": "BinaryOperator_LessThan",
+            "GreaterThan": "BinaryOperator_GreaterThan",
+            "LessThanOrEqualTo": "BinaryOperator_LessThanOrEqualTo",
+            "GreaterTHanOrEqualTo": "BinaryOperator_GreaterTHanOrEqualTo",
+            "NotEqual": "BinaryOperator_NotEqual",
+            "Like": "BinaryOperator_Like",
+            "NotLike": "BinaryOperator_NotLike",
+            "QuantifiedLike": "BinaryOperator_QuantifiedLike",
+            "QuantifiedNotLike": "BinaryOperator_QuantifiedNotLike",
+            "Between": "BinaryOperator_Between",
+            "NotBetween": "BinaryOperator_NotBetween",
+            "In": "BinaryOperator_In",
+            "NotIn": "BinaryOperator_NotIn",
+            "And": "BinaryOperator_And",
+            "Or": "BinaryOperator_Or",
+            "ArrayIndex": "BinaryOperator_ArrayIndex",
+            "FieldAccess": "BinaryOperator_FieldAccess",
+        },
+        "LikeQuantifier": {
+            "Any": "LikeQuantifier_Any",
+            "Some": "LikeQuantifier_Some",
+            "All": "LikeQuantifier_All",
+        },
+        "QuantifiedLikeExprPattern": {
+            "ExprList": "QuantifiedLikeExprPattern_ExprList",
+            "ArrayUnnest": "QuantifiedLikeExprPattern_ArrayUnnest",
         },
         "QueryExpr": {
             "Grouping": "QueryExpr_Grouping",
@@ -673,15 +726,21 @@ class FunctionAggregateHaving(AstNode):
 
 @dataclass
 class UnaryExpr(AstNode):
-    operator: "ParseToken"
+    operator: "UnaryOperator"
     right: "Expr"
 
 
 @dataclass
 class BinaryExpr(AstNode):
     left: "Expr"
-    operator: "ParseToken"
+    operator: "BinaryOperator"
     right: "Expr"
+
+
+@dataclass
+class QuantifiedLikeExpr(AstNode):
+    quantifier: "LikeQuantifier"
+    pattern: "QuantifiedLikeExprPattern"
 
 
 @dataclass
@@ -1304,7 +1363,12 @@ class Expr_Function(AstNode):
     value: "FunctionExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function"
+@dataclass
+class Expr_QuantifiedLike(AstNode):
+    value: "QuantifiedLikeExpr"
+
+
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike"
 
 
 @dataclass
@@ -1431,6 +1495,200 @@ class FunctionAggregateHavingKind_Min(AstNode): ...
 
 FunctionAggregateHavingKind: TypeAlias = (
     "FunctionAggregateHavingKind_Max | FunctionAggregateHavingKind_Min"
+)
+
+
+@dataclass
+class UnaryOperator_Plus(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_Minus(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_BitwiseNot(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsNull(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsNotNull(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsTrue(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsNotTrue(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsFalse(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_IsNotFalse(AstNode): ...
+
+
+@dataclass
+class UnaryOperator_Not(AstNode): ...
+
+
+UnaryOperator: TypeAlias = "UnaryOperator_Plus | UnaryOperator_Minus | UnaryOperator_BitwiseNot | UnaryOperator_IsNull | UnaryOperator_IsNotNull | UnaryOperator_IsTrue | UnaryOperator_IsNotTrue | UnaryOperator_IsFalse | UnaryOperator_IsNotFalse | UnaryOperator_Not"
+
+
+@dataclass
+class BinaryOperator_BitwiseNot(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Star(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Slash(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Concat(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Plus(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Minus(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_BitwiseLeftShift(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_BitwiseRightShift(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_BitwiseAnd(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_BitwiseXor(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_BitwiseOr(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Equal(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_LessThan(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_GreaterThan(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_LessThanOrEqualTo(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_GreaterTHanOrEqualTo(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_NotEqual(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Like(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_NotLike(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_QuantifiedLike(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_QuantifiedNotLike(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Between(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_NotBetween(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_In(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_NotIn(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_And(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_Or(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_ArrayIndex(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_FieldAccess(AstNode): ...
+
+
+BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterTHanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
+
+
+@dataclass
+class LikeQuantifier_Any(AstNode): ...
+
+
+@dataclass
+class LikeQuantifier_Some(AstNode): ...
+
+
+@dataclass
+class LikeQuantifier_All(AstNode): ...
+
+
+LikeQuantifier: TypeAlias = (
+    "LikeQuantifier_Any | LikeQuantifier_Some | LikeQuantifier_All"
+)
+
+
+@dataclass
+class QuantifiedLikeExprPattern_ExprList(AstNode):
+    exprs: "list[Expr]"
+
+
+@dataclass
+class QuantifiedLikeExprPattern_ArrayUnnest(AstNode):
+    expr: "Expr"
+
+
+QuantifiedLikeExprPattern: TypeAlias = (
+    "QuantifiedLikeExprPattern_ExprList | QuantifiedLikeExprPattern_ArrayUnnest"
 )
 
 

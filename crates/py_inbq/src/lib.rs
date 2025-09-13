@@ -7,23 +7,25 @@ use pyo3::{
 };
 
 use inbq::ast::{
-    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CaseExpr,
+    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
     CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
     CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
     FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
     GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge,
-    MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr,
-    NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
-    ParseToken, PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
+    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, ParseToken, PathExpr, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
     SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
     SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
     Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr, UnnestExpr,
-    UpdateItem, UpdateStatement, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
+    UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -747,6 +749,116 @@ impl RsToPyObject for ParameterizedType {
     }
 }
 
+impl RsToPyObject for BinaryOperator {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            BinaryOperator::BitwiseNot => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::BitwiseNot)?, &[])
+            }
+            BinaryOperator::Star => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Star)?, &[])
+            }
+            BinaryOperator::Slash => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Slash)?, &[])
+            }
+            BinaryOperator::Concat => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Concat)?, &[])
+            }
+            BinaryOperator::Plus => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Plus)?, &[])
+            }
+            BinaryOperator::Minus => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Minus)?, &[])
+            }
+            BinaryOperator::BitwiseLeftShift => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::BitwiseLeftShift)?,
+                &[],
+            ),
+            BinaryOperator::BitwiseRightShift => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::BitwiseRightShift)?,
+                &[],
+            ),
+            BinaryOperator::BitwiseAnd => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::BitwiseAnd)?, &[])
+            }
+            BinaryOperator::BitwiseXor => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::BitwiseXor)?, &[])
+            }
+            BinaryOperator::BitwiseOr => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::BitwiseOr)?, &[])
+            }
+            BinaryOperator::Equal => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Equal)?, &[])
+            }
+            BinaryOperator::LessThan => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::LessThan)?, &[])
+            }
+            BinaryOperator::GreaterThan => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::GreaterThan)?,
+                &[],
+            ),
+            BinaryOperator::LessThanOrEqualTo => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::LessThanOrEqualTo)?,
+                &[],
+            ),
+            BinaryOperator::GreaterTHanOrEqualTo => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::GreaterTHanOrEqualTo)?,
+                &[],
+            ),
+            BinaryOperator::NotEqual => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::NotEqual)?, &[])
+            }
+            BinaryOperator::Like => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Like)?, &[])
+            }
+            BinaryOperator::NotLike => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::NotLike)?, &[])
+            }
+            BinaryOperator::QuantifiedLike => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::QuantifiedLike)?,
+                &[],
+            ),
+            BinaryOperator::QuantifiedNotLike => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::QuantifiedNotLike)?,
+                &[],
+            ),
+            BinaryOperator::Between => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Between)?, &[])
+            }
+            BinaryOperator::NotBetween => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::NotBetween)?, &[])
+            }
+            BinaryOperator::In => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::In)?, &[])
+            }
+            BinaryOperator::NotIn => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::NotIn)?, &[])
+            }
+            BinaryOperator::And => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::And)?, &[])
+            }
+            BinaryOperator::Or => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::Or)?, &[])
+            }
+            BinaryOperator::ArrayIndex => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryOperator::ArrayIndex)?, &[])
+            }
+            BinaryOperator::FieldAccess => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, BinaryOperator::FieldAccess)?,
+                &[],
+            ),
+        }
+    }
+}
+
 impl RsToPyObject for BinaryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
@@ -755,6 +867,43 @@ impl RsToPyObject for BinaryExpr {
             kwarg!(py_ctx, "right", self.right),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, BinaryExpr)?, kwargs)
+    }
+}
+
+impl RsToPyObject for UnaryOperator {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            UnaryOperator::Plus => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::Plus)?, &[])
+            }
+            UnaryOperator::Minus => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::Minus)?, &[])
+            }
+            UnaryOperator::BitwiseNot => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::BitwiseNot)?, &[])
+            }
+            UnaryOperator::IsNull => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsNull)?, &[])
+            }
+            UnaryOperator::IsNotNull => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsNotNull)?, &[])
+            }
+            UnaryOperator::IsTrue => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsTrue)?, &[])
+            }
+            UnaryOperator::IsNotTrue => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsNotTrue)?, &[])
+            }
+            UnaryOperator::IsFalse => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsFalse)?, &[])
+            }
+            UnaryOperator::IsNotFalse => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::IsNotFalse)?, &[])
+            }
+            UnaryOperator::Not => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnaryOperator::Not)?, &[])
+            }
+        }
     }
 }
 
@@ -1214,6 +1363,55 @@ impl RsToPyObject for FunctionExpr {
     }
 }
 
+impl RsToPyObject for LikeQuantifier {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            LikeQuantifier::Any => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, LikeQuantifier::Any)?, &[])
+            }
+            LikeQuantifier::Some => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, LikeQuantifier::Some)?, &[])
+            }
+            LikeQuantifier::All => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, LikeQuantifier::All)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for QuantifiedLikeExprPattern {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            QuantifiedLikeExprPattern::ExprList { exprs } => {
+                let kwargs = &[kwarg!(py_ctx, "exprs", exprs)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, QuantifiedLikeExprPattern::ExprList)?,
+                    kwargs,
+                )
+            }
+            QuantifiedLikeExprPattern::ArrayUnnest { expr } => {
+                let kwargs = &[kwarg!(py_ctx, "expr", expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, QuantifiedLikeExprPattern::ArrayUnnest)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
+impl RsToPyObject for QuantifiedLikeExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "quantifier", self.quantifier),
+            kwarg!(py_ctx, "pattern", self.pattern),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, QuantifiedLikeExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1315,6 +1513,10 @@ impl RsToPyObject for Expr {
             Expr::Function(function_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Function)?, kwargs)
+            }
+            Expr::QuantifiedLike(quantified_like_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quantified_like_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::QuantifiedLike)?, kwargs)
             }
         }
     }

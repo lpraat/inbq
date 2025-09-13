@@ -2,24 +2,25 @@ use anyhow::anyhow;
 use strum::IntoDiscriminant;
 
 use crate::ast::{
-    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, CaseExpr,
+    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
     CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
     CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
     FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
     GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, Limit, Merge,
-    MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr,
-    NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
-    ParseToken, PathExpr, Qualify, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
+    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, ParseToken, PathExpr, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr, RecursiveCte,
     SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
     SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
     Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
-    UnaryExpr, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched, WhenNotMatchedBySource,
-    WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame, WindowFrameKind,
-    WindowOrderByExpr, WindowSpec, With,
+    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -1615,11 +1616,26 @@ impl<'a> Parser<'a> {
         let mut output = next_parsing_rule_fn(self)?;
 
         while self.match_token_types(token_types_to_match) {
-            let operator = self.peek_prev().clone();
+            let operator = match &self.peek_prev().kind {
+                TokenType::BitwiseNot => BinaryOperator::BitwiseNot,
+                TokenType::Star => BinaryOperator::Star,
+                TokenType::Slash => BinaryOperator::Slash,
+                TokenType::ConcatOperator => BinaryOperator::Concat,
+                TokenType::Plus => BinaryOperator::Plus,
+                TokenType::Minus => BinaryOperator::Minus,
+                TokenType::BitwiseLeftShift => BinaryOperator::BitwiseLeftShift,
+                TokenType::BitwiseRightShift => BinaryOperator::BitwiseRightShift,
+                TokenType::BitwiseAnd => BinaryOperator::BitwiseAnd,
+                TokenType::BitwiseXor => BinaryOperator::BitwiseXor,
+                TokenType::BitwiseOr => BinaryOperator::BitwiseOr,
+                TokenType::And => BinaryOperator::And,
+                TokenType::Or => BinaryOperator::Or,
+                _ => unreachable!(),
+            };
             let right = next_parsing_rule_fn(self)?;
             output = Expr::Binary(BinaryExpr {
                 left: Box::new(output),
-                operator: ParseToken::Single(operator),
+                operator,
                 right: Box::new(right),
             });
         }
@@ -1640,89 +1656,100 @@ impl<'a> Parser<'a> {
     // not_expr -> "NOT" not_expr | comparison_expr
     fn parse_not_expr(&mut self) -> anyhow::Result<Expr> {
         if self.match_token_type(TokenTypeVariant::Not) {
-            let operator = self.peek_prev().clone();
             return Ok(Expr::Unary(UnaryExpr {
-                operator: ParseToken::Single(operator),
+                operator: UnaryOperator::Not,
                 right: Box::new(self.parse_not_expr()?),
             }));
         }
         self.parse_comparison_expr()
     }
 
+    #[inline]
+    fn create_standard_binary_expr(
+        &mut self,
+        left: Expr,
+        operator: BinaryOperator,
+    ) -> anyhow::Result<Expr> {
+        let right = self.parse_bitwise_or_expr()?;
+        Ok(Expr::Binary(BinaryExpr {
+            left: Box::new(left),
+            operator,
+            right: Box::new(right),
+        }))
+    }
+
     // comparison_expr ->
     // bitwise_or_expr
     // | bitwise_or_expr (("=" | ">" | "<" | ">=" | "<=", | "!=", | "<>") bitwise_or_expr)*
-    // | bitwise_or_expr "Is" ["Not"] ("True" | "False" | "Null")
     // | bitwise_or_expr (["Not"] ("In" | "Between") bitwise_or_expr)*
+    // | bitwise_or_expr (["Not"] "Like" ("ANY" | "SOME" | "ALL") bitwise_or_expr)*
     // | bitwise_or_expr (["Not"] "Like") biwtise_or_expr)*
     fn parse_comparison_expr(&mut self) -> anyhow::Result<Expr> {
         let mut output = self.parse_bitwise_or_expr()?;
 
         loop {
-            let curr_token = self.peek().clone();
-            match curr_token.kind {
-                TokenType::Equal
-                | TokenType::Greater
-                | TokenType::Less
-                | TokenType::GreaterEqual
-                | TokenType::LessEqual
-                | TokenType::BangEqual
-                | TokenType::NotEqual
-                | TokenType::Like
-                | TokenType::In
-                | TokenType::Between => {
-                    let operator = curr_token;
+            let curr = self.peek();
+
+            match &curr.kind {
+                TokenType::Equal => {
                     self.advance();
-                    let right = self.parse_bitwise_or_expr()?;
-                    output = Expr::Binary(BinaryExpr {
-                        left: Box::new(output),
-                        operator: ParseToken::Single(operator),
-                        right: Box::new(right),
-                    })
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
                 }
-                TokenType::Is => {
-                    let mut parse_tokens = vec![curr_token];
+                TokenType::Greater => {
                     self.advance();
-                    if self.match_token_type(TokenTypeVariant::Not) {
-                        parse_tokens.push(self.peek_prev().clone());
-                    }
-                    let right_literal = self
-                        .consume_one_of(&[
-                            TokenTypeVariant::Null,
-                            TokenTypeVariant::True,
-                            TokenTypeVariant::False,
-                        ])?
-                        .clone();
-                    output = Expr::Binary(BinaryExpr {
-                        left: Box::new(output),
-                        operator: ParseToken::Multiple(parse_tokens),
-                        right: match right_literal.kind {
-                            TokenType::True => Box::new(Expr::Bool(true)),
-                            TokenType::False => Box::new(Expr::Bool(false)),
-                            TokenType::Null => Box::new(Expr::Null),
-                            _ => {
-                                unreachable!()
-                            }
-                        },
-                    })
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::Less => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::GreaterEqual => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::LessEqual => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::BangEqual => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::NotEqual => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::Like => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::In => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                }
+                TokenType::Between => {
+                    self.advance();
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
                 }
                 TokenType::Not => {
-                    let mut parse_tokens = vec![curr_token];
                     self.advance();
-                    parse_tokens.push(
-                        self.consume_one_of(&[
-                            TokenTypeVariant::In,
-                            TokenTypeVariant::Between,
-                            TokenTypeVariant::Like,
-                        ])?
-                        .clone(),
-                    );
-                    let right = self.parse_bitwise_or_expr()?;
-                    output = Expr::Binary(BinaryExpr {
-                        left: Box::new(output),
-                        operator: ParseToken::Multiple(parse_tokens),
-                        right: Box::new(right),
-                    })
+                    let tok = self.consume_one_of(&[
+                        TokenTypeVariant::In,
+                        TokenTypeVariant::Between,
+                        TokenTypeVariant::Like,
+                    ])?;
+                    output = match &tok.kind {
+                        TokenType::In => {
+                            self.create_standard_binary_expr(output, BinaryOperator::NotIn)?
+                        }
+                        TokenType::Between => {
+                            self.create_standard_binary_expr(output, BinaryOperator::NotBetween)?
+                        }
+                        TokenType::Like => {
+                            self.create_standard_binary_expr(output, BinaryOperator::NotLike)?
+                        }
+                        _ => unreachable!(),
+                    };
                 }
                 _ => {
                     break;
@@ -1779,20 +1806,52 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // unary_expr -> ("+" | "-" | "~") unary_expr | field_access_expr
+    // unary_expr -> ("+" | "-" | "~") field_access_expr | field_access_expr ("Is" ["Not"] ("True" | "False" | "Null"))
     fn parse_unary_expr(&mut self) -> anyhow::Result<Expr> {
         if self.match_token_types(&[
             TokenTypeVariant::Plus,
             TokenTypeVariant::Minus,
             TokenTypeVariant::BitwiseNot,
         ]) {
-            let operator = self.peek_prev().clone();
+            let operator = match &self.peek_prev().kind {
+                TokenType::Plus => UnaryOperator::Plus,
+                TokenType::Minus => UnaryOperator::Minus,
+                TokenType::BitwiseNot => UnaryOperator::BitwiseNot,
+                _ => unreachable!(),
+            };
             return Ok(Expr::Unary(UnaryExpr {
-                operator: ParseToken::Single(operator),
-                right: Box::new(self.parse_unary_expr()?),
+                operator,
+                right: Box::new(self.parse_field_access_expr()?),
             }));
         }
-        self.parse_field_access_expr()
+
+        let expr = self.parse_field_access_expr()?;
+        match &self.peek().kind {
+            TokenType::Is => {
+                self.advance();
+                let not = self.match_token_type(TokenTypeVariant::Not);
+                let literal = self.consume_one_of(&[
+                    TokenTypeVariant::Null,
+                    TokenTypeVariant::True,
+                    TokenTypeVariant::False,
+                ])?;
+                let operator = match (not, &literal.kind) {
+                    (true, TokenType::True) => UnaryOperator::IsNotTrue,
+                    (false, TokenType::True) => UnaryOperator::IsTrue,
+                    (true, TokenType::Null) => UnaryOperator::IsNotNull,
+                    (false, TokenType::Null) => UnaryOperator::IsNull,
+                    (true, TokenType::False) => UnaryOperator::IsNotFalse,
+                    (false, TokenType::False) => UnaryOperator::IsFalse,
+                    _ => unreachable!(),
+                };
+
+                Ok(Expr::Unary(UnaryExpr {
+                    operator,
+                    right: Box::new(expr),
+                }))
+            }
+            _ => Ok(expr),
+        }
     }
 
     // field_access_expr -> array_subscript_operator | array_subscript_operator ("." array_subscript_operator )* ["." "*"]
@@ -1800,18 +1859,17 @@ impl<'a> Parser<'a> {
         let mut output = self.parse_array_subscript_operator()?;
 
         while self.match_token_type(TokenTypeVariant::Dot) {
-            let operator = self.peek_prev().clone();
             if self.match_token_type(TokenTypeVariant::Star) {
                 return Ok(Expr::Binary(BinaryExpr {
                     left: Box::new(output),
-                    operator: ParseToken::Single(operator),
+                    operator: BinaryOperator::FieldAccess,
                     right: Box::new(Expr::Star),
                 }));
             }
             let right = self.parse_array_subscript_operator()?;
             output = Expr::Binary(BinaryExpr {
                 left: Box::new(output),
-                operator: ParseToken::Single(operator),
+                operator: BinaryOperator::FieldAccess,
                 right: Box::new(right),
             });
         }
@@ -1823,12 +1881,11 @@ impl<'a> Parser<'a> {
         let mut output = self.parse_primary_expr()?;
 
         while self.match_token_type(TokenTypeVariant::LeftSquare) {
-            let left_paren = self.peek_prev().clone();
             let index = self.parse_expr()?;
-            let right_paren = self.consume(TokenTypeVariant::RightSquare)?.clone();
+            self.consume(TokenTypeVariant::RightSquare)?;
             output = Expr::Binary(BinaryExpr {
                 left: Box::new(output),
-                operator: ParseToken::Multiple(vec![left_paren, right_paren]),
+                operator: BinaryOperator::ArrayIndex,
                 right: Box::new(index),
             });
         }
@@ -2777,6 +2834,51 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    // quantified_like_expr -> ("ANY" | "SOME" | "ALL") (pattern_expression_list | pattern_array)
+    // where:
+    // pattern_expression_list -> "(" expr ("," expr)* ")"
+    // pattern_array -> "UNNEST" "(" expr ")"
+    fn parse_quantified_like_expr(&mut self) -> anyhow::Result<Expr> {
+        let quantifier = match self
+            .consume_one_of(&[
+                TokenTypeVariant::Any,
+                TokenTypeVariant::Some,
+                TokenTypeVariant::All,
+            ])?
+            .kind
+        {
+            TokenType::Any => LikeQuantifier::Any,
+            TokenType::Some => LikeQuantifier::Some,
+            TokenType::All => LikeQuantifier::All,
+            _ => unreachable!(),
+        };
+        if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let mut exprs = vec![];
+            loop {
+                exprs.push(self.parse_expr()?);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            return Ok(Expr::QuantifiedLike(QuantifiedLikeExpr {
+                quantifier,
+                pattern: QuantifiedLikeExprPattern::ExprList { exprs },
+            }));
+        }
+
+        self.consume(TokenTypeVariant::Unnest)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let expr = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::QuantifiedLike(QuantifiedLikeExpr {
+            quantifier,
+            pattern: QuantifiedLikeExprPattern::ArrayUnnest {
+                expr: Box::new(expr),
+            },
+        }))
+    }
+
     // primary_expr ->
     // "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
     // | NUMERIC "Number" | BIGNUMERIC "Number"
@@ -2786,10 +2888,14 @@ impl<'a> Parser<'a> {
     // | array_expr | struct_expr | struct_tuple_expr
     // | case_expr
     // | function_expr
+    // | quantified_like_expr
     // | "(" expression ")" | "(" query_expr ")"
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
+            TokenType::Any | TokenType::Some | TokenType::All => {
+                self.parse_quantified_like_expr()?
+            }
             TokenType::Star => {
                 self.advance();
                 Expr::Star

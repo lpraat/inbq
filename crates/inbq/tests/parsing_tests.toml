@@ -105,6 +105,24 @@ select null is null
 
 [[tests]]
 sql = """
+WITH Words AS
+ (SELECT 'Intend with clarity.' as value UNION ALL
+  SELECT 'Secure with intention.' UNION ALL
+  SELECT 'Clarity and security.')
+SELECT * FROM Words WHERE value LIKE ANY ('Intend%', '%intention%');
+"""
+
+[[tests]]
+sql = """
+WITH Words AS
+ (SELECT 'Intend with clarity.' as value UNION ALL
+  SELECT 'Secure with intention.' UNION ALL
+  SELECT 'Clarity and security.')
+SELECT * FROM Words WHERE value LIKE ANY UNNEST(['%ion%', '%and%']);
+"""
+
+[[tests]]
+sql = """
 select
   * except (id1, id2)
 from table

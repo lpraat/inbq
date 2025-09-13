@@ -261,6 +261,7 @@ pub enum Expr {
     Case(CaseExpr),
     GenericFunction(Box<GenericFunctionExpr>),
     Function(FunctionExpr),
+    QuantifiedLike(QuantifiedLikeExpr),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,15 +415,81 @@ pub enum FunctionAggregateHavingKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnaryExpr {
-    pub operator: ParseToken,
+    pub operator: UnaryOperator,
     pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum UnaryOperator {
+    Plus,
+    Minus,
+    BitwiseNot,
+    IsNull,
+    IsNotNull,
+    IsTrue,
+    IsNotTrue,
+    IsFalse,
+    IsNotFalse,
+    Not,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
-    pub operator: ParseToken,
+    pub operator: BinaryOperator,
     pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BinaryOperator {
+    BitwiseNot,
+    Star,
+    Slash,
+    Concat,
+    Plus,
+    Minus,
+    BitwiseLeftShift,
+    BitwiseRightShift,
+    BitwiseAnd,
+    BitwiseXor,
+    BitwiseOr,
+    Equal,
+    LessThan,
+    GreaterThan,
+    LessThanOrEqualTo,
+    GreaterTHanOrEqualTo,
+    NotEqual,
+    Like,
+    NotLike,
+    QuantifiedLike,
+    QuantifiedNotLike,
+    Between,
+    NotBetween,
+    In,
+    NotIn,
+    And,
+    Or,
+    ArrayIndex,
+    FieldAccess,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LikeQuantifier {
+    Any,
+    Some,
+    All,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QuantifiedLikeExprPattern {
+    ExprList { exprs: Vec<Expr> },
+    ArrayUnnest { expr: Box<Expr> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuantifiedLikeExpr {
+    pub quantifier: LikeQuantifier,
+    pub pattern: QuantifiedLikeExprPattern,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
