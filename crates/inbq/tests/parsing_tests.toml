@@ -558,6 +558,12 @@ CREATE TEMP TABLE tmp (x `decimal`(3,4), y STRUCT <a ARRAY <STRING>, b BOOL>);
 
 [[tests]]
 sql = """
+CREATE TEMP TABLE tmp (x string, z string,);
+"""
+
+
+[[tests]]
+sql = """
 CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b `BOOL`>);
 """
 

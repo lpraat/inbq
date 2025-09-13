@@ -350,7 +350,13 @@ impl<'a> Parser<'a> {
                     r#type: col_type,
                 });
 
-                if !self.match_token_type(TokenTypeVariant::Comma) {
+                let match_comma = self.match_token_type(TokenTypeVariant::Comma);
+
+                if !match_comma{
+                    break;
+                }
+
+                if self.check_token_type(TokenTypeVariant::RightParen) {
                     break;
                 }
             }
