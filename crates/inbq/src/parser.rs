@@ -352,7 +352,7 @@ impl<'a> Parser<'a> {
 
                 let match_comma = self.match_token_type(TokenTypeVariant::Comma);
 
-                if !match_comma{
+                if !match_comma {
                     break;
                 }
 
@@ -1697,12 +1697,8 @@ impl<'a> Parser<'a> {
                         operator: ParseToken::Multiple(parse_tokens),
                         right: match right_literal.kind {
                             TokenType::True => Box::new(Expr::Bool(true)),
-                            TokenType::False => {
-                                Box::new(Expr::Bool(false))
-                            }
-                            TokenType::Null => {
-                                Box::new(Expr::Null)
-                            }
+                            TokenType::False => Box::new(Expr::Bool(false)),
+                            TokenType::Null => Box::new(Expr::Null),
                             _ => {
                                 unreachable!()
                             }
@@ -2744,7 +2740,7 @@ impl<'a> Parser<'a> {
                     case,
                     when_thens,
                     r#else: None,
-                }))
+                }));
             }
 
             if self.match_token_type(TokenTypeVariant::Else) {
@@ -2815,58 +2811,81 @@ impl<'a> Parser<'a> {
                     match lower_ident.as_str() {
                         "date" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(date_str) => Expr::Date(date_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(date_str) => Expr::Date(date_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "timestamp" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(date_str) => Expr::Timestamp(date_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(date_str) => {
+                                        Expr::Timestamp(date_str.clone())
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "datetime" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(date_str) => Expr::Datetime(date_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "time" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(date_str) => Expr::Time(date_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(date_str) => Expr::Time(date_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "numeric" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(num_str) => Expr::Numeric(num_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "bignumeric" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(num_str) => Expr::BigNumeric(num_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         "json" => {
                             self.advance();
-                            let curr = self.consume(TokenTypeVariant::String)?;
-                            match &curr.kind {
-                                TokenType::String(json_str) => Expr::Json(json_str.clone()),
-                                _ => unreachable!(),
+                            if self.match_token_type(TokenTypeVariant::String) {
+                                match &self.peek_prev().kind {
+                                    TokenType::String(json_str) => Expr::Json(json_str.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                Expr::Identifier(ident)
                             }
                         }
                         _ => {

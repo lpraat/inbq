@@ -84,6 +84,17 @@ SELECT
 
 [[tests]]
 sql = """
+SELECT
+    NUMERIC,
+    BIGNUMERIC,
+    DATE,
+    DATETIME,
+    TIMESTAMP,
+    JSON,
+"""
+
+[[tests]]
+sql = """
 select null is not null
 """
 
