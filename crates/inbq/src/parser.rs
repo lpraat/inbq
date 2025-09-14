@@ -162,6 +162,14 @@ impl<'a> Parser<'a> {
         ])
     }
 
+    fn consume_and_get_identifier(&mut self) -> anyhow::Result<&str> {
+        Ok(match &self.consume_identifier()?.kind {
+            TokenType::Identifier(ident) => ident,
+            TokenType::QuotedIdentifier(qident) => qident,
+            _ => unreachable!(),
+        })
+    }
+
     fn consume_one_of(&mut self, token_types: &[TokenTypeVariant]) -> anyhow::Result<&Token> {
         for token_type in token_types {
             if self.check_token_type(*token_type) {
@@ -1978,13 +1986,7 @@ impl<'a> Parser<'a> {
 
     // interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
     fn parse_interval_part(&mut self) -> anyhow::Result<IntervalPart> {
-        let literal = match &self.advance().kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
-            _ => unreachable!(),
-        }
-        .to_lowercase();
-        match literal.as_str() {
+        match self.consume_and_get_identifier()?.to_lowercase().as_str() {
             "year" => Ok(IntervalPart::Year),
             "month" => Ok(IntervalPart::Month),
             "week" => Ok(IntervalPart::Week),
@@ -2111,74 +2113,67 @@ impl<'a> Parser<'a> {
     fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
         let peek_token = self.advance().clone();
 
-        // reserved keywords
         match &peek_token.kind {
-            TokenType::Array => return self.parse_array_type(),
-            TokenType::Struct => return self.parse_struct_type(),
-            TokenType::Range => return self.parse_range_type(),
-            TokenType::Interval => return Ok(Type::Interval),
-            _ => {}
-        }
+            // reserved keywords
+            TokenType::Array => self.parse_array_type(),
+            TokenType::Struct => self.parse_struct_type(),
+            TokenType::Range => self.parse_range_type(),
+            TokenType::Interval => Ok(Type::Interval),
 
-        // identifier or quotedidentifier
-        let literal = match &peek_token.kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
-            _ => unreachable!(),
-        }
-        .to_lowercase();
-
-        match literal.as_str() {
-            "bignumeric" | "bigdecimal" => Ok(Type::BigNumeric),
-            "bool" | "boolean" => Ok(Type::Bool),
-            "bytes" => Ok(Type::Bytes),
-            "date" => Ok(Type::Date),
-            "datetime" => Ok(Type::Datetime),
-            "float64" => Ok(Type::Float64),
-            "geography" => Ok(Type::Geography),
-            "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
-                Ok(Type::Int64)
-            }
-            "interval" => Ok(Type::Interval),
-            "json" => Ok(Type::Json),
-            "numeric" | "decimal" => Ok(Type::Numeric),
-            "range" => {
-                // we cannot use range as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
-                    ));
+            // identifier or quoted idenfitier
+            TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => match ident.to_lowercase().as_str() {
+                "bignumeric" | "bigdecimal" => Ok(Type::BigNumeric),
+                "bool" | "boolean" => Ok(Type::Bool),
+                "bytes" => Ok(Type::Bytes),
+                "date" => Ok(Type::Date),
+                "datetime" => Ok(Type::Datetime),
+                "float64" => Ok(Type::Float64),
+                "geography" => Ok(Type::Geography),
+                "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
+                    Ok(Type::Int64)
                 }
-                Ok(self.parse_range_type()?)
-            }
-            "string" => Ok(Type::String),
-            "time" => Ok(Type::Time),
-            "timestamp" => Ok(Type::Timestamp),
-            "struct" => {
-                // we cannot use struct as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
-                    ));
+                "interval" => Ok(Type::Interval),
+                "json" => Ok(Type::Json),
+                "numeric" | "decimal" => Ok(Type::Numeric),
+                "range" => {
+                    // we cannot use range as a quotedidentifier
+                    if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                        return Err(anyhow!(
+                            "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
+                        ));
+                    }
+                    Ok(self.parse_range_type()?)
                 }
-                Ok(self.parse_struct_type()?)
-            }
-            "array" => {
-                // we cannot use array as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
-                    ));
+                "string" => Ok(Type::String),
+                "time" => Ok(Type::Time),
+                "timestamp" => Ok(Type::Timestamp),
+                "struct" => {
+                    // we cannot use struct as a quotedidentifier
+                    if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                        return Err(anyhow!(
+                            "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
+                        ));
+                    }
+                    Ok(self.parse_struct_type()?)
                 }
-                Ok(self.parse_array_type()?)
+                "array" => {
+                    // we cannot use array as a quotedidentifier
+                    if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                        return Err(anyhow!(
+                            "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
+                        ));
+                    }
+                    Ok(self.parse_array_type()?)
+                }
+                _ => {
+                    Err(anyhow!( self.error(
+                        &peek_token,
+                        "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+                         `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+                    )))
+                }
             }
-            _ => {
-                Err(anyhow!( self.error(
-                    &peek_token,
-                    "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
-                     `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
-                )))
-            }
+            _ => unreachable!()
         }
     }
 
@@ -2242,141 +2237,134 @@ impl<'a> Parser<'a> {
     pub(crate) fn parse_parameterized_bq_type(&mut self) -> anyhow::Result<ParameterizedType> {
         let peek_token = self.advance().clone();
 
-        // reserved keywords
         match &peek_token.kind {
-            TokenType::Array => return self.parse_parameterized_array_type(),
-            TokenType::Struct => return self.parse_parameterized_struct_type(),
-            TokenType::Range => return self.parse_parameterized_range_type(),
-            TokenType::Interval => return Ok(ParameterizedType::Interval),
-            _ => {}
-        }
+            // reserved keywords
+            TokenType::Array => self.parse_parameterized_array_type(),
+            TokenType::Struct => self.parse_parameterized_struct_type(),
+            TokenType::Range => self.parse_parameterized_range_type(),
+            TokenType::Interval => Ok(ParameterizedType::Interval),
 
-        // identifier or quotedidentifier
-        let literal = match &peek_token.kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
-            _ => unreachable!(),
-        }
-        .to_lowercase();
+            // identifier or quotedidentifier
+            TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => match ident.to_lowercase().as_str() {
+                    "bignumeric" | "bigdecimal" => {
+                        let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
+                            let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
+                                TokenType::Number(number) => number.clone(),
+                                _ => unreachable!(),
+                            };
 
-        match literal.as_str() {
-            "bignumeric" | "bigdecimal" => {
-                let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => number.clone(),
-                        _ => unreachable!(),
-                    };
+                            let scale = if self.match_token_type(TokenTypeVariant::Comma) {
+                                match &self.consume(TokenTypeVariant::Number)?.kind {
+                                    TokenType::Number(number) => Some(number.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                None
+                            };
+                            self.consume(TokenTypeVariant::RightParen)?;
+                            (Some(precision), scale)
+                        } else {
+                            (None, None)
+                        };
+                        Ok(ParameterizedType::BigNumeric {precision, scale})
+                    }
+                    "bool" | "boolean" => Ok(ParameterizedType::Bool),
+                    "bytes" => {
+                        let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
+                            let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
+                                TokenType::Number(number) => Some(number.clone()),
+                                _ => None,
+                            };
+                            self.consume(TokenTypeVariant::RightParen)?;
+                            max_len
+                        } else {
+                            None
+                        };
 
-                    let scale = if self.match_token_type(TokenTypeVariant::Comma) {
-                        match &self.consume(TokenTypeVariant::Number)?.kind {
-                            TokenType::Number(number) => Some(number.clone()),
-                            _ => unreachable!(),
+                        Ok(ParameterizedType::Bytes{max_length: max_len})
+                    }
+                    "date" => Ok(ParameterizedType::Date),
+                    "datetime" => Ok(ParameterizedType::Datetime),
+                    "float64" => Ok(ParameterizedType::Float64),
+                    "geography" => Ok(ParameterizedType::Geography),
+                    "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
+                        Ok(ParameterizedType::Int64)
+                    }
+                    "interval" => Ok(ParameterizedType::Interval),
+                    "json" => Ok(ParameterizedType::Json),
+                    "numeric" | "decimal" => {
+                        let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
+                            let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
+                                TokenType::Number(number) => number.clone(),
+                                _ => unreachable!(),
+                            };
+
+                            let scale = if self.match_token_type(TokenTypeVariant::Comma) {
+                                match &self.consume(TokenTypeVariant::Number)?.kind {
+                                    TokenType::Number(number) => Some(number.clone()),
+                                    _ => unreachable!(),
+                                }
+                            } else {
+                                None
+                            };
+                            self.consume(TokenTypeVariant::RightParen)?;
+                            (Some(precision), scale)
+                        } else {
+                            (None, None)
+                        };
+                        Ok(ParameterizedType::Numeric{precision, scale})
+                    }
+                    "range" => {
+                        // we cannot use range as a quotedidentifier
+                        if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                            return Err(anyhow!(
+                                "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
+                            ));
                         }
-                    } else {
-                        None
-                    };
-                    self.consume(TokenTypeVariant::RightParen)?;
-                    (Some(precision), scale)
-                } else {
-                    (None, None)
-                };
-                Ok(ParameterizedType::BigNumeric {precision, scale})
-            }
-            "bool" | "boolean" => Ok(ParameterizedType::Bool),
-            "bytes" => {
-                let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => Some(number.clone()),
-                        _ => None,
-                    };
-                    self.consume(TokenTypeVariant::RightParen)?;
-                    max_len
-                } else {
-                    None
-                };
-
-                Ok(ParameterizedType::Bytes{max_length: max_len})
-            }
-            "date" => Ok(ParameterizedType::Date),
-            "datetime" => Ok(ParameterizedType::Datetime),
-            "float64" => Ok(ParameterizedType::Float64),
-            "geography" => Ok(ParameterizedType::Geography),
-            "int64" | "int" | "smallint" | "integer" | "bigint" | "tinyint" | "byteint" => {
-                Ok(ParameterizedType::Int64)
-            }
-            "interval" => Ok(ParameterizedType::Interval),
-            "json" => Ok(ParameterizedType::Json),
-            "numeric" | "decimal" => {
-                let (precision, scale) = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let precision = match &self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => number.clone(),
-                        _ => unreachable!(),
-                    };
-
-                    let scale = if self.match_token_type(TokenTypeVariant::Comma) {
-                        match &self.consume(TokenTypeVariant::Number)?.kind {
-                            TokenType::Number(number) => Some(number.clone()),
-                            _ => unreachable!(),
+                        Ok(self.parse_parameterized_range_type()?)
+                    }
+                    "string" => {
+                        let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
+                            let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
+                                TokenType::Number(number) => Some(number.clone()),
+                                _ => None,
+                            };
+                            self.consume(TokenTypeVariant::RightParen)?;
+                            max_len
+                        } else {
+                            None
+                        };
+                        Ok(ParameterizedType::String{max_length: max_len})
+                    }
+                    "time" => Ok(ParameterizedType::Time),
+                    "timestamp" => Ok(ParameterizedType::Timestamp),
+                    "struct" => {
+                        // we cannot use struct as a quotedidentifier
+                        if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                            return Err(anyhow!(
+                                "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
+                            ));
                         }
-                    } else {
-                        None
-                    };
-                    self.consume(TokenTypeVariant::RightParen)?;
-                    (Some(precision), scale)
-                } else {
-                    (None, None)
-                };
-                Ok(ParameterizedType::Numeric{precision, scale})
+                        Ok(self.parse_parameterized_struct_type()?)
+                    }
+                    "array" => {
+                        // we cannot use array as a quotedidentifier
+                        if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
+                            return Err(anyhow!(
+                                "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
+                            ));
+                        }
+                        Ok(self.parse_parameterized_array_type()?)
+                    }
+                    _ => {
+                        Err(anyhow!( self.error(
+                            &peek_token,
+                            "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+                             `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+                        )))
+                    }
             }
-            "range" => {
-                // we cannot use range as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `RANGE`, found `QuotedIdentifier` `RANGE`."
-                    ));
-                }
-                Ok(self.parse_parameterized_range_type()?)
-            }
-            "string" => {
-                let max_len = if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let max_len = match &self.consume(TokenTypeVariant::Number)?.kind {
-                        TokenType::Number(number) => Some(number.clone()),
-                        _ => None,
-                    };
-                    self.consume(TokenTypeVariant::RightParen)?;
-                    max_len
-                } else {
-                    None
-                };
-                Ok(ParameterizedType::String{max_length: max_len})
-            }
-            "time" => Ok(ParameterizedType::Time),
-            "timestamp" => Ok(ParameterizedType::Timestamp),
-            "struct" => {
-                // we cannot use struct as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `STRUCT`, found `QuotedIdentifier` `STRUCT`."
-                    ));
-                }
-                Ok(self.parse_parameterized_struct_type()?)
-            }
-            "array" => {
-                // we cannot use array as a quotedidentifier
-                if peek_token.kind.discriminant() == TokenTypeVariant::QuotedIdentifier {
-                    return Err(anyhow!(
-                        "Expected `Identifier` `ARRAY`, found `QuotedIdentifier` `ARRAY`."
-                    ));
-                }
-                Ok(self.parse_parameterized_array_type()?)
-            }
-            _ => {
-                Err(anyhow!( self.error(
-                    &peek_token,
-                    "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
-                     `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
-                )))
-            }
+            _ => unreachable!()
         }
     }
 
@@ -2635,19 +2623,18 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
-        let peek_function_name = match &self.peek().kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
+        match &self.peek().kind {
+            TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
+                match ident.to_lowercase().as_str() {
+                    "concat" => self.parse_concat_fn_expr(),
+                    "safe_cast" => self.parse_safe_cast_fn_expr(),
+                    "array_agg" => self.parse_array_agg_fn_expr(),
+                    "current_date" => self.parse_current_date_fn_expr(),
+                    "current_timestamp" => self.parse_current_timestamp_fn_expr(),
+                    _ => self.parse_generic_function(),
+                }
+            }
             _ => unreachable!(),
-        }
-        .to_lowercase();
-        match peek_function_name.as_str() {
-            "concat" => self.parse_concat_fn_expr(),
-            "safe_cast" => self.parse_safe_cast_fn_expr(),
-            "array_agg" => self.parse_array_agg_fn_expr(),
-            "current_date" => self.parse_current_date_fn_expr(),
-            "current_timestamp" => self.parse_current_timestamp_fn_expr(),
-            _ => self.parse_generic_function(),
         }
     }
 
@@ -2842,12 +2829,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Extract)?;
         self.consume(TokenTypeVariant::LeftParen)?;
 
-        let part_keyword = match &self.advance().kind {
-            TokenType::Identifier(ident) => ident,
-            TokenType::QuotedIdentifier(qident) => qident,
-            _ => unreachable!(),
-        }
-        .to_lowercase();
+        let part_keyword = self.consume_and_get_identifier()?.to_lowercase();
         let part = match part_keyword.as_str() {
             "microsecond" => ExtractFunctionPart::MicroSecond,
             "millisecond" => ExtractFunctionPart::MilliSecond,
@@ -2859,12 +2841,7 @@ impl<'a> Parser<'a> {
             "dayofyear" => ExtractFunctionPart::DayOfYear,
             "week" => {
                 if self.match_token_type(TokenTypeVariant::LeftParen) {
-                    let week_begin_keyword = match &self.advance().kind {
-                        TokenType::Identifier(ident) => ident,
-                        TokenType::QuotedIdentifier(qident) => qident,
-                        _ => unreachable!(),
-                    }
-                    .to_lowercase();
+                    let week_begin_keyword = self.consume_and_get_identifier()?.to_lowercase();
                     let week_begin = match week_begin_keyword.as_str() {
                         "sunday" => WeekBegin::Sunday,
                         "monday" => WeekBegin::Monday,
