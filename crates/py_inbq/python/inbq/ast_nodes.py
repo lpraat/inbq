@@ -36,6 +36,9 @@ class AstNode:
             "Block": "Statement_Block",
             "CreateTable": "Statement_CreateTable",
             "DropTableStatement": "Statement_DropTableStatement",
+            "BeginTransaction": "Statement_BeginTransaction",
+            "CommitTransaction": "Statement_CommitTransaction",
+            "RollbackTransaction": "Statement_RollbackTransaction",
         },
         "SetVariable": {
             "UserVariable": "SetVariable_UserVariable",
@@ -1067,7 +1070,19 @@ class Statement_DropTableStatement(AstNode):
     value: "DropTableStatement"
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement"
+@dataclass
+class Statement_BeginTransaction(AstNode): ...
+
+
+@dataclass
+class Statement_CommitTransaction(AstNode): ...
+
+
+@dataclass
+class Statement_RollbackTransaction(AstNode): ...
+
+
+Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction"
 
 
 @dataclass

@@ -2894,8 +2894,6 @@ impl LineageExtractor {
             Statement::CreateTable(create_table_statement) => {
                 self.create_table_statement_lin(create_table_statement)?
             }
-            Statement::Delete(_) => {}
-            Statement::Truncate(_) => {}
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(declare_var_statement)?;
             }
@@ -2906,6 +2904,11 @@ impl LineageExtractor {
             Statement::DropTableStatement(drop_table_statement) => {
                 self.drop_table_statement_lin(drop_table_statement)?
             }
+            Statement::Delete(_)
+            | Statement::Truncate(_)
+            | Statement::BeginTransaction
+            | Statement::CommitTransaction
+            | Statement::RollbackTransaction => {}
         }
         Ok(())
     }

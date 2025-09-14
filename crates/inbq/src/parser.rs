@@ -236,13 +236,30 @@ impl<'a> Parser<'a> {
                     "update" => self.parse_update_statement()?,
                     "truncate" => self.parse_truncate_statement()?,
                     "declare" => self.parse_declare_var_statement()?,
-                    "begin" => self.parse_statements_block()?,
+                    "begin" => {
+                        self.advance();
+                        if self.match_non_reserved_keyword("transaction") {
+                            return Ok(Statement::BeginTransaction);
+                        }
+                        self.curr -= 1;
+                        self.parse_statements_block()?
+                    }
+                    "commit" => {
+                        self.advance();
+                        self.consume_non_reserved_keyword("transaction")?;
+                        return Ok(Statement::CommitTransaction);
+                    }
+                    "rollback" => {
+                        self.advance();
+                        self.consume_non_reserved_keyword("transaction")?;
+                        return Ok(Statement::RollbackTransaction);
+                    }
                     "drop" => self.parse_drop_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
                             peek,
                             &format!(
-                                "Unexpected non reserved keyword: `{}`.",
+                                "Unexpected non reserved keyword to start a statement: `{}`.",
                                 non_reserved_keyword
                             ),
                         )));

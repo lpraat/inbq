@@ -718,3 +718,21 @@ exception when error then
   select 1;
 end;
 """
+
+[[tests]]
+sql = """
+BEGIN
+
+  BEGIN TRANSACTION;
+  INSERT INTO mydataset.NewArrivals
+    VALUES ('top load washer', 100, 'warehouse #1');
+  -- Trigger an error.
+  SELECT 1/0;
+  COMMIT TRANSACTION;
+
+EXCEPTION WHEN ERROR THEN
+  -- Roll back the transaction inside the exception handler.
+  SELECT @@error.message;
+  ROLLBACK TRANSACTION;
+END;
+"""

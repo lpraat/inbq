@@ -19,6 +19,9 @@ pub enum Statement {
     Block(StatementsBlock),
     CreateTable(CreateTableStatement),
     DropTableStatement(DropTableStatement),
+    BeginTransaction,
+    CommitTransaction,
+    RollbackTransaction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

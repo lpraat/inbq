@@ -2465,6 +2465,21 @@ impl RsToPyObject for Statement {
                     kwargs,
                 )
             }
+            Statement::BeginTransaction => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, Statement::BeginTransaction)?,
+                &[],
+            ),
+            Statement::CommitTransaction => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, Statement::CommitTransaction)?,
+                &[],
+            ),
+            Statement::RollbackTransaction => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, Statement::RollbackTransaction)?,
+                &[],
+            ),
         }
     }
 }
