@@ -197,7 +197,7 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // query -> statement (; statement [";"])*
+    // query -> statement (";" statement [";"])*
     fn parse_query(&mut self) -> anyhow::Result<Ast> {
         let mut statements = vec![];
 
@@ -2735,9 +2735,10 @@ impl<'a> Parser<'a> {
                 };
 
             let having = if self.match_token_type(TokenTypeVariant::Having) {
-                // TODO: this is error prone (we need to remember to lowercase, write a method)
-                let tok = self.consume_one_of_non_reserved_keywords(&["max", "min"])?;
-                let kind = match &tok.kind {
+                let kind = match &self
+                    .consume_one_of_non_reserved_keywords(&["max", "min"])?
+                    .kind
+                {
                     TokenType::Identifier(s) => match s.to_lowercase().as_str() {
                         "max" => FunctionAggregateHavingKind::Max,
                         "min" => FunctionAggregateHavingKind::Min,
@@ -2940,7 +2941,7 @@ impl<'a> Parser<'a> {
     // pattern_expression_list -> "(" expr ("," expr)* ")"
     // pattern_array -> "UNNEST" "(" expr ")"
     fn parse_quantified_like_expr(&mut self) -> anyhow::Result<Expr> {
-        let quantifier = match self
+        let quantifier = match &self
             .consume_one_of(&[
                 TokenTypeVariant::Any,
                 TokenTypeVariant::Some,
