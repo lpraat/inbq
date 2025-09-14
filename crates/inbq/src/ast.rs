@@ -269,10 +269,10 @@ pub enum Expr {
     Default,
     Null,
     Star,
-    Query(QueryExpr),
+    Query(Box<QueryExpr>),
     Case(CaseExpr),
     GenericFunction(Box<GenericFunctionExpr>),
-    Function(FunctionExpr),
+    Function(Box<FunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
 }
 
@@ -308,7 +308,7 @@ pub enum IntervalExpr {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum IntervalPart {
     Year,
     Quarter,
@@ -343,7 +343,7 @@ pub struct ExtractFunctionExpr {
     pub expr: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ExtractFunctionPart {
     MicroSecond,
     MilliSecond,
@@ -364,7 +364,7 @@ pub enum ExtractFunctionPart {
     Time,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WeekBegin {
     Sunday,
     Monday,
@@ -446,7 +446,7 @@ pub struct FunctionAggregateOrderBy {
     pub sort_direction: Option<OrderBySortDirection>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum FunctionAggregateNulls {
     Ignore,
     Respect,
@@ -458,7 +458,7 @@ pub struct FunctionAggregateHaving {
     pub kind: FunctionAggregateHavingKind,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum FunctionAggregateHavingKind {
     Max,
     Min,
@@ -470,7 +470,7 @@ pub struct UnaryExpr {
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum UnaryOperator {
     Plus,
     Minus,
@@ -491,7 +491,7 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum BinaryOperator {
     BitwiseNot,
     Star,
@@ -524,7 +524,7 @@ pub enum BinaryOperator {
     FieldAccess,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum LikeQuantifier {
     Any,
     Some,
@@ -569,7 +569,7 @@ pub struct StructField {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryExpr {
     Grouping(GroupingQueryExpr),
-    Select(SelectQueryExpr),
+    Select(Box<SelectQueryExpr>),
     SetSelect(SetSelectQueryExpr),
 }
 
@@ -599,7 +599,7 @@ pub struct SetSelectQueryExpr {
     pub limit: Option<Limit>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum SetQueryOperator {
     Union,
     UnionDistinct,
@@ -612,13 +612,13 @@ pub struct OrderBy {
     pub exprs: Vec<OrderByExpr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum OrderBySortDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum OrderByNulls {
     First,
     Last,
@@ -674,7 +674,7 @@ pub struct Select {
     pub window: Option<Window>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum SelectTableValue {
     Struct,
     Value,
@@ -707,6 +707,27 @@ pub struct SelectAllExpr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct From {
     pub expr: Box<FromExpr>,
+    pub pivot: Option<Pivot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pivot {
+    pub aggregates: Vec<PivotAggregate>,
+    pub input_column: ParseToken,
+    pub pivot_columns: Vec<PivotColumn>,
+    pub alias: Option<ParseToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PivotAggregate {
+    pub expr: Expr,
+    pub alias: Option<ParseToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PivotColumn {
+    pub expr: Expr,
+    pub alias: Option<ParseToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -736,7 +757,7 @@ pub struct JoinExpr {
     pub cond: JoinCondition,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum JoinKind {
     Inner,
     Left,
@@ -853,7 +874,7 @@ pub enum FrameBound {
     CurrentRow,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WindowFrameKind {
     Range,
     Rows,

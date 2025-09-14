@@ -13,14 +13,14 @@ use crate::ast::{
     JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
     MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
     OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
-    RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
-    SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
-    SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr, StructField,
-    StructFieldType, StructParameterizedFieldType, Token, TokenType, TokenTypeVariant,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement,
-    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock,
+    StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
+    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem,
+    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -627,13 +627,8 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        let from = if self.match_token_type(TokenTypeVariant::From) {
-            Some(From {
-                expr: Box::new(self.parse_from_expr()?),
-            })
-        } else {
-            None
-        };
+
+        let from = self.parse_from()?;
 
         self.consume(TokenTypeVariant::Where)?;
         let where_expr = self.parse_where_expr()?;
@@ -953,12 +948,12 @@ impl<'a> Parser<'a> {
             }))
         } else {
             let select = self.parse_select()?;
-            Ok(QueryExpr::Select(SelectQueryExpr {
+            Ok(QueryExpr::Select(Box::new(SelectQueryExpr {
                 with: None,
                 order_by: None,
                 select,
                 limit: None,
-            }))
+            })))
         }
     }
 
@@ -1114,13 +1109,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let from = if self.match_token_type(TokenTypeVariant::From) {
-            Some(crate::parser::From {
-                expr: Box::new(self.parse_from_expr()?),
-            })
-        } else {
-            None
-        };
+        let from = self.parse_from()?;
 
         let r#where = if self.match_token_type(TokenTypeVariant::Where) {
             Some(crate::parser::Where {
@@ -1171,6 +1160,73 @@ impl<'a> Parser<'a> {
             having,
             qualify,
             window,
+        })
+    }
+
+    fn parse_from(&mut self) -> anyhow::Result<Option<From>> {
+        Ok(if self.match_token_type(TokenTypeVariant::From) {
+            let from_expr = self.parse_from_expr()?;
+            let pivot = if self.check_non_reserved_keyword("pivot") {
+                Some(self.parse_pivot()?)
+            } else {
+                None
+            };
+            Some(crate::parser::From {
+                expr: Box::new(from_expr),
+                pivot,
+            })
+        } else {
+            None
+        })
+    }
+
+    fn parse_pivot(&mut self) -> anyhow::Result<Pivot> {
+        self.consume_non_reserved_keyword("pivot")?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut aggregates = vec![];
+        loop {
+            let aggregate_expr = self.parse_expr()?;
+            let aggregate_alias = self.parse_as_alias()?;
+
+            aggregates.push(PivotAggregate {
+                expr: aggregate_expr,
+                alias: aggregate_alias.map(|tok| ParseToken::Single(tok.clone())),
+            });
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+
+        self.consume(TokenTypeVariant::For)?;
+        let input_column = ParseToken::Single(self.consume_identifier()?.clone());
+        self.consume(TokenTypeVariant::In)?;
+
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut pivot_columns = vec![];
+        loop {
+            let col_expr = self.parse_expr()?;
+            let col_alias = self.parse_as_alias()?;
+            pivot_columns.push(PivotColumn {
+                expr: col_expr,
+                alias: col_alias.map(|tok| ParseToken::Single(tok.clone())),
+            });
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+
+        Ok(Pivot {
+            aggregates,
+            input_column,
+            pivot_columns,
+            alias,
         })
     }
 
@@ -1330,6 +1386,14 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_from_item_alias(&mut self) -> anyhow::Result<Option<&Token>> {
+        Ok(if self.check_non_reserved_keyword("pivot") {
+            None
+        } else {
+            self.parse_as_alias()?
+        })
+    }
+
     // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
@@ -1343,7 +1407,7 @@ impl<'a> Parser<'a> {
                 self.curr = curr;
                 let query_expr = self.parse_query_expr()?;
                 self.consume(TokenTypeVariant::RightParen)?;
-                let alias = self.parse_as_alias()?;
+                let alias = self.parse_from_item_alias()?;
                 Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
                     query: Box::new(query_expr),
                     alias: alias.map(|tok| ParseToken::Single(tok.clone())),
@@ -1370,7 +1434,8 @@ impl<'a> Parser<'a> {
             Ok(FromExpr::Unnest(unnest_expr))
         } else {
             let path = self.parse_path()?;
-            let alias = self.parse_as_alias()?;
+            let alias = self.parse_from_item_alias()?;
+
             Ok(FromExpr::Path(FromPathExpr {
                 path,
                 alias: alias.map(|tok| ParseToken::Single(tok.clone())),
@@ -2426,9 +2491,9 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::LeftParen)?;
         let query = self.parse_query_expr()?;
         self.consume(TokenTypeVariant::RightParen)?;
-        Ok(Expr::Function(FunctionExpr::Array(ArrayFunctionExpr {
-            query,
-        })))
+        Ok(Expr::Function(Box::new(FunctionExpr::Array(
+            ArrayFunctionExpr { query },
+        ))))
     }
 
     // concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
@@ -2448,9 +2513,9 @@ impl<'a> Parser<'a> {
             }
         }
         self.consume(TokenTypeVariant::RightParen)?;
-        Ok(Expr::Function(FunctionExpr::Concat(ConcatFunctionExpr {
-            values,
-        })))
+        Ok(Expr::Function(Box::new(FunctionExpr::Concat(
+            ConcatFunctionExpr { values },
+        ))))
     }
 
     fn parse_cast_fn_arguments(
@@ -2473,11 +2538,13 @@ impl<'a> Parser<'a> {
     fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Cast)?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
-        Ok(Expr::Function(FunctionExpr::Cast(CastFunctionExpr {
-            expr,
-            r#type,
-            format,
-        })))
+        Ok(Expr::Function(Box::new(FunctionExpr::Cast(
+            CastFunctionExpr {
+                expr,
+                r#type,
+                format,
+            },
+        ))))
     }
 
     // safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
@@ -2487,13 +2554,13 @@ impl<'a> Parser<'a> {
             TokenTypeVariant::QuotedIdentifier,
         ])?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
-        Ok(Expr::Function(FunctionExpr::SafeCast(
+        Ok(Expr::Function(Box::new(FunctionExpr::SafeCast(
             SafeCastFunctionExpr {
                 expr,
                 r#type,
                 format,
             },
-        )))
+        ))))
     }
 
     // array_agg -> ("Identifier" | "QuotedIdentifier") "(" arg ")" ["OVER" named_window_expr]
@@ -2611,12 +2678,12 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(Expr::Function(FunctionExpr::ArrayAgg(
+        Ok(Expr::Function(Box::new(FunctionExpr::ArrayAgg(
             ArrayAggFunctionExpr {
                 arg: Box::new(arg),
                 over,
             },
-        )))
+        ))))
     }
 
     // current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
@@ -2638,9 +2705,9 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(Expr::Function(FunctionExpr::CurrentDate(
+        Ok(Expr::Function(Box::new(FunctionExpr::CurrentDate(
             CurrentDateFunctionExpr { timezone },
-        )))
+        ))))
     }
 
     // current_timestamp -> "CURRENT_TIMESTAMP" | "CURRENT_TIMESTAMP" "(" ")"
@@ -2654,7 +2721,7 @@ impl<'a> Parser<'a> {
             self.consume(TokenTypeVariant::RightParen)?;
         }
 
-        Ok(Expr::Function(FunctionExpr::CurrentTimestamp))
+        Ok(Expr::Function(Box::new(FunctionExpr::CurrentTimestamp)))
     }
 
     // if -> "IF" "(" expr "," expr "," expr ")"
@@ -2667,11 +2734,11 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Comma)?;
         let false_result = self.parse_expr()?;
         self.consume(TokenTypeVariant::RightParen)?;
-        Ok(Expr::Function(FunctionExpr::If(IfFunctionExpr {
+        Ok(Expr::Function(Box::new(FunctionExpr::If(IfFunctionExpr {
             condition: Box::new(condition),
             true_result: Box::new(true_result),
             false_result: Box::new(false_result),
-        })))
+        }))))
     }
 
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
@@ -2930,10 +2997,12 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::From)?;
         let expr = self.parse_expr()?;
         self.consume(TokenTypeVariant::RightParen)?;
-        Ok(Expr::Function(FunctionExpr::Extract(ExtractFunctionExpr {
-            part,
-            expr: Box::new(expr),
-        })))
+        Ok(Expr::Function(Box::new(FunctionExpr::Extract(
+            ExtractFunctionExpr {
+                part,
+                expr: Box::new(expr),
+            },
+        ))))
     }
 
     // quantified_like_expr -> ("ANY" | "SOME" | "ALL") (pattern_expression_list | pattern_array)
@@ -3178,12 +3247,14 @@ impl<'a> Parser<'a> {
                     self.curr = curr_position;
                     let query_expr = self.parse_query_expr()?;
                     self.consume(TokenTypeVariant::RightParen)?;
-                    return Ok(Expr::Query(QueryExpr::Grouping(GroupingQueryExpr {
-                        with: None,
-                        query: Box::new(query_expr),
-                        order_by: None,
-                        limit: None,
-                    })));
+                    return Ok(Expr::Query(Box::new(QueryExpr::Grouping(
+                        GroupingQueryExpr {
+                            with: None,
+                            query: Box::new(query_expr),
+                            order_by: None,
+                            limit: None,
+                        },
+                    ))));
                 } else {
                     let expr = self.parse_expr()?;
                     if self.match_token_type(TokenTypeVariant::Comma) {

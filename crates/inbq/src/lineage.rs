@@ -1015,14 +1015,14 @@ impl LineageExtractor {
                     (Expr::Function(function_expr), _)
                         if (matches!(op, BinaryOperator::ArrayIndex))
                             && matches!(
-                                function_expr,
+                                function_expr.as_ref(),
                                 FunctionExpr::Array(_) | FunctionExpr::ArrayAgg(_)
                             ) =>
                     {
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
 
-                        let node_idx = match function_expr {
+                        let node_idx = match function_expr.as_ref() {
                             FunctionExpr::Array(array_function_expr) => {
                                 self.array_function_expr_lin(array_function_expr)?
                             }
@@ -1407,7 +1407,7 @@ impl LineageExtractor {
                     self.select_expr_col_expr_lin(&arg.expr, expand_value_table)?
                 }
             }
-            Expr::Function(function_expr) => match function_expr {
+            Expr::Function(function_expr) => match function_expr.as_ref() {
                 FunctionExpr::Concat(concat_fn_expr) => {
                     for expr in &concat_fn_expr.values {
                         self.select_expr_col_expr_lin(expr, expand_value_table)?;
@@ -1471,7 +1471,7 @@ impl LineageExtractor {
     ) -> anyhow::Result<ArenaIndex> {
         self.array_expr_lin(&ArrayExpr {
             r#type: None,
-            exprs: vec![Expr::Query(array_function_expr.query.clone())],
+            exprs: vec![Expr::Query(Box::new(array_function_expr.query.clone()))],
         })
     }
 

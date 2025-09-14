@@ -909,6 +909,27 @@ class SelectAllExpr(AstNode):
 @dataclass
 class From(AstNode):
     expr: "FromExpr"
+    pivot: "Optional[Pivot]"
+
+
+@dataclass
+class Pivot(AstNode):
+    aggregates: "list[PivotAggregate]"
+    input_column: "ParseToken"
+    pivot_columns: "list[PivotColumn]"
+    alias: "Optional[ParseToken]"
+
+
+@dataclass
+class PivotAggregate(AstNode):
+    expr: "Expr"
+    alias: "Optional[ParseToken]"
+
+
+@dataclass
+class PivotColumn(AstNode):
+    expr: "Expr"
+    alias: "Optional[ParseToken]"
 
 
 @dataclass

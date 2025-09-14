@@ -18,14 +18,14 @@ use inbq::ast::{
     JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
     MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
     OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
-    RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
-    SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
-    SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr, StructField,
-    StructFieldType, StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock,
+    StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement,
+    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -1983,9 +1983,44 @@ impl RsToPyObject for FromExpr {
     }
 }
 
+impl RsToPyObject for PivotColumn {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, PivotColumn)?, kwargs)
+    }
+}
+
+impl RsToPyObject for PivotAggregate {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, PivotAggregate)?, kwargs)
+    }
+}
+
+impl RsToPyObject for Pivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "aggregates", self.aggregates),
+            kwarg!(py_ctx, "input_column", self.input_column),
+            kwarg!(py_ctx, "pivot_columns", self.pivot_columns),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, Pivot)?, kwargs)
+    }
+}
+
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
+        let kwargs = &[
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "pivot", self.pivot),
+        ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, From)?, kwargs)
     }
 }
