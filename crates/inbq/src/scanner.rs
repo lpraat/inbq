@@ -622,6 +622,37 @@ impl Scanner {
                 self.match_keyword_or_identifier();
             }
 
+            // Query named parameter or System variable
+            '@' => {
+                let is_system_variable = self.match_char('@');
+                loop {
+                    let peek_char = self.peek();
+                    if !(peek_char.is_alphanumeric() || peek_char == '_') {
+                        break;
+                    }
+                    self.advance();
+                }
+                if is_system_variable {
+                    self.add_token(TokenType::SystemVariable(
+                        self.source_chars[self.start + 2..self.current]
+                            .iter()
+                            .collect(),
+                    ));
+                } else {
+                    self.add_token(TokenType::QueryNamedParameter(
+                        self.source_chars[self.start + 1..self.current]
+                            .iter()
+                            .collect(),
+                    ));
+                }
+            }
+
+            // Query positional parameter
+            '?' => {
+                self.advance();
+                self.add_token(TokenType::QueryPositionalParameter);
+            }
+
             '`' => {
                 let quoted_ident_start_idx = self.current - 1;
                 loop {

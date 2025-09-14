@@ -29,15 +29,21 @@ pub struct StatementsBlock {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclareVarStatement {
-    pub var_names: Vec<ParseToken>,
+    pub vars: Vec<ParseToken>,
     pub r#type: Option<ParameterizedType>,
     pub default: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetVarStatement {
-    pub var_names: Vec<ParseToken>,
+    pub vars: Vec<SetVariable>,
     pub exprs: Vec<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SetVariable {
+    UserVariable { name: ParseToken },
+    SystemVariable { name: ParseToken },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +247,9 @@ pub enum Expr {
     Struct(StructExpr),
     Identifier(String),
     QuotedIdentifier(String),
+    QueryNamedParameter(String),
+    QueryPositionalParameter,
+    SystemVariable(String),
     String(String),
     Bytes(String),
     Numeric(String),
@@ -923,6 +932,9 @@ pub enum TokenType {
     Bytes(String),
     RawBytes(String),
     Number(String),
+    QueryNamedParameter(String),
+    QueryPositionalParameter,
+    SystemVariable(String),
     Eof,
 
     // Reserved Keywords
@@ -1062,6 +1074,9 @@ impl TokenTypeVariant {
             TokenTypeVariant::RawBytes => "RawBytes",
             TokenTypeVariant::Number => "Number",
             TokenTypeVariant::Eof => "EOF",
+            TokenTypeVariant::QueryNamedParameter => "QueryNamedParameter",
+            TokenTypeVariant::QueryPositionalParameter => "QueryPositionalParameter",
+            TokenTypeVariant::SystemVariable => "SystemVariable",
 
             // Reserved Keywords
             TokenTypeVariant::All => "ALL",

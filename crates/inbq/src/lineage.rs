@@ -7,8 +7,8 @@ use crate::{
         JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
         ParameterizedType, ParseToken, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
         SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetSelectQueryExpr, SetVarStatement, Statement, StatementsBlock,
-        StructExpr, TokenType, Type, UpdateStatement, When, With,
+        SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
+        StatementsBlock, StructExpr, TokenType, Type, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -1173,6 +1173,12 @@ impl LineageExtractor {
                         break;
                     }
 
+                    (Expr::QueryNamedParameter(_), _)
+                    | (Expr::SystemVariable(_), _)
+                    | (Expr::QueryPositionalParameter, _) => {
+                        break;
+                    }
+
                     _ => {
                         unreachable!();
                     }
@@ -1356,7 +1362,10 @@ impl LineageExtractor {
             | Expr::Json(_)
             | Expr::Bool(_)
             | Expr::Null
-            | Expr::Default => {}
+            | Expr::Default
+            | Expr::QueryNamedParameter(_)
+            | Expr::QueryPositionalParameter
+            | Expr::SystemVariable(_) => {}
             Expr::Binary(binary_expr) => self.binary_col_expr_lin(binary_expr)?,
             Expr::Unary(unary_expr) => {
                 self.select_expr_col_expr_lin(&unary_expr.right, expand_value_table)?
@@ -2754,7 +2763,7 @@ impl LineageExtractor {
         &mut self,
         declare_var_statement: &DeclareVarStatement,
     ) -> anyhow::Result<Vec<ArenaIndex>> {
-        let declared_vars = Vec::with_capacity(declare_var_statement.var_names.len());
+        let declared_vars = Vec::with_capacity(declare_var_statement.vars.len());
 
         let input_lineage_nodes = if let Some(default_expr) = &declare_var_statement.default {
             self.call_func_and_consume_lineage_nodes(|this| {
@@ -2764,7 +2773,7 @@ impl LineageExtractor {
             vec![]
         };
 
-        for var in &declare_var_statement.var_names {
+        for var in &declare_var_statement.vars {
             // Var names are case insensitive (like column names)
             let var_ident = var.identifier().to_lowercase();
             let obj_name = format!("!var_{}", var_ident);
@@ -2791,29 +2800,35 @@ impl LineageExtractor {
     }
 
     fn set_var_statement_lin(&mut self, set_var_statement: &SetVarStatement) -> anyhow::Result<()> {
-        if set_var_statement.var_names.len() > 1 && set_var_statement.exprs.len() == 1 {
+        if set_var_statement.vars.len() > 1 && set_var_statement.exprs.len() == 1 {
             let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                 this.select_expr_col_expr_lin(&set_var_statement.exprs[0], true)
             })?;
 
-            for (i, var) in set_var_statement.var_names.iter().enumerate() {
-                let var_node_idx = self.context.vars.get(&var.identifier()).unwrap();
-                let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
-                var_node.input = vec![consumed_nodes[i]];
+            for (i, var) in set_var_statement.vars.iter().enumerate() {
+                match var {
+                    SetVariable::UserVariable { name: var_name } => {
+                        let var_node_idx = self.context.vars.get(&var_name.identifier()).unwrap();
+                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        var_node.input = vec![consumed_nodes[i]];
+                    }
+                    SetVariable::SystemVariable { name: _ } => {}
+                }
             }
         } else {
-            assert!(set_var_statement.var_names.len() == set_var_statement.exprs.len());
-            for (var, expr) in set_var_statement
-                .var_names
-                .iter()
-                .zip(&set_var_statement.exprs)
-            {
-                let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
-                    this.select_expr_col_expr_lin(expr, false)
-                })?;
-                let var_node_idx = self.context.vars.get(&var.identifier()).unwrap();
-                let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
-                var_node.input = consumed_nodes;
+            assert!(set_var_statement.vars.len() == set_var_statement.exprs.len());
+            for (var, expr) in set_var_statement.vars.iter().zip(&set_var_statement.exprs) {
+                match var {
+                    SetVariable::UserVariable { name: var_name } => {
+                        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+                            this.select_expr_col_expr_lin(expr, false)
+                        })?;
+                        let var_node_idx = self.context.vars.get(&var_name.identifier()).unwrap();
+                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        var_node.input = consumed_nodes;
+                    }
+                    SetVariable::SystemVariable { name: _ } => {}
+                }
             }
         }
 

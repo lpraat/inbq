@@ -37,6 +37,10 @@ class AstNode:
             "CreateTable": "Statement_CreateTable",
             "DropTableStatement": "Statement_DropTableStatement",
         },
+        "SetVariable": {
+            "UserVariable": "SetVariable_UserVariable",
+            "SystemVariable": "SetVariable_SystemVariable",
+        },
         "ParameterizedType": {
             "Array": "ParameterizedType_Array",
             "BigNumeric": "ParameterizedType_BigNumeric",
@@ -98,6 +102,9 @@ class AstNode:
             "Struct": "Expr_Struct",
             "Identifier": "Expr_Identifier",
             "QuotedIdentifier": "Expr_QuotedIdentifier",
+            "QueryNamedParameter": "Expr_QueryNamedParameter",
+            "QueryPositionalParameter": "Expr_QueryPositionalParameter",
+            "SystemVariable": "Expr_SystemVariable",
             "String": "Expr_String",
             "Bytes": "Expr_Bytes",
             "Numeric": "Expr_Numeric",
@@ -347,6 +354,9 @@ class AstNode:
             "Bytes": "TokenType_Bytes",
             "RawBytes": "TokenType_RawBytes",
             "Number": "TokenType_Number",
+            "QueryNamedParameter": "TokenType_QueryNamedParameter",
+            "QueryPositionalParameter": "TokenType_QueryPositionalParameter",
+            "SystemVariable": "TokenType_SystemVariable",
             "Eof": "TokenType_Eof",
             "All": "TokenType_All",
             "And": "TokenType_And",
@@ -534,14 +544,14 @@ class StatementsBlock(AstNode):
 
 @dataclass
 class DeclareVarStatement(AstNode):
-    var_names: "list[ParseToken]"
+    vars: "list[ParseToken]"
     type_: "Optional[ParameterizedType]"
     default: "Optional[Expr]"
 
 
 @dataclass
 class SetVarStatement(AstNode):
-    var_names: "list[ParseToken]"
+    vars: "list[SetVariable]"
     exprs: "list[Expr]"
 
 
@@ -1061,6 +1071,19 @@ Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | 
 
 
 @dataclass
+class SetVariable_UserVariable(AstNode):
+    name: "ParseToken"
+
+
+@dataclass
+class SetVariable_SystemVariable(AstNode):
+    name: "ParseToken"
+
+
+SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"
+
+
+@dataclass
 class ParameterizedType_Array(AstNode):
     type_: "ParameterizedType"
 
@@ -1302,6 +1325,20 @@ class Expr_QuotedIdentifier(AstNode):
 
 
 @dataclass
+class Expr_QueryNamedParameter(AstNode):
+    value: "str"
+
+
+@dataclass
+class Expr_QueryPositionalParameter(AstNode): ...
+
+
+@dataclass
+class Expr_SystemVariable(AstNode):
+    value: "str"
+
+
+@dataclass
 class Expr_String(AstNode):
     value: "str"
 
@@ -1403,7 +1440,7 @@ class Expr_QuantifiedLike(AstNode):
     value: "QuantifiedLikeExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike"
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike"
 
 
 @dataclass
@@ -2238,6 +2275,20 @@ class TokenType_Number(AstNode):
 
 
 @dataclass
+class TokenType_QueryNamedParameter(AstNode):
+    value: "str"
+
+
+@dataclass
+class TokenType_QueryPositionalParameter(AstNode): ...
+
+
+@dataclass
+class TokenType_SystemVariable(AstNode):
+    value: "str"
+
+
+@dataclass
 class TokenType_Eof(AstNode): ...
 
 
@@ -2621,4 +2672,4 @@ class TokenType_With(AstNode): ...
 class TokenType_Within(AstNode): ...
 
 
-TokenType: TypeAlias = "TokenType_LeftParen | TokenType_RightParen | TokenType_LeftSquare | TokenType_RightSquare | TokenType_Comma | TokenType_Dot | TokenType_Minus | TokenType_Plus | TokenType_BitwiseNot | TokenType_BitwiseOr | TokenType_BitwiseAnd | TokenType_BitwiseXor | TokenType_BitwiseRightShift | TokenType_BitwiseLeftShift | TokenType_Colon | TokenType_Semicolon | TokenType_Slash | TokenType_Star | TokenType_Tick | TokenType_ConcatOperator | TokenType_Bang | TokenType_BangEqual | TokenType_Equal | TokenType_NotEqual | TokenType_Greater | TokenType_GreaterEqual | TokenType_Less | TokenType_LessEqual | TokenType_QuotedIdentifier | TokenType_Identifier | TokenType_String | TokenType_RawString | TokenType_Bytes | TokenType_RawBytes | TokenType_Number | TokenType_Eof | TokenType_All | TokenType_And | TokenType_Any | TokenType_Array | TokenType_As | TokenType_Asc | TokenType_AssertRowsModified | TokenType_At | TokenType_Between | TokenType_By | TokenType_Case | TokenType_Cast | TokenType_Collate | TokenType_Contains | TokenType_Create | TokenType_Cross | TokenType_Cube | TokenType_Current | TokenType_Default | TokenType_Define | TokenType_Desc | TokenType_Distinct | TokenType_Else | TokenType_End | TokenType_Enum | TokenType_Escape | TokenType_Except | TokenType_Exclude | TokenType_Exists | TokenType_Extract | TokenType_False | TokenType_Fetch | TokenType_Following | TokenType_For | TokenType_From | TokenType_Full | TokenType_Group | TokenType_Grouping | TokenType_Groups | TokenType_Hash | TokenType_Having | TokenType_If | TokenType_Ignore | TokenType_In | TokenType_Inner | TokenType_Intersect | TokenType_Interval | TokenType_Into | TokenType_Is | TokenType_Join | TokenType_Lateral | TokenType_Left | TokenType_Like | TokenType_Limit | TokenType_Lookup | TokenType_Merge | TokenType_Natural | TokenType_New | TokenType_No | TokenType_Not | TokenType_Null | TokenType_Nulls | TokenType_Of | TokenType_On | TokenType_Or | TokenType_Order | TokenType_Outer | TokenType_Over | TokenType_Partition | TokenType_Preceding | TokenType_Proto | TokenType_Qualify | TokenType_Range | TokenType_Recursive | TokenType_Respect | TokenType_Right | TokenType_Rollup | TokenType_Rows | TokenType_Select | TokenType_Set | TokenType_Some | TokenType_Struct | TokenType_Tablesample | TokenType_Then | TokenType_To | TokenType_Treat | TokenType_True | TokenType_Union | TokenType_Unnest | TokenType_Using | TokenType_When | TokenType_Where | TokenType_Window | TokenType_With | TokenType_Within"
+TokenType: TypeAlias = "TokenType_LeftParen | TokenType_RightParen | TokenType_LeftSquare | TokenType_RightSquare | TokenType_Comma | TokenType_Dot | TokenType_Minus | TokenType_Plus | TokenType_BitwiseNot | TokenType_BitwiseOr | TokenType_BitwiseAnd | TokenType_BitwiseXor | TokenType_BitwiseRightShift | TokenType_BitwiseLeftShift | TokenType_Colon | TokenType_Semicolon | TokenType_Slash | TokenType_Star | TokenType_Tick | TokenType_ConcatOperator | TokenType_Bang | TokenType_BangEqual | TokenType_Equal | TokenType_NotEqual | TokenType_Greater | TokenType_GreaterEqual | TokenType_Less | TokenType_LessEqual | TokenType_QuotedIdentifier | TokenType_Identifier | TokenType_String | TokenType_RawString | TokenType_Bytes | TokenType_RawBytes | TokenType_Number | TokenType_QueryNamedParameter | TokenType_QueryPositionalParameter | TokenType_SystemVariable | TokenType_Eof | TokenType_All | TokenType_And | TokenType_Any | TokenType_Array | TokenType_As | TokenType_Asc | TokenType_AssertRowsModified | TokenType_At | TokenType_Between | TokenType_By | TokenType_Case | TokenType_Cast | TokenType_Collate | TokenType_Contains | TokenType_Create | TokenType_Cross | TokenType_Cube | TokenType_Current | TokenType_Default | TokenType_Define | TokenType_Desc | TokenType_Distinct | TokenType_Else | TokenType_End | TokenType_Enum | TokenType_Escape | TokenType_Except | TokenType_Exclude | TokenType_Exists | TokenType_Extract | TokenType_False | TokenType_Fetch | TokenType_Following | TokenType_For | TokenType_From | TokenType_Full | TokenType_Group | TokenType_Grouping | TokenType_Groups | TokenType_Hash | TokenType_Having | TokenType_If | TokenType_Ignore | TokenType_In | TokenType_Inner | TokenType_Intersect | TokenType_Interval | TokenType_Into | TokenType_Is | TokenType_Join | TokenType_Lateral | TokenType_Left | TokenType_Like | TokenType_Limit | TokenType_Lookup | TokenType_Merge | TokenType_Natural | TokenType_New | TokenType_No | TokenType_Not | TokenType_Null | TokenType_Nulls | TokenType_Of | TokenType_On | TokenType_Or | TokenType_Order | TokenType_Outer | TokenType_Over | TokenType_Partition | TokenType_Preceding | TokenType_Proto | TokenType_Qualify | TokenType_Range | TokenType_Recursive | TokenType_Respect | TokenType_Right | TokenType_Rollup | TokenType_Rows | TokenType_Select | TokenType_Set | TokenType_Some | TokenType_Struct | TokenType_Tablesample | TokenType_Then | TokenType_To | TokenType_Treat | TokenType_True | TokenType_Union | TokenType_Unnest | TokenType_Using | TokenType_When | TokenType_Where | TokenType_Window | TokenType_With | TokenType_Within"

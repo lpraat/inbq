@@ -105,6 +105,11 @@ select null is null
 
 [[tests]]
 sql = """
+select 1 + @num, @baz, @@time_zone, @@script.job_id
+"""
+
+[[tests]]
+sql = """
 WITH Words AS
  (SELECT 'Intend with clarity.' as value UNION ALL
   SELECT 'Secure with intention.' UNION ALL
@@ -351,6 +356,11 @@ SELECT EXTRACT(`WEEK`(`MONDAY`) FROM DATETIME(2008, 12, 25, 15, 30, 00)) as hour
 [[tests]]
 sql = """
 SELECT COUNT(*)
+"""
+
+[[tests]]
+sql = """
+SELECT `COUNT`(*)
 """
 
 
@@ -665,6 +675,11 @@ SET x = 5;
 [[tests]]
 sql = """
 SET (a, b, c) = (1 + 3, 'foo', false);
+"""
+
+[[tests]]
+sql = """
+SET @@dataset_project_id = 'MyProject';
 """
 
 [[tests]]

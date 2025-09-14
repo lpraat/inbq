@@ -16,11 +16,11 @@ use crate::ast::{
     Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
     RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
     SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
-    SetVarStatement, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr, StructField,
+    StructFieldType, StructParameterizedFieldType, Token, TokenType, TokenTypeVariant,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement,
+    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -426,7 +426,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Statement::DeclareVar(DeclareVarStatement {
-            var_names,
+            vars: var_names,
             r#type,
             default,
         }))
@@ -436,14 +436,31 @@ impl<'a> Parser<'a> {
     fn parse_set_var_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Set)?;
 
-        let mut var_names: Vec<ParseToken>;
+        let mut vars: Vec<SetVariable>;
         let mut exprs: Vec<Expr>;
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             // multiple vars
-            var_names = vec![];
+            vars = vec![];
             loop {
-                let var_name = self.consume_identifier()?;
-                var_names.push(ParseToken::Single(var_name.clone()));
+                let tok = self
+                    .consume_one_of(&[
+                        TokenTypeVariant::Identifier,
+                        TokenTypeVariant::QuotedIdentifier,
+                        TokenTypeVariant::SystemVariable,
+                    ])?
+                    .clone();
+                let var = match &tok.kind {
+                    TokenType::Identifier(_) | TokenType::QuotedIdentifier(_) => {
+                        SetVariable::UserVariable {
+                            name: ParseToken::Single(tok),
+                        }
+                    }
+                    TokenType::SystemVariable(_) => SetVariable::SystemVariable {
+                        name: ParseToken::Single(tok),
+                    },
+                    _ => unreachable!(),
+                };
+                vars.push(var);
 
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
@@ -470,12 +487,30 @@ impl<'a> Parser<'a> {
                 self.consume(TokenTypeVariant::RightParen)?;
             }
         } else {
-            var_names = vec![ParseToken::Single(self.consume_identifier()?.clone())];
+            let tok = self
+                .consume_one_of(&[
+                    TokenTypeVariant::Identifier,
+                    TokenTypeVariant::QuotedIdentifier,
+                    TokenTypeVariant::SystemVariable,
+                ])?
+                .clone();
+            let var = match &tok.kind {
+                TokenType::Identifier(_) | TokenType::QuotedIdentifier(_) => {
+                    SetVariable::UserVariable {
+                        name: ParseToken::Single(tok),
+                    }
+                }
+                TokenType::SystemVariable(_) => SetVariable::SystemVariable {
+                    name: ParseToken::Single(tok),
+                },
+                _ => unreachable!(),
+            };
+            vars = vec![var];
             self.consume(TokenTypeVariant::Equal)?;
             exprs = vec![self.parse_expr()?];
         }
 
-        Ok(Statement::SetVar(SetVarStatement { var_names, exprs }))
+        Ok(Statement::SetVar(SetVarStatement { vars, exprs }))
     }
 
     // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
@@ -2929,7 +2964,9 @@ impl<'a> Parser<'a> {
     }
 
     // primary_expr ->
-    // "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier" | "String" | "Number"
+    // "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier"
+    // | "QueryNamedParameter" | "QueryPositionalParameter" | "SystemVariable"
+    // | "String" | "Number"
     // | NUMERIC "Number" | BIGNUMERIC "Number"
     // | DATE "String" | TIMESTAMP "String" | DATETIME "String" | TIME "String"
     // | "RANGE" "<" bq_parameterized_type ">" "String"
@@ -3084,6 +3121,18 @@ impl<'a> Parser<'a> {
                     self.advance();
                     Expr::QuotedIdentifier(qident)
                 }
+            }
+            TokenType::QueryNamedParameter(param) => {
+                self.advance();
+                Expr::QueryNamedParameter(param)
+            }
+            TokenType::QueryPositionalParameter => {
+                self.advance();
+                Expr::QueryPositionalParameter
+            }
+            TokenType::SystemVariable(sysvar) => {
+                self.advance();
+                Expr::SystemVariable(sysvar)
             }
             TokenType::Number(num) => {
                 self.advance();

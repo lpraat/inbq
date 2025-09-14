@@ -21,11 +21,11 @@ use inbq::ast::{
     Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RangeExpr,
     RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr,
     SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr,
-    SetVarStatement, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-    UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr, StructField,
+    StructFieldType, StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type,
+    UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -255,6 +255,27 @@ impl RsToPyObject for TokenType {
             TokenType::Identifier(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, TokenType::Identifier)?, kwargs)
+            }
+            TokenType::QueryNamedParameter(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, TokenType::QueryNamedParameter)?,
+                    kwargs,
+                )
+            }
+            TokenType::QueryPositionalParameter => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, TokenType::QueryPositionalParameter)?,
+                &[],
+            ),
+            TokenType::SystemVariable(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, TokenType::SystemVariable)?,
+                    kwargs,
+                )
             }
             TokenType::String(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
@@ -1566,6 +1587,23 @@ impl RsToPyObject for Expr {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::QuotedIdentifier)?, kwargs)
             }
+            Expr::QueryNamedParameter(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, Expr::QueryNamedParameter)?,
+                    kwargs,
+                )
+            }
+            Expr::QueryPositionalParameter => instantiate_py_class(
+                py_ctx,
+                get_class!(py_ctx, Expr::QueryPositionalParameter)?,
+                &[],
+            ),
+            Expr::SystemVariable(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::SystemVariable)?, kwargs)
+            }
             Expr::String(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::String)?, kwargs)
@@ -2291,7 +2329,7 @@ impl RsToPyObject for MergeStatement {
 impl RsToPyObject for DeclareVarStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            kwarg!(py_ctx, "var_names", self.var_names),
+            kwarg!(py_ctx, "vars", self.vars),
             kwarg!(py_ctx, "type_", self.r#type),
             kwarg!(py_ctx, "default", self.default),
         ];
@@ -2299,10 +2337,33 @@ impl RsToPyObject for DeclareVarStatement {
     }
 }
 
+impl RsToPyObject for SetVariable {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            SetVariable::UserVariable { name } => {
+                let kwargs = &[kwarg!(py_ctx, "name", name)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, SetVariable::UserVariable)?,
+                    kwargs,
+                )
+            }
+            SetVariable::SystemVariable { name } => {
+                let kwargs = &[kwarg!(py_ctx, "name", name)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, SetVariable::SystemVariable)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
 impl RsToPyObject for SetVarStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
-            kwarg!(py_ctx, "var_names", self.var_names),
+            kwarg!(py_ctx, "vars", self.vars),
             kwarg!(py_ctx, "exprs", self.exprs),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, SetVarStatement)?, kwargs)

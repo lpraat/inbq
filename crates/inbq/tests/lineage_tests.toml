@@ -852,7 +852,7 @@ sql = """
 begin
 
 declare x, y int64;
-set (x, y) = (select as struct sum(ix), sum(iy)+sum(ix) from proj.dat.in_table);
+set (x, y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
 
 insert into proj.dat.out_table
 select
