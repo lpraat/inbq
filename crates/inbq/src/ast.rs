@@ -11,7 +11,7 @@ pub enum Statement {
     Query(QueryStatement),
     Insert(InsertStatement),
     Delete(DeleteStatement),
-    Update(UpdateStatement),
+    Update(Box<UpdateStatement>),
     Truncate(TruncateStatement),
     Merge(Box<MergeStatement>),
     DeclareVar(DeclareVarStatement),

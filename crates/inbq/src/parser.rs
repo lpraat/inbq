@@ -635,7 +635,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Where)?;
         let where_expr = self.parse_where_expr()?;
 
-        Ok(Statement::Update(UpdateStatement {
+        Ok(Statement::Update(Box::new(UpdateStatement {
             table,
             alias,
             update_items,
@@ -643,7 +643,7 @@ impl<'a> Parser<'a> {
             r#where: Where {
                 expr: Box::new(where_expr),
             },
-        }))
+        })))
     }
 
     // truncate_statement -> "TRUNCATE" "TABLE" path
