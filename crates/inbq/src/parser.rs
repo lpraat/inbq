@@ -3,24 +3,26 @@ use strum::IntoDiscriminant;
 
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
-    CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr,
-    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, IfFunctionExpr, InsertStatement, IntervalExpr, IntervalPart,
-    JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
-    MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock,
-    StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
-    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem,
-    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
+    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
+    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
+    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot,
+    NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate,
+    PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
+    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
+    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
+    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
+    TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr,
+    Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 pub struct Parser<'a> {
@@ -1046,7 +1048,7 @@ impl<'a> Parser<'a> {
     // [("ALL" | "DISTINCT")]
     // ["AS" ("STRUCT" | "VALUE")]
     // select_col_expr [","] (select_col_expr [","])*
-    // ["FROM" from_expr]
+    // [from]
     // ["WHERE" where_expr]
     // ["GROUP BY" group_by_expr]
     // ["HAVING" having_expr]
@@ -1163,23 +1165,39 @@ impl<'a> Parser<'a> {
         })
     }
 
+    // from -> "FROM" from_expr [pivot | unpivot]
     fn parse_from(&mut self) -> anyhow::Result<Option<From>> {
         Ok(if self.match_token_type(TokenTypeVariant::From) {
             let from_expr = self.parse_from_expr()?;
-            let pivot = if self.check_non_reserved_keyword("pivot") {
-                Some(self.parse_pivot()?)
+
+            if self.check_non_reserved_keyword("pivot") {
+                Some(crate::parser::From {
+                    expr: Box::new(from_expr),
+                    pivot: Some(self.parse_pivot()?),
+                    unpivot: None,
+                })
+            } else if self.check_non_reserved_keyword("unpivot") {
+                Some(crate::parser::From {
+                    expr: Box::new(from_expr),
+                    pivot: None,
+                    unpivot: Some(self.parse_unpivot()?),
+                })
             } else {
-                None
-            };
-            Some(crate::parser::From {
-                expr: Box::new(from_expr),
-                pivot,
-            })
+                Some(crate::parser::From {
+                    expr: Box::new(from_expr),
+                    pivot: None,
+                    unpivot: None,
+                })
+            }
         } else {
             None
         })
     }
 
+    // pivot -> "PIVOT" "(" aggregates "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" pivot_columns ")" ")" [as alias]
+    // where
+    // aggregates -> expr [as_alias] ("," expr [as_alias])*
+    // pivot_columns -> expr [as_alias] ("," expr [as_alias])*
     fn parse_pivot(&mut self) -> anyhow::Result<Pivot> {
         self.consume_non_reserved_keyword("pivot")?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -1228,6 +1246,137 @@ impl<'a> Parser<'a> {
             pivot_columns,
             alias,
         })
+    }
+
+    // unpivot -> "UNPIVOT" [("INCLUDE" | "EXCLUDE") "NULLS"] "(" (single_col_unpivot | multi_col_unpivot) ")" [as_alias]
+    // where
+    // single_col_unpivot -> ("Identifier" | "QuotedIdentifier") "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" ("Identifier" | "QuotedIdentifier") ["AS"] expr ")"
+    // multi_col_unpivot -> ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* "FOR" ("Identifier" | "QuotedIdentifier") "IN"  "(" column_set_to_unpivot ("," column_set_to_unpivot)* ")"
+    // where
+    // column_set_to_unpivot -> "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* ["AS"] expr ")"
+    fn parse_unpivot(&mut self) -> anyhow::Result<Unpivot> {
+        self.consume_non_reserved_keyword("unpivot")?;
+        let nulls = if self.check_non_reserved_keyword("include") {
+            self.consume(TokenTypeVariant::Nulls)?;
+            UnpivotNulls::Include
+        } else if self.check_non_reserved_keyword("exclude") {
+            self.consume(TokenTypeVariant::Nulls)?;
+            UnpivotNulls::Exclude
+        } else {
+            UnpivotNulls::Exclude
+        };
+
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let kind = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let mut values_columns = vec![];
+            loop {
+                values_columns.push(ParseToken::Single(
+                    self.consume_one_of(&[
+                        TokenTypeVariant::Identifier,
+                        TokenTypeVariant::QuotedIdentifier,
+                    ])?
+                    .clone(),
+                ));
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            self.consume(TokenTypeVariant::For)?;
+            let name_column = ParseToken::Single(
+                self.consume_one_of(&[
+                    TokenTypeVariant::Identifier,
+                    TokenTypeVariant::QuotedIdentifier,
+                ])?
+                .clone(),
+            );
+            self.consume(TokenTypeVariant::In)?;
+            self.consume(TokenTypeVariant::LeftParen)?;
+            let mut column_sets_to_unpivot = vec![];
+            loop {
+                self.consume(TokenTypeVariant::LeftParen)?;
+                let mut names = vec![];
+                loop {
+                    names.push(ParseToken::Single(
+                        self.consume_one_of(&[
+                            TokenTypeVariant::Identifier,
+                            TokenTypeVariant::QuotedIdentifier,
+                        ])?
+                        .clone(),
+                    ));
+                    if !self.match_token_type(TokenTypeVariant::Comma) {
+                        break;
+                    }
+                }
+                self.consume(TokenTypeVariant::RightParen)?;
+
+                let alias = if self.match_token_type(TokenTypeVariant::As) {
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+                column_sets_to_unpivot.push(ColumnSetToUnpivot { names, alias });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            UnpivotKind::MultiColumn(MultiColumnUnpivot {
+                values_columns,
+                name_column,
+                column_sets_to_unpivot,
+            })
+        } else {
+            let values_column = ParseToken::Single(
+                self.consume_one_of(&[
+                    TokenTypeVariant::Identifier,
+                    TokenTypeVariant::QuotedIdentifier,
+                ])?
+                .clone(),
+            );
+            self.consume(TokenTypeVariant::For)?;
+            let name_column = ParseToken::Single(
+                self.consume_one_of(&[
+                    TokenTypeVariant::Identifier,
+                    TokenTypeVariant::QuotedIdentifier,
+                ])?
+                .clone(),
+            );
+            self.consume(TokenTypeVariant::In)?;
+            self.consume(TokenTypeVariant::LeftParen)?;
+            let mut columns_to_unpivot = vec![];
+            loop {
+                let name = ParseToken::Single(
+                    self.consume_one_of(&[
+                        TokenTypeVariant::Identifier,
+                        TokenTypeVariant::QuotedIdentifier,
+                    ])?
+                    .clone(),
+                );
+                let alias = if self.match_token_type(TokenTypeVariant::As) {
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+                columns_to_unpivot.push(ColumnToUnpivot { name, alias });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+
+            UnpivotKind::SingleColumn(SingleColumnUnpivot {
+                values_column,
+                name_column,
+                columns_to_unpivot,
+            })
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+        let alias = self
+            .parse_as_alias()?
+            .map(|tok| ParseToken::Single(tok.clone()));
+
+        Ok(Unpivot { nulls, kind, alias })
     }
 
     // TODO: add replace
@@ -1387,11 +1536,15 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_from_item_alias(&mut self) -> anyhow::Result<Option<&Token>> {
-        Ok(if self.check_non_reserved_keyword("pivot") {
-            None
-        } else {
-            self.parse_as_alias()?
-        })
+        Ok(
+            if self.check_non_reserved_keyword("pivot")
+                || self.check_non_reserved_keyword("unpivot")
+            {
+                None
+            } else {
+                self.parse_as_alias()?
+            },
+        )
     }
 
     // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator

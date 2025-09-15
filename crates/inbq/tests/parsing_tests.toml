@@ -399,6 +399,22 @@ SELECT * FROM
 
 [[tests]]
 sql = """
+SELECT * FROM Produce
+UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
+UP_ALIAS
+"""
+
+[[tests]]
+sql = """
+SELECT * FROM Produce
+UNPIVOT(
+  (first_half_sales, second_half_sales)
+  FOR semesters
+  IN ((Q1, Q2) AS 'semester_1', (Q3, Q4) AS 'semester_2'))
+"""
+
+[[tests]]
+sql = """
 SELECT book, LAST_VALUE(book)OVER (ORDER BY year)
 FROM Library;
 """

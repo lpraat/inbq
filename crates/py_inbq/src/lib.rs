@@ -8,24 +8,26 @@ use pyo3::{
 
 use inbq::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
-    CastFunctionExpr, ColumnSchema, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr,
-    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, IfFunctionExpr, InsertStatement, IntervalExpr, IntervalPart,
-    JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource,
-    MergeStatement, MergeUpdate, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock,
-    StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, UpdateItem, UpdateStatement,
-    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
+    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
+    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
+    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot,
+    NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate,
+    PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
+    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
+    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
+    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
+    TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -2015,11 +2017,105 @@ impl RsToPyObject for Pivot {
     }
 }
 
+impl RsToPyObject for UnpivotNulls {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            UnpivotNulls::Include => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnpivotNulls::Include)?, &[])
+            }
+            UnpivotNulls::Exclude => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, UnpivotNulls::Exclude)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for ColumnToUnpivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, ColumnToUnpivot)?, kwargs)
+    }
+}
+
+impl RsToPyObject for SingleColumnUnpivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "values_column", self.values_column),
+            kwarg!(py_ctx, "name_column", self.name_column),
+            kwarg!(py_ctx, "columns_to_unpivot", self.columns_to_unpivot),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, SingleColumnUnpivot)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ColumnSetToUnpivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "names", self.names),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, ColumnSetToUnpivot)?, kwargs)
+    }
+}
+
+impl RsToPyObject for MultiColumnUnpivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "values_columns", self.values_columns),
+            kwarg!(py_ctx, "name_column", self.name_column),
+            kwarg!(
+                py_ctx,
+                "column_sets_to_unpivot",
+                self.column_sets_to_unpivot
+            ),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, MultiColumnUnpivot)?, kwargs)
+    }
+}
+
+impl RsToPyObject for UnpivotKind {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            UnpivotKind::SingleColumn(single_column_unpivot) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, single_column_unpivot)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, UnpivotKind::SingleColumn)?,
+                    kwargs,
+                )
+            }
+            UnpivotKind::MultiColumn(multi_column_unpivot) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, multi_column_unpivot)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, UnpivotKind::MultiColumn)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
+impl RsToPyObject for Unpivot {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "nulls", self.nulls),
+            kwarg!(py_ctx, "kind", self.kind),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, Unpivot)?, kwargs)
+    }
+}
+
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "expr", self.expr),
             kwarg!(py_ctx, "pivot", self.pivot),
+            kwarg!(py_ctx, "unpivot", self.unpivot),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, From)?, kwargs)
     }

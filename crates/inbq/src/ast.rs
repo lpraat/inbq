@@ -708,6 +708,7 @@ pub struct SelectAllExpr {
 pub struct From {
     pub expr: Box<FromExpr>,
     pub pivot: Option<Pivot>,
+    pub unpivot: Option<Unpivot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,6 +729,51 @@ pub struct PivotAggregate {
 pub struct PivotColumn {
     pub expr: Expr,
     pub alias: Option<ParseToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Unpivot {
+    pub nulls: UnpivotNulls,
+    pub kind: UnpivotKind,
+    pub alias: Option<ParseToken>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum UnpivotNulls {
+    Include,
+    Exclude,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum UnpivotKind {
+    SingleColumn(SingleColumnUnpivot),
+    MultiColumn(MultiColumnUnpivot),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleColumnUnpivot {
+    pub values_column: ParseToken,
+    pub name_column: ParseToken,
+    pub columns_to_unpivot: Vec<ColumnToUnpivot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiColumnUnpivot {
+    pub values_columns: Vec<ParseToken>,
+    pub name_column: ParseToken,
+    pub column_sets_to_unpivot: Vec<ColumnSetToUnpivot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnToUnpivot {
+    pub name: ParseToken,
+    pub alias: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnSetToUnpivot {
+    pub names: Vec<ParseToken>,
+    pub alias: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -277,6 +277,14 @@ class AstNode:
             "ColAll": "SelectExpr_ColAll",
             "All": "SelectExpr_All",
         },
+        "UnpivotNulls": {
+            "Include": "UnpivotNulls_Include",
+            "Exclude": "UnpivotNulls_Exclude",
+        },
+        "UnpivotKind": {
+            "SingleColumn": "UnpivotKind_SingleColumn",
+            "MultiColumn": "UnpivotKind_MultiColumn",
+        },
         "FromExpr": {
             "Join": "FromExpr_Join",
             "FullJoin": "FromExpr_FullJoin",
@@ -910,6 +918,7 @@ class SelectAllExpr(AstNode):
 class From(AstNode):
     expr: "FromExpr"
     pivot: "Optional[Pivot]"
+    unpivot: "Optional[Unpivot]"
 
 
 @dataclass
@@ -930,6 +939,39 @@ class PivotAggregate(AstNode):
 class PivotColumn(AstNode):
     expr: "Expr"
     alias: "Optional[ParseToken]"
+
+
+@dataclass
+class Unpivot(AstNode):
+    nulls: "UnpivotNulls"
+    kind: "UnpivotKind"
+    alias: "Optional[ParseToken]"
+
+
+@dataclass
+class SingleColumnUnpivot(AstNode):
+    values_column: "ParseToken"
+    name_column: "ParseToken"
+    columns_to_unpivot: "list[ColumnToUnpivot]"
+
+
+@dataclass
+class MultiColumnUnpivot(AstNode):
+    values_columns: "list[ParseToken]"
+    name_column: "ParseToken"
+    column_sets_to_unpivot: "list[ColumnSetToUnpivot]"
+
+
+@dataclass
+class ColumnToUnpivot(AstNode):
+    name: "ParseToken"
+    alias: "Optional[Expr]"
+
+
+@dataclass
+class ColumnSetToUnpivot(AstNode):
+    names: "list[ParseToken]"
+    alias: "Optional[Expr]"
 
 
 @dataclass
@@ -2007,6 +2049,30 @@ class SelectExpr_All(AstNode):
 
 
 SelectExpr: TypeAlias = "SelectExpr_Col | SelectExpr_ColAll | SelectExpr_All"
+
+
+@dataclass
+class UnpivotNulls_Include(AstNode): ...
+
+
+@dataclass
+class UnpivotNulls_Exclude(AstNode): ...
+
+
+UnpivotNulls: TypeAlias = "UnpivotNulls_Include | UnpivotNulls_Exclude"
+
+
+@dataclass
+class UnpivotKind_SingleColumn(AstNode):
+    value: "SingleColumnUnpivot"
+
+
+@dataclass
+class UnpivotKind_MultiColumn(AstNode):
+    value: "MultiColumnUnpivot"
+
+
+UnpivotKind: TypeAlias = "UnpivotKind_SingleColumn | UnpivotKind_MultiColumn"
 
 
 @dataclass
