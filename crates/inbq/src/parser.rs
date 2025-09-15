@@ -25,6 +25,7 @@ use crate::ast::{
     WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
+
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
     curr: usize,
