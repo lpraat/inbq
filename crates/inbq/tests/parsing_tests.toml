@@ -801,3 +801,14 @@ ELSE
   SELECT CONCAT('did not find product ', CAST(target_product_id AS STRING));
 END IF;
 """
+
+[[tests]]
+sql = """
+RAISE USING MESSAGE = @@error.message;
+"""
+
+
+[[tests]]
+sql = """
+RAISE;
+"""

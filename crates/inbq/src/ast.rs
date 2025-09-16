@@ -23,6 +23,12 @@ pub enum Statement {
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
+    Raise(RaiseStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaiseStatement {
+    pub message: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

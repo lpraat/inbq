@@ -20,10 +20,10 @@ use inbq::ast::{
     MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
     OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
     Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
+    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
+    SingleColumnUnpivot, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
     UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
     WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
@@ -2570,6 +2570,13 @@ impl RsToPyObject for IfStatement {
     }
 }
 
+impl RsToPyObject for RaiseStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "message", self.message)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, RaiseStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2624,6 +2631,10 @@ impl RsToPyObject for Statement {
             Statement::If(if_statement) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_statement)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::If)?, kwargs)
+            }
+            Statement::Raise(raise_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, raise_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Raise)?, kwargs)
             }
             Statement::BeginTransaction => instantiate_py_class(
                 py_ctx,

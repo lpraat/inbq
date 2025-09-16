@@ -2926,7 +2926,8 @@ impl LineageExtractor {
             | Statement::Truncate(_)
             | Statement::BeginTransaction
             | Statement::CommitTransaction
-            | Statement::RollbackTransaction => {}
+            | Statement::RollbackTransaction
+            | Statement::Raise(_) => {}
         }
         Ok(())
     }

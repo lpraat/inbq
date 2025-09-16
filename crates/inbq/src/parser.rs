@@ -15,10 +15,10 @@ use crate::ast::{
     MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
     OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
     Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
+    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
+    SingleColumnUnpivot, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
     UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
     UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
@@ -268,6 +268,7 @@ impl<'a> Parser<'a> {
                         self.consume_non_reserved_keyword("transaction")?;
                         return Ok(Statement::RollbackTransaction);
                     }
+                    "raise" => self.parse_raise_statement()?,
                     "drop" => self.parse_drop_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
@@ -283,6 +284,19 @@ impl<'a> Parser<'a> {
             _ => self.parse_query_statement()?,
         };
         Ok(statement)
+    }
+
+    // raise_statement -> "RAISE" ["USING" "MESSAGE" "=" expr]
+    fn parse_raise_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("raise")?;
+        let message = if self.match_token_type(TokenTypeVariant::Using) {
+            self.consume_non_reserved_keyword("message")?;
+            self.consume(TokenTypeVariant::Equal)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        Ok(Statement::Raise(RaiseStatement { message }))
     }
 
     // if_statement -> "IF" expr "THEN" statements ["ELSEIF" expr "THEN" statements]* ["ELSE" statements] "END" "IF"
