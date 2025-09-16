@@ -831,6 +831,39 @@ RAISE;
 
 [[tests]]
 sql = """
+RETURN;
+"""
+
+[[tests]]
+sql = """
 DECLARE retCode INT64 default 3;
 CALL mySchema.UpdateSomeTables('someAccountId', retCode);
+"""
+
+[[tests]]
+sql = """
+DECLARE target_product_id INT64 DEFAULT 103;
+CASE
+  WHEN
+    EXISTS(SELECT 1 FROM schema.products_a WHERE product_id = target_product_id)
+    THEN SELECT 'found product in products_a table';
+  WHEN
+    EXISTS(SELECT 1 FROM schema.products_b WHERE product_id = target_product_id)
+    THEN SELECT 'found product in products_b table';
+  ELSE
+    SELECT 'did not find product';
+END CASE;
+"""
+
+[[tests]]
+sql = """
+DECLARE product_id INT64 DEFAULT 1;
+CASE product_id
+  WHEN 1 THEN
+    SELECT CONCAT('Product one');
+  WHEN 2 THEN
+    SELECT CONCAT('Product two');
+  ELSE
+    SELECT CONCAT('Invalid product');
+END CASE;
 """

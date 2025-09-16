@@ -2924,13 +2924,26 @@ impl LineageExtractor {
                     }
                 }
             }
+            Statement::Case(case_statement) => {
+                for when_then in &case_statement.when_thens {
+                    for statement in &when_then.then {
+                        self.statement_lin(statement)?;
+                    }
+                }
+                if let Some(ref else_statements) = case_statement.r#else {
+                    for statement in else_statements {
+                        self.statement_lin(statement)?;
+                    }
+                }
+            }
             Statement::Delete(_)
             | Statement::Truncate(_)
             | Statement::BeginTransaction
             | Statement::CommitTransaction
             | Statement::RollbackTransaction
             | Statement::Raise(_)
-            | Statement::Call(_) => {}
+            | Statement::Call(_)
+            | Statement::Return => {}
         }
         Ok(())
     }

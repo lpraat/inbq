@@ -3,27 +3,28 @@ use strum::IntoDiscriminant;
 
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-    BytesConcatExpr, CallStatement, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
-    ColumnToUnpivot, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr,
-    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge,
-    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate, PivotColumn, Qualify,
-    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RaiseStatement,
-    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-    StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
-    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
+    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
+    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
+    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
+    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
+    SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField,
+    StructFieldType, StructParameterizedFieldType, Token, TokenType, TokenTypeVariant,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 
@@ -244,6 +245,7 @@ impl<'a> Parser<'a> {
             TokenType::Merge => self.parse_merge_statement()?,
             TokenType::Set => self.parse_set_var_statement()?,
             TokenType::If => self.parse_if_statement()?,
+            TokenType::Case => self.parse_case_statement()?,
             TokenType::Identifier(non_reserved_keyword) => {
                 match non_reserved_keyword.to_lowercase().as_str() {
                     "insert" => self.parse_insert_statement()?,
@@ -272,6 +274,10 @@ impl<'a> Parser<'a> {
                     "raise" => self.parse_raise_statement()?,
                     "drop" => self.parse_drop_statement()?,
                     "call" => self.parse_call_statement()?,
+                    "return" => {
+                        self.advance();
+                        return Ok(Statement::Return);
+                    }
                     _ => {
                         return Err(anyhow!(self.error(
                             peek,
@@ -286,6 +292,64 @@ impl<'a> Parser<'a> {
             _ => self.parse_query_statement()?,
         };
         Ok(statement)
+    }
+
+    // case_statement -> "CASE" expr "WHEN" expr "THEN" statements ("," "WHEN" expr "THEN" statements)* ["ELSE" statements] "END" "CASE"
+    // where:
+    // statements -> statement (";" statement)*
+    fn parse_case_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::Case)?;
+
+        let case = if self.check_token_type(TokenTypeVariant::When) {
+            None
+        } else {
+            Some(self.parse_expr()?)
+        };
+
+        let mut when_thens = vec![];
+
+        while self.match_token_type(TokenTypeVariant::When) {
+            let when = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Then)?;
+            let mut statements = vec![];
+            loop {
+                statements.push(self.parse_statement()?);
+                self.consume(TokenTypeVariant::Semicolon)?;
+                if self.check_token_types(&[
+                    TokenTypeVariant::When,
+                    TokenTypeVariant::Else,
+                    TokenTypeVariant::End,
+                ]) {
+                    break;
+                }
+            }
+            when_thens.push(CaseWhenThenStatements {
+                when,
+                then: statements,
+            });
+        }
+
+        let r#else = if self.match_token_type(TokenTypeVariant::Else) {
+            let mut statements = vec![];
+            loop {
+                statements.push(self.parse_statement()?);
+                self.consume(TokenTypeVariant::Semicolon)?;
+                if self.match_token_type(TokenTypeVariant::End) {
+                    break;
+                }
+            }
+            Some(statements)
+        } else {
+            None
+        };
+
+        self.consume(TokenTypeVariant::Case)?;
+
+        Ok(Statement::Case(CaseStatement {
+            case,
+            when_thens,
+            r#else,
+        }))
     }
 
     // call_statement -> "CALL" path "(" expr ("," expr)* ")"

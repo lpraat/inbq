@@ -8,27 +8,27 @@ use pyo3::{
 
 use inbq::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-    BytesConcatExpr, CallStatement, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
-    ColumnToUnpivot, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr,
-    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge,
-    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate, PivotColumn, Qualify,
-    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RaiseStatement,
-    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-    StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-    UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
-    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
+    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
+    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
+    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
+    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
+    SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField,
+    StructFieldType, StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type,
+    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
+    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -2610,6 +2610,27 @@ impl RsToPyObject for CallStatement {
     }
 }
 
+impl RsToPyObject for CaseWhenThenStatements {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "when", self.when),
+            kwarg!(py_ctx, "then", self.then),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, CaseWhenThenStatements)?, kwargs)
+    }
+}
+
+impl RsToPyObject for CaseStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "case_", self.case),
+            kwarg!(py_ctx, "when_thens", self.when_thens),
+            kwarg!(py_ctx, "else_", self.r#else),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, CaseStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2665,6 +2686,10 @@ impl RsToPyObject for Statement {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_statement)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::If)?, kwargs)
             }
+            Statement::Case(case_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, case_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Case)?, kwargs)
+            }
             Statement::Raise(raise_statement) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, raise_statement)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Raise)?, kwargs)
@@ -2688,6 +2713,9 @@ impl RsToPyObject for Statement {
                 get_class!(py_ctx, Statement::RollbackTransaction)?,
                 &[],
             ),
+            Statement::Return => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Return)?, &[])
+            }
         }
     }
 }

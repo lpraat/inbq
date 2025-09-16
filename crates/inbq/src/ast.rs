@@ -20,11 +20,26 @@ pub enum Statement {
     CreateTable(CreateTableStatement),
     DropTableStatement(DropTableStatement),
     If(IfStatement),
+    Case(CaseStatement),
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
     Raise(RaiseStatement),
+    Return,
     Call(CallStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaseStatement {
+    pub case: Option<Expr>,
+    pub when_thens: Vec<CaseWhenThenStatements>,
+    pub r#else: Option<Vec<Statement>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaseWhenThenStatements {
+    pub when: Expr,
+    pub then: Vec<Statement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
