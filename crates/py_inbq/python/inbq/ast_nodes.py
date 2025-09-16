@@ -41,6 +41,7 @@ class AstNode:
             "CommitTransaction": "Statement_CommitTransaction",
             "RollbackTransaction": "Statement_RollbackTransaction",
             "Raise": "Statement_Raise",
+            "Call": "Statement_Call",
         },
         "SetVariable": {
             "UserVariable": "SetVariable_UserVariable",
@@ -550,6 +551,12 @@ class AstNode:
 @dataclass
 class Ast(AstNode):
     statements: "list[Statement]"
+
+
+@dataclass
+class CallStatement(AstNode):
+    procedure_name: "ParseToken"
+    arguments: "list[Expr]"
 
 
 @dataclass
@@ -1188,7 +1195,12 @@ class Statement_Raise(AstNode):
     value: "RaiseStatement"
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise"
+@dataclass
+class Statement_Call(AstNode):
+    value: "CallStatement"
+
+
+Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Call"
 
 
 @dataclass

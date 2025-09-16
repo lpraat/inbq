@@ -828,3 +828,9 @@ RAISE USING MESSAGE = @@error.message;
 sql = """
 RAISE;
 """
+
+[[tests]]
+sql = """
+DECLARE retCode INT64 default 3;
+CALL mySchema.UpdateSomeTables('someAccountId', retCode);
+"""

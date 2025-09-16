@@ -24,6 +24,13 @@ pub enum Statement {
     CommitTransaction,
     RollbackTransaction,
     Raise(RaiseStatement),
+    Call(CallStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallStatement {
+    pub procedure_name: ParseToken,
+    pub arguments: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

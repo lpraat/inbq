@@ -3,11 +3,11 @@ use strum::IntoDiscriminant;
 
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-    BytesConcatExpr, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
-    ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-    DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    BytesConcatExpr, CallStatement, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
+    ColumnToUnpivot, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
+    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
+    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr,
+    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
     FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
     GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
     GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
@@ -271,6 +271,7 @@ impl<'a> Parser<'a> {
                     }
                     "raise" => self.parse_raise_statement()?,
                     "drop" => self.parse_drop_statement()?,
+                    "call" => self.parse_call_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
                             peek,
@@ -285,6 +286,25 @@ impl<'a> Parser<'a> {
             _ => self.parse_query_statement()?,
         };
         Ok(statement)
+    }
+
+    // call_statement -> "CALL" path "(" expr ("," expr)* ")"
+    fn parse_call_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("call")?;
+        let procedure_name = self.parse_path()?.expr;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut arguments = vec![];
+        loop {
+            arguments.push(self.parse_expr()?);
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Statement::Call(CallStatement {
+            procedure_name,
+            arguments,
+        }))
     }
 
     // raise_statement -> "RAISE" ["USING" "MESSAGE" "=" expr]

@@ -8,11 +8,11 @@ use pyo3::{
 
 use inbq::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-    BytesConcatExpr, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
-    ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-    DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    BytesConcatExpr, CallStatement, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
+    ColumnToUnpivot, ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte,
+    CurrentDateFunctionExpr, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
+    ExtractFunctionExpr, ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr,
+    FromPathExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
     FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
     GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
     GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
@@ -2600,6 +2600,16 @@ impl RsToPyObject for RaiseStatement {
     }
 }
 
+impl RsToPyObject for CallStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "procedure_name", self.procedure_name),
+            kwarg!(py_ctx, "arguments", self.arguments),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, CallStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2658,6 +2668,10 @@ impl RsToPyObject for Statement {
             Statement::Raise(raise_statement) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, raise_statement)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Raise)?, kwargs)
+            }
+            Statement::Call(call_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, call_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::Call)?, kwargs)
             }
             Statement::BeginTransaction => instantiate_py_class(
                 py_ctx,
