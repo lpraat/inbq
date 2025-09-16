@@ -274,7 +274,9 @@ pub enum Expr {
     QueryPositionalParameter,
     SystemVariable(String),
     String(String),
+    StringConcat(StringConcatExpr),
     Bytes(String),
+    BytesConcat(BytesConcatExpr),
     Numeric(String),
     BigNumeric(String),
     Number(String),
@@ -295,6 +297,16 @@ pub enum Expr {
     Function(Box<FunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
     Exists(Box<QueryExpr>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StringConcatExpr {
+    pub strings: Vec<ParseToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BytesConcatExpr {
+    pub bytes: Vec<ParseToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

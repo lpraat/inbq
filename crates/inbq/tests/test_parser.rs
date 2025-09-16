@@ -41,6 +41,10 @@ fn test_should_not_parse() {
         r#"
         select ARRAY<`RANGE`<DATE>>[RANGE<DATE> '[UNBOUNDED, UNBOUNDED)']
       "#,
+        // Cannot concatenate string and bytes literals
+        r#"
+        select "foo" b"foo"
+      "#,
     ];
     for sql in sqls {
         println!("Testing parsing error for SQL: {}", sql);

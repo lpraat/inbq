@@ -111,7 +111,9 @@ class AstNode:
             "QueryPositionalParameter": "Expr_QueryPositionalParameter",
             "SystemVariable": "Expr_SystemVariable",
             "String": "Expr_String",
+            "StringConcat": "Expr_StringConcat",
             "Bytes": "Expr_Bytes",
+            "BytesConcat": "Expr_BytesConcat",
             "Numeric": "Expr_Numeric",
             "BigNumeric": "Expr_BigNumeric",
             "Number": "Expr_Number",
@@ -698,6 +700,16 @@ class WhenNotMatchedByTarget(AstNode):
 class WhenNotMatchedBySource(AstNode):
     search_condition: "Optional[Expr]"
     merge: "Merge"
+
+
+@dataclass
+class StringConcatExpr(AstNode):
+    strings: "list[ParseToken]"
+
+
+@dataclass
+class BytesConcatExpr(AstNode):
+    bytes: "list[ParseToken]"
 
 
 @dataclass
@@ -1453,8 +1465,18 @@ class Expr_String(AstNode):
 
 
 @dataclass
+class Expr_StringConcat(AstNode):
+    value: "StringConcatExpr"
+
+
+@dataclass
 class Expr_Bytes(AstNode):
     value: "str"
+
+
+@dataclass
+class Expr_BytesConcat(AstNode):
+    value: "BytesConcatExpr"
 
 
 @dataclass
@@ -1554,7 +1576,7 @@ class Expr_Exists(AstNode):
     value: "QueryExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_StringConcat | Expr_Bytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
 
 
 @dataclass

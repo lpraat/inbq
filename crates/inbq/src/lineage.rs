@@ -1365,7 +1365,9 @@ impl LineageExtractor {
             | Expr::Default
             | Expr::QueryNamedParameter(_)
             | Expr::QueryPositionalParameter
-            | Expr::SystemVariable(_) => {}
+            | Expr::SystemVariable(_)
+            | Expr::StringConcat(_)
+            | Expr::BytesConcat(_) => {}
             Expr::Binary(binary_expr) => self.binary_col_expr_lin(binary_expr)?,
             Expr::Unary(unary_expr) => {
                 self.select_expr_col_expr_lin(&unary_expr.right, expand_value_table)?

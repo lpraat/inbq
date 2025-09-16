@@ -110,6 +110,22 @@ select 1 + @num, @baz, @@time_zone, @@script.job_id
 
 [[tests]]
 sql = """
+select "foo" "bar" r"baz"
+"""
+
+[[tests]]
+sql = """
+select "foo"
+/*comment*/"bar"
+"""
+
+[[tests]]
+sql = """
+select b"foo" rb"bar" b"baz"
+"""
+
+[[tests]]
+sql = """
 WITH Words AS
  (SELECT 'Intend with clarity.' as value UNION ALL
   SELECT 'Secure with intention.' UNION ALL

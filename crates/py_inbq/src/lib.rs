@@ -7,23 +7,24 @@ use pyo3::{
 };
 
 use inbq::ast::{
-    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
-    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
-    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
-    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
-    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
-    SingleColumnUnpivot, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
+    BytesConcatExpr, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
+    ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+    DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge,
+    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate, PivotColumn, Qualify,
+    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RaiseStatement,
+    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
+    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
+    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
+    StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
     UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
     WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
@@ -1558,6 +1559,20 @@ impl RsToPyObject for QuantifiedLikeExpr {
     }
 }
 
+impl RsToPyObject for StringConcatExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "strings", self.strings)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, StringConcatExpr)?, kwargs)
+    }
+}
+
+impl RsToPyObject for BytesConcatExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "bytes", self.bytes)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, BytesConcatExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1613,6 +1628,14 @@ impl RsToPyObject for Expr {
             Expr::Bytes(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Bytes)?, kwargs)
+            }
+            Expr::StringConcat(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::StringConcat)?, kwargs)
+            }
+            Expr::BytesConcat(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::BytesConcat)?, kwargs)
             }
             Expr::Numeric(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];

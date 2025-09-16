@@ -2,23 +2,24 @@ use anyhow::anyhow;
 use strum::IntoDiscriminant;
 
 use crate::ast::{
-    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator, CaseExpr,
-    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
-    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
-    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
-    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
-    SingleColumnUnpivot, Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
+    BytesConcatExpr, CaseExpr, CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
+    ConcatFunctionExpr, CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+    DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge,
+    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate, PivotColumn, Qualify,
+    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, RaiseStatement,
+    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
+    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
+    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
+    StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
     UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
     UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
@@ -3486,13 +3487,71 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Number(num)
             }
-            TokenType::String(str) | TokenType::RawString(str) => {
+            TokenType::String(ref str) | TokenType::RawString(ref str) => {
                 self.advance();
-                Expr::String(str)
+                if self.check_token_types(&[
+                    TokenTypeVariant::String,
+                    TokenTypeVariant::RawString,
+                    TokenTypeVariant::Bytes,
+                    TokenTypeVariant::RawBytes,
+                ]) {
+                    let mut strings = vec![ParseToken::Single(peek_token.clone())];
+                    loop {
+                        let peek = self.peek();
+                        match &peek.kind {
+                            TokenType::String(_) | TokenType::RawString(_) => {
+                                strings.push(ParseToken::Single(peek.clone()));
+                            }
+                            TokenType::Bytes(_) | TokenType::RawBytes(_) => {
+                                // TODO: this is actually not propagated to the user, but it will be once we improve errors
+                                return Err(anyhow!(self.error(
+                                    &peek_token,
+                                    "String and bytes literals cannot be concatenated."
+                                )));
+                            }
+                            _ => {
+                                break;
+                            }
+                        }
+                        self.advance();
+                    }
+                    Expr::StringConcat(StringConcatExpr { strings })
+                } else {
+                    Expr::String(str.clone())
+                }
             }
-            TokenType::Bytes(str) | TokenType::RawBytes(str) => {
+            TokenType::Bytes(ref str) | TokenType::RawBytes(ref str) => {
                 self.advance();
-                Expr::Bytes(str)
+                if self.check_token_types(&[
+                    TokenTypeVariant::String,
+                    TokenTypeVariant::RawString,
+                    TokenTypeVariant::Bytes,
+                    TokenTypeVariant::RawBytes,
+                ]) {
+                    let mut bytes = vec![ParseToken::Single(peek_token.clone())];
+                    loop {
+                        let peek = self.peek();
+                        match &peek.kind {
+                            TokenType::Bytes(_) | TokenType::RawBytes(_) => {
+                                bytes.push(ParseToken::Single(peek.clone()));
+                            }
+                            TokenType::String(_) | TokenType::RawString(_) => {
+                                // TODO: this is actually not propagated to the user, but it will be once we improve errors
+                                return Err(anyhow!(self.error(
+                                    &peek_token,
+                                    "Bytes and string literals cannot be concatenated."
+                                )));
+                            }
+                            _ => {
+                                break;
+                            }
+                        }
+                        self.advance();
+                    }
+                    Expr::BytesConcat(BytesConcatExpr { bytes })
+                } else {
+                    Expr::Bytes(str.clone())
+                }
             }
             TokenType::Default => {
                 self.advance();
