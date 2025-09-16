@@ -36,6 +36,7 @@ class AstNode:
             "Block": "Statement_Block",
             "CreateTable": "Statement_CreateTable",
             "DropTableStatement": "Statement_DropTableStatement",
+            "If": "Statement_If",
             "BeginTransaction": "Statement_BeginTransaction",
             "CommitTransaction": "Statement_CommitTransaction",
             "RollbackTransaction": "Statement_RollbackTransaction",
@@ -129,6 +130,7 @@ class AstNode:
             "GenericFunction": "Expr_GenericFunction",
             "Function": "Expr_Function",
             "QuantifiedLike": "Expr_QuantifiedLike",
+            "Exists": "Expr_Exists",
         },
         "IntervalExpr": {
             "Interval": "IntervalExpr_Interval",
@@ -221,7 +223,7 @@ class AstNode:
             "LessThan": "BinaryOperator_LessThan",
             "GreaterThan": "BinaryOperator_GreaterThan",
             "LessThanOrEqualTo": "BinaryOperator_LessThanOrEqualTo",
-            "GreaterTHanOrEqualTo": "BinaryOperator_GreaterTHanOrEqualTo",
+            "GreaterThanOrEqualTo": "BinaryOperator_GreaterThanOrEqualTo",
             "NotEqual": "BinaryOperator_NotEqual",
             "Like": "BinaryOperator_Like",
             "NotLike": "BinaryOperator_NotLike",
@@ -544,6 +546,19 @@ class AstNode:
 
 @dataclass
 class Ast(AstNode):
+    statements: "list[Statement]"
+
+
+@dataclass
+class IfStatement(AstNode):
+    if_: "IfBranch"
+    else_ifs: "Optional[list[IfBranch]]"
+    else_: "Optional[list[Statement]]"
+
+
+@dataclass
+class IfBranch(AstNode):
+    condition: "Expr"
     statements: "list[Statement]"
 
 
@@ -1134,6 +1149,11 @@ class Statement_DropTableStatement(AstNode):
 
 
 @dataclass
+class Statement_If(AstNode):
+    value: "IfStatement"
+
+
+@dataclass
 class Statement_BeginTransaction(AstNode): ...
 
 
@@ -1145,7 +1165,7 @@ class Statement_CommitTransaction(AstNode): ...
 class Statement_RollbackTransaction(AstNode): ...
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction"
+Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction"
 
 
 @dataclass
@@ -1518,7 +1538,12 @@ class Expr_QuantifiedLike(AstNode):
     value: "QuantifiedLikeExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike"
+@dataclass
+class Expr_Exists(AstNode):
+    value: "QueryExpr"
+
+
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_Bytes | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
 
 
 @dataclass
@@ -1860,7 +1885,7 @@ class BinaryOperator_LessThanOrEqualTo(AstNode): ...
 
 
 @dataclass
-class BinaryOperator_GreaterTHanOrEqualTo(AstNode): ...
+class BinaryOperator_GreaterThanOrEqualTo(AstNode): ...
 
 
 @dataclass
@@ -1915,7 +1940,7 @@ class BinaryOperator_ArrayIndex(AstNode): ...
 class BinaryOperator_FieldAccess(AstNode): ...
 
 
-BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterTHanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
+BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterThanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
 
 
 @dataclass

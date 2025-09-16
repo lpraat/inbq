@@ -114,7 +114,7 @@ pub struct PyCodeGenerator {
 impl PyCodeGenerator {
     #[inline]
     fn normalize_reserved_attribute_name(attr_name: &str) -> String {
-        let py_reserved = HashSet::from(["type", "except", "from", "with", "else", "case"]);
+        let py_reserved = HashSet::from(["type", "except", "from", "with", "if", "else", "case"]);
         let attr_name = if attr_name.starts_with("r#") {
             attr_name.get(2..).unwrap()
         } else {

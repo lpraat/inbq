@@ -19,9 +19,23 @@ pub enum Statement {
     Block(StatementsBlock),
     CreateTable(CreateTableStatement),
     DropTableStatement(DropTableStatement),
+    If(IfStatement),
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IfStatement {
+    pub r#if: IfBranch,
+    pub else_ifs: Option<Vec<IfBranch>>,
+    pub r#else: Option<Vec<Statement>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IfBranch {
+    pub condition: Expr,
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +288,7 @@ pub enum Expr {
     GenericFunction(Box<GenericFunctionExpr>),
     Function(Box<FunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
+    Exists(Box<QueryExpr>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,7 +523,7 @@ pub enum BinaryOperator {
     LessThan,
     GreaterThan,
     LessThanOrEqualTo,
-    GreaterTHanOrEqualTo,
+    GreaterThanOrEqualTo,
     NotEqual,
     Like,
     NotLike,

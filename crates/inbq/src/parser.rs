@@ -9,20 +9,20 @@ use crate::ast::{
     FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
-    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot,
-    NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate,
-    PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
-    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
-    TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr,
-    Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
+    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
+    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 
@@ -73,6 +73,16 @@ impl<'a> Parser<'a> {
 
     fn check_token_type(&self, token_type: TokenTypeVariant) -> bool {
         self.peek().kind.discriminant() == token_type
+    }
+
+    fn check_token_types(&self, token_types: &[TokenTypeVariant]) -> bool {
+        let peek_discriminant = self.peek().kind.discriminant();
+        for tok in token_types {
+            if peek_discriminant == *tok {
+                return true;
+            }
+        }
+        false
     }
 
     fn match_token_type(&mut self, token_type: TokenTypeVariant) -> bool {
@@ -232,6 +242,7 @@ impl<'a> Parser<'a> {
             TokenType::Create => self.parse_create_table_statement()?,
             TokenType::Merge => self.parse_merge_statement()?,
             TokenType::Set => self.parse_set_var_statement()?,
+            TokenType::If => self.parse_if_statement()?,
             TokenType::Identifier(non_reserved_keyword) => {
                 match non_reserved_keyword.to_lowercase().as_str() {
                     "insert" => self.parse_insert_statement()?,
@@ -272,6 +283,77 @@ impl<'a> Parser<'a> {
             _ => self.parse_query_statement()?,
         };
         Ok(statement)
+    }
+
+    // if_statement -> "IF" expr "THEN" statements ["ELSEIF" expr "THEN" statements]* ["ELSE" statements] "END" "IF"
+    // where:
+    // statements -> statement (";" statement)*
+    fn parse_if_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::If)?;
+        let condition = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Then)?;
+        let mut statements = vec![];
+        loop {
+            statements.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+            if self.check_token_types(&[TokenTypeVariant::Else, TokenTypeVariant::End])
+                || self.check_non_reserved_keyword("elseif")
+            {
+                break;
+            }
+        }
+
+        let r#if = IfBranch {
+            condition,
+            statements,
+        };
+
+        let mut else_ifs = vec![];
+        while self.match_non_reserved_keyword("elseif") {
+            let condition = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Then)?;
+            let mut statements = vec![];
+            loop {
+                statements.push(self.parse_statement()?);
+                self.consume(TokenTypeVariant::Semicolon)?;
+                if self.check_token_types(&[TokenTypeVariant::Else, TokenTypeVariant::End]) {
+                    break;
+                }
+            }
+            else_ifs.push(IfBranch {
+                condition,
+                statements,
+            });
+        }
+
+        let else_ifs = if else_ifs.is_empty() {
+            None
+        } else {
+            Some(else_ifs)
+        };
+
+        let r#else = if self.match_token_type(TokenTypeVariant::Else) {
+            let mut statements = vec![];
+            loop {
+                statements.push(self.parse_statement()?);
+                self.consume(TokenTypeVariant::Semicolon)?;
+                if self.check_token_type(TokenTypeVariant::End) {
+                    break;
+                }
+            }
+            Some(statements)
+        } else {
+            None
+        };
+
+        self.consume(TokenTypeVariant::End)?;
+        self.consume(TokenTypeVariant::If)?;
+        self.consume(TokenTypeVariant::Semicolon)?;
+        Ok(Statement::If(IfStatement {
+            r#if,
+            else_ifs,
+            r#else,
+        }))
     }
 
     fn parse_drop_statement(&mut self) -> anyhow::Result<Statement> {
@@ -1972,43 +2054,44 @@ impl<'a> Parser<'a> {
             match &curr.kind {
                 TokenType::Equal => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Equal)?;
                 }
                 TokenType::Greater => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output =
+                        self.create_standard_binary_expr(output, BinaryOperator::GreaterThan)?;
                 }
                 TokenType::Less => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::LessThan)?;
                 }
                 TokenType::GreaterEqual => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(
+                        output,
+                        BinaryOperator::GreaterThanOrEqualTo,
+                    )?;
                 }
                 TokenType::LessEqual => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self
+                        .create_standard_binary_expr(output, BinaryOperator::LessThanOrEqualTo)?;
                 }
-                TokenType::BangEqual => {
+                TokenType::BangEqual | TokenType::NotEqual => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
-                }
-                TokenType::NotEqual => {
-                    self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::NotEqual)?;
                 }
                 TokenType::Like => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Like)?;
                 }
                 TokenType::In => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::In)?;
                 }
                 TokenType::Between => {
                     self.advance();
-                    output = self.create_standard_binary_expr(output, BinaryOperator::Plus)?;
+                    output = self.create_standard_binary_expr(output, BinaryOperator::Between)?;
                 }
                 TokenType::Not => {
                     self.advance();
@@ -3051,6 +3134,15 @@ impl<'a> Parser<'a> {
         })))
     }
 
+    // exists_subquery_expr -> "EXISTS" "(" query_Expr ")"
+    fn parse_exists_subquery_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Exists)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let query_expr = self.parse_query_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Exists(Box::new(query_expr)))
+    }
+
     // case_expr -> "CASE" ("WHEN" expr "THEN" expr)+ "ELSE" expr "END"
     fn parse_case_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Case)?;
@@ -3217,6 +3309,7 @@ impl<'a> Parser<'a> {
     // | function_expr
     // | quantified_like_expr
     // | "(" expression ")" | "(" query_expr ")"
+    // | "EXISTS" "(" query_expr ")"
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
@@ -3391,6 +3484,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Expr::Default
             }
+            TokenType::Exists => self.parse_exists_subquery_expr()?,
             TokenType::LeftParen => {
                 self.advance();
                 let curr_position = self.curr;

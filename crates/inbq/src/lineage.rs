@@ -1390,6 +1390,7 @@ impl LineageExtractor {
                 self.struct_expr_lin(struct_expr)?;
             }
             Expr::Query(query_expr) => self.query_expr_lin(query_expr, expand_value_table)?,
+            Expr::Exists(query_expr) => self.query_expr_lin(query_expr, expand_value_table)?,
             Expr::Case(case_expr) => {
                 if let Some(case) = &case_expr.case {
                     self.select_expr_col_expr_lin(case, expand_value_table)?;
@@ -2903,6 +2904,23 @@ impl LineageExtractor {
             Statement::Block(statements_block) => self.statements_block_lin(statements_block)?,
             Statement::DropTableStatement(drop_table_statement) => {
                 self.drop_table_statement_lin(drop_table_statement)?
+            }
+            Statement::If(if_statement) => {
+                for statement in &if_statement.r#if.statements {
+                    self.statement_lin(statement)?;
+                }
+                if let Some(ref else_ifs) = if_statement.else_ifs {
+                    for else_if in else_ifs {
+                        for statement in &else_if.statements {
+                            self.statement_lin(statement)?;
+                        }
+                    }
+                }
+                if let Some(ref else_statements) = if_statement.r#else {
+                    for statement in else_statements {
+                        self.statement_lin(statement)?;
+                    }
+                }
             }
             Statement::Delete(_)
             | Statement::Truncate(_)

@@ -14,20 +14,20 @@ use inbq::ast::{
     FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfFunctionExpr,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier,
-    Limit, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot,
-    NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, ParseToken, PathExpr, Pivot, PivotAggregate,
-    PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
-    RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-    SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-    SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-    StatementsBlock, StructExpr, StructField, StructFieldType, StructParameterizedFieldType, Token,
-    TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
+    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type, UnaryExpr,
+    UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
+    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -828,9 +828,9 @@ impl RsToPyObject for BinaryOperator {
                 get_class!(py_ctx, BinaryOperator::LessThanOrEqualTo)?,
                 &[],
             ),
-            BinaryOperator::GreaterTHanOrEqualTo => instantiate_py_class(
+            BinaryOperator::GreaterThanOrEqualTo => instantiate_py_class(
                 py_ctx,
-                get_class!(py_ctx, BinaryOperator::GreaterTHanOrEqualTo)?,
+                get_class!(py_ctx, BinaryOperator::GreaterThanOrEqualTo)?,
                 &[],
             ),
             BinaryOperator::NotEqual => {
@@ -1664,6 +1664,10 @@ impl RsToPyObject for Expr {
             Expr::Query(query_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Query)?, kwargs)
+            }
+            Expr::Exists(query_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Exists)?, kwargs)
             }
             Expr::Case(case_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, case_expr)];
@@ -2545,6 +2549,27 @@ impl RsToPyObject for DropTableStatement {
     }
 }
 
+impl RsToPyObject for IfBranch {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "condition", self.condition),
+            kwarg!(py_ctx, "statements", self.statements),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, IfBranch)?, kwargs)
+    }
+}
+
+impl RsToPyObject for IfStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "if_", self.r#if),
+            kwarg!(py_ctx, "else_ifs", self.else_ifs),
+            kwarg!(py_ctx, "else_", self.r#else),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, IfStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2595,6 +2620,10 @@ impl RsToPyObject for Statement {
                     get_class!(py_ctx, Statement::DropTableStatement)?,
                     kwargs,
                 )
+            }
+            Statement::If(if_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_statement)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Statement::If)?, kwargs)
             }
             Statement::BeginTransaction => instantiate_py_class(
                 py_ctx,
