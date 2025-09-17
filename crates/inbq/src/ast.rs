@@ -390,6 +390,13 @@ pub enum FunctionExpr {
     SafeCast(SafeCastFunctionExpr),
     CurrentDate(CurrentDateFunctionExpr),
     CurrentTimestamp,
+    Right(RightFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RightFunctionExpr {
+    pub value: Expr,
+    pub length: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

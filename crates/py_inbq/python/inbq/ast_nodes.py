@@ -164,6 +164,7 @@ class AstNode:
             "SafeCast": "FunctionExpr_SafeCast",
             "CurrentDate": "FunctionExpr_CurrentDate",
             "CurrentTimestamp": "FunctionExpr_CurrentTimestamp",
+            "Right": "FunctionExpr_Right",
         },
         "ExtractFunctionPart": {
             "MicroSecond": "ExtractFunctionPart_MicroSecond",
@@ -751,6 +752,12 @@ class WhenThen(AstNode):
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
+
+
+@dataclass
+class RightFunctionExpr(AstNode):
+    value: "Expr"
+    length: "Expr"
 
 
 @dataclass
@@ -1718,7 +1725,12 @@ class FunctionExpr_CurrentDate(AstNode):
 class FunctionExpr_CurrentTimestamp(AstNode): ...
 
 
-FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_Extract | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp"
+@dataclass
+class FunctionExpr_Right(AstNode):
+    value: "RightFunctionExpr"
+
+
+FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_Extract | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp | FunctionExpr_Right"
 
 
 @dataclass

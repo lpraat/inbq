@@ -517,6 +517,16 @@ select
 
 [[tests]]
 sql = """
+SELECT 'apple' AS example, RIGHT('apple', 3) AS right_example
+"""
+
+[[tests]]
+sql = """
+SELECT b'apple' AS example, RIGHT(b'apple', 3) AS right_example
+"""
+
+[[tests]]
+sql = """
 INSERT dataset.Inventory (product, quantity)
 VALUES('top load washer', 10),
       ('front load washer', 20),
@@ -816,6 +826,7 @@ IF EXISTS(SELECT 1 FROM schema.products
 ELSE
   SELECT CONCAT('did not find product ', CAST(target_product_id AS STRING));
 END IF;
+select 1;
 """
 
 [[tests]]
@@ -866,4 +877,5 @@ CASE product_id
   ELSE
     SELECT CONCAT('Invalid product');
 END CASE;
+select 1;
 """

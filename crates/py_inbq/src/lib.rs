@@ -21,14 +21,15 @@ use inbq::ast::{
     MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
     OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
     Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, SafeCastFunctionExpr,
-    Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-    SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
-    SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField,
-    StructFieldType, StructParameterizedFieldType, Token, TokenType, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
-    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, RightFunctionExpr,
+    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+    StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
+    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -1458,6 +1459,16 @@ impl RsToPyObject for ExtractFunctionExpr {
     }
 }
 
+impl RsToPyObject for RightFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "value", self.value),
+            kwarg!(py_ctx, "length", self.length),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, RightFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1500,6 +1511,10 @@ impl RsToPyObject for FunctionExpr {
             FunctionExpr::Extract(extract_function_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, extract_function_expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Extract)?, kwargs)
+            }
+            FunctionExpr::Right(right_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, right_function_expr)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, FunctionExpr::Right)?, kwargs)
             }
             FunctionExpr::CurrentTimestamp => instantiate_py_class(
                 py_ctx,
