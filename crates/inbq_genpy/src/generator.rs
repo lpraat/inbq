@@ -447,13 +447,13 @@ class AstNode:
         elif get_origin(ty) is list:
             return [cls._instantiate_type_from_data(get_args(ty)[0], el) for el in data]
 
-        elif "ast_nodes" in cls.__module__:
+        elif "ast_nodes" in ty.__module__:
             ty_hints = {{
                 k: v for k, v in get_type_hints(ty).items() if not k.startswith("_")
             }}
             cls_dict = {{}}
 
-            if "_" in cls.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
+            if "_" in ty.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
                 cls_dict["value"] = cls._instantiate_type_from_data(
                     ty_hints["value"], data
                 )

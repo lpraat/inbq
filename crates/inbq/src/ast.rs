@@ -30,6 +30,72 @@ pub enum Statement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Name {
+    Identifier(Identifier),
+    QuotedIdentifier(QuotedIdentifier),
+}
+
+impl Name {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Name::Identifier(identifier) => &identifier.name,
+            Name::QuotedIdentifier(quoted_identifier) => &quoted_identifier.name,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathName {
+    pub name: String,
+    pub parts: Vec<PathPart>,
+}
+
+impl std::convert::From<Vec<PathPart>> for PathName {
+    fn from(value: Vec<PathPart>) -> Self {
+        let name = value
+            .iter()
+            .map(|p| match p {
+                PathPart::Identifier(identifier) => &identifier.name,
+                PathPart::QuotedIdentifier(quoted_identifier) => &quoted_identifier.name,
+                PathPart::Number(number) => &number.value,
+                PathPart::DotSeparator => ".",
+                PathPart::SlashSeparator => "/",
+                PathPart::DashSeparator => "-",
+                PathPart::ColonSeparator => ":",
+            })
+            .collect::<Vec<&str>>()
+            .join("");
+        Self { name, parts: value }
+    }
+}
+
+impl PathName {
+    pub fn identifiers(&self) -> Vec<&str> {
+        self.parts
+            .iter()
+            .filter_map(|p| match p {
+                PathPart::Identifier(identifier) => Some(identifier.name.as_str()),
+                PathPart::QuotedIdentifier(quoted_identifier) => {
+                    Some(quoted_identifier.name.as_str())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PathPart {
+    Identifier(Identifier),
+    QuotedIdentifier(QuotedIdentifier),
+    Number(Number),
+    DotSeparator,
+    SlashSeparator,
+    DashSeparator,
+    ColonSeparator,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaseStatement {
     pub case: Option<Expr>,
     pub when_thens: Vec<CaseWhenThenStatements>,
@@ -44,7 +110,7 @@ pub struct CaseWhenThenStatements {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallStatement {
-    pub procedure_name: ParseToken,
+    pub procedure_name: PathName,
     pub arguments: Vec<Expr>,
 }
 
@@ -74,7 +140,7 @@ pub struct StatementsBlock {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclareVarStatement {
-    pub vars: Vec<ParseToken>,
+    pub vars: Vec<Name>,
     pub r#type: Option<ParameterizedType>,
     pub default: Option<Expr>,
 }
@@ -87,13 +153,13 @@ pub struct SetVarStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SetVariable {
-    UserVariable { name: ParseToken },
-    SystemVariable { name: ParseToken },
+    UserVariable(Name),
+    SystemVariable(SystemVariable),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTableStatement {
-    pub name: ParseToken,
+    pub name: PathName,
     pub schema: Option<Vec<ColumnSchema>>,
     pub replace: bool,
     pub is_temporary: bool,
@@ -103,13 +169,13 @@ pub struct CreateTableStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropTableStatement {
-    pub name: ParseToken,
+    pub name: PathName,
     pub if_exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnSchema {
-    pub name: ParseToken,
+    pub name: Name,
     pub r#type: ParameterizedType,
 }
 
@@ -152,7 +218,7 @@ pub enum ParameterizedType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructParameterizedFieldType {
-    pub name: ParseToken,
+    pub name: Name,
     pub r#type: ParameterizedType,
 }
 
@@ -179,7 +245,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructFieldType {
-    pub name: Option<ParseToken>,
+    pub name: Option<Name>,
     pub r#type: Type,
 }
 
@@ -190,29 +256,29 @@ pub struct QueryStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsertStatement {
-    pub table: ParseToken,
-    pub columns: Option<Vec<ParseToken>>,
+    pub table: PathName,
+    pub columns: Option<Vec<Name>>,
     pub values: Option<Vec<Expr>>,
     pub query: Option<QueryExpr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteStatement {
-    pub table: ParseToken,
-    pub alias: Option<ParseToken>,
+    pub table: PathName,
+    pub alias: Option<Name>,
     pub cond: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateItem {
-    pub column: ParseToken,
+    pub column: Expr,
     pub expr: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStatement {
-    pub table: ParseToken,
-    pub alias: Option<ParseToken>,
+    pub table: PathName,
+    pub alias: Option<Name>,
     pub update_items: Vec<UpdateItem>,
     pub from: Option<From>,
     pub r#where: Where,
@@ -220,22 +286,22 @@ pub struct UpdateStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TruncateStatement {
-    pub table: ParseToken,
+    pub table: PathName,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergeStatement {
-    pub target_table: ParseToken,
-    pub target_alias: Option<ParseToken>,
+    pub target_table: PathName,
+    pub target_alias: Option<Name>,
     pub source: MergeSource,
-    pub source_alias: Option<ParseToken>,
+    pub source_alias: Option<Name>,
     pub condition: Expr,
     pub whens: Vec<When>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MergeSource {
-    Table(ParseToken),
+    Table(PathName),
     Subquery(QueryExpr),
 }
 
@@ -254,7 +320,7 @@ pub struct MergeUpdate {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergeInsert {
-    pub columns: Option<Vec<ParseToken>>,
+    pub columns: Option<Vec<Name>>,
     pub values: Vec<Expr>,
 }
 
@@ -290,18 +356,20 @@ pub enum Expr {
     Grouping(GroupingExpr),
     Array(ArrayExpr),
     Struct(StructExpr),
-    Identifier(String),
-    QuotedIdentifier(String),
+    Identifier(Identifier),
+    QuotedIdentifier(QuotedIdentifier),
     QueryNamedParameter(String),
     QueryPositionalParameter,
-    SystemVariable(String),
+    SystemVariable(SystemVariable),
     String(String),
+    RawString(String),
     StringConcat(StringConcatExpr),
     Bytes(String),
+    RawBytes(String),
     BytesConcat(BytesConcatExpr),
     Numeric(String),
     BigNumeric(String),
-    Number(String),
+    Number(Number),
     Bool(bool),
     Date(String),
     Time(String),
@@ -322,13 +390,33 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemVariable {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Number {
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Identifier {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuotedIdentifier {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StringConcatExpr {
-    pub strings: Vec<ParseToken>,
+    pub strings: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BytesConcatExpr {
-    pub bytes: Vec<ParseToken>,
+    pub bytes: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -482,7 +570,7 @@ pub struct IfFunctionExpr {
 /// Generic function call, whose signature is not yet implemented in the parser
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericFunctionExpr {
-    pub name: ParseToken,
+    pub name: Name,
     pub arguments: Vec<GenericFunctionExprArg>,
     pub over: Option<NamedWindowExpr>,
 }
@@ -625,7 +713,7 @@ pub struct StructExpr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructField {
     pub expr: Expr,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -712,13 +800,13 @@ pub enum Cte {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NonRecursiveCte {
-    pub name: ParseToken,
+    pub name: Name,
     pub query: QueryExpr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecursiveCte {
-    pub name: ParseToken,
+    pub name: Name,
     pub base_query: QueryExpr,
     pub recursive_query: QueryExpr,
 }
@@ -752,18 +840,18 @@ pub enum SelectExpr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectColExpr {
     pub expr: Expr,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectColAllExpr {
     pub expr: Expr,
-    pub except: Option<Vec<ParseToken>>,
+    pub except: Option<Vec<Name>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectAllExpr {
-    pub except: Option<Vec<ParseToken>>,
+    pub except: Option<Vec<Name>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -776,28 +864,28 @@ pub struct From {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pivot {
     pub aggregates: Vec<PivotAggregate>,
-    pub input_column: ParseToken,
+    pub input_column: Name,
     pub pivot_columns: Vec<PivotColumn>,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PivotAggregate {
     pub expr: Expr,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PivotColumn {
     pub expr: Expr,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Unpivot {
     pub nulls: UnpivotNulls,
     pub kind: UnpivotKind,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -814,27 +902,27 @@ pub enum UnpivotKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SingleColumnUnpivot {
-    pub values_column: ParseToken,
-    pub name_column: ParseToken,
+    pub values_column: Name,
+    pub name_column: Name,
     pub columns_to_unpivot: Vec<ColumnToUnpivot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiColumnUnpivot {
-    pub values_columns: Vec<ParseToken>,
-    pub name_column: ParseToken,
+    pub values_columns: Vec<Name>,
+    pub name_column: Name,
     pub column_sets_to_unpivot: Vec<ColumnSetToUnpivot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnToUnpivot {
-    pub name: ParseToken,
+    pub name: Name,
     pub alias: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnSetToUnpivot {
-    pub names: Vec<ParseToken>,
+    pub names: Vec<Name>,
     pub alias: Option<Expr>,
 }
 
@@ -876,27 +964,24 @@ pub enum JoinKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum JoinCondition {
     On(Expr),
-    Using(Vec<ParseToken>),
+    Using { columns: Vec<Name> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnnestExpr {
     pub array: Box<Expr>,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
     pub with_offset: bool,
-    pub offset_alias: Option<ParseToken>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PathExpr {
-    pub expr: ParseToken,
+    pub offset_alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FromPathExpr {
-    pub path: PathExpr,
-    pub alias: Option<ParseToken>,
+    pub path: PathName,
+    pub alias: Option<Name>,
 }
+
+impl FromPathExpr {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupingFromExpr {
@@ -906,7 +991,7 @@ pub struct GroupingFromExpr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FromGroupingQueryExpr {
     pub query: Box<QueryExpr>,
-    pub alias: Option<ParseToken>,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -948,19 +1033,19 @@ pub struct WindowOrderByExpr {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedWindow {
-    pub name: ParseToken,
+    pub name: Name,
     pub window: NamedWindowExpr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NamedWindowExpr {
-    Reference(ParseToken),
+    Reference(Name),
     WindowSpec(WindowSpec),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowSpec {
-    pub window_name: Option<ParseToken>,
+    pub window_name: Option<Name>,
     pub partition_by: Option<Vec<Expr>>,
     pub order_by: Option<Vec<WindowOrderByExpr>>,
     pub frame: Option<WindowFrame>,
@@ -986,44 +1071,6 @@ pub enum FrameBound {
 pub enum WindowFrameKind {
     Range,
     Rows,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ParseToken {
-    Single(Token),
-    Multiple(Vec<Token>),
-}
-
-impl ParseToken {
-    pub fn lexeme(&self, join_char: Option<&str>) -> String {
-        match self {
-            ParseToken::Single(token) => token.lexeme.clone(),
-            ParseToken::Multiple(vec) => vec
-                .iter()
-                .map(|tok| tok.lexeme.clone())
-                .collect::<Vec<String>>()
-                .join(join_char.map_or(" ", |c| c)),
-        }
-    }
-    pub fn identifier(&self) -> String {
-        match self {
-            ParseToken::Single(token) => match &token.kind {
-                TokenType::Identifier(ident) => ident.to_owned(),
-                TokenType::QuotedIdentifier(qident) => qident.to_owned(),
-                _ => panic!("Can't call identifier on {:?}", self),
-            },
-
-            ParseToken::Multiple(vec) => vec
-                .iter()
-                .map(|tok| match &tok.kind {
-                    TokenType::Identifier(ident) => ident.to_owned(),
-                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
-                    _ => tok.lexeme.to_owned(),
-                })
-                .collect::<Vec<String>>()
-                .join(""),
-        }
-    }
 }
 
 #[derive(PartialEq, Clone, Debug, EnumDiscriminants, Serialize, Deserialize)]

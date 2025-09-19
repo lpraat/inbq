@@ -10,17 +10,18 @@ use crate::ast::{
     FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
     IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
     JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, RightFunctionExpr,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-    StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType, TokenTypeVariant,
+    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
+    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
+    PathPart, Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, SystemVariable, Token, TokenType, TokenTypeVariant,
     TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
     UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
     WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
@@ -175,6 +176,26 @@ impl<'a> Parser<'a> {
             TokenTypeVariant::Identifier,
             TokenTypeVariant::QuotedIdentifier,
         ])
+    }
+
+    fn consume_identifier_into_name(&mut self) -> anyhow::Result<Name> {
+        Ok(
+            match &self
+                .consume_one_of(&[
+                    TokenTypeVariant::Identifier,
+                    TokenTypeVariant::QuotedIdentifier,
+                ])?
+                .kind
+            {
+                TokenType::Identifier(ident) => Name::Identifier(Identifier {
+                    name: ident.clone(),
+                }),
+                TokenType::QuotedIdentifier(qident) => Name::QuotedIdentifier(QuotedIdentifier {
+                    name: qident.clone(),
+                }),
+                _ => unreachable!(),
+            },
+        )
     }
 
     fn consume_and_get_identifier(&mut self) -> anyhow::Result<&str> {
@@ -355,7 +376,7 @@ impl<'a> Parser<'a> {
     // call_statement -> "CALL" path "(" expr ("," expr)* ")"
     fn parse_call_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("call")?;
-        let procedure_name = self.parse_path()?.expr;
+        let procedure_name = self.parse_path()?;
         self.consume(TokenTypeVariant::LeftParen)?;
         let mut arguments = vec![];
         loop {
@@ -489,7 +510,7 @@ impl<'a> Parser<'a> {
             false
         };
 
-        let name = self.parse_path()?.expr;
+        let name = self.parse_path()?;
 
         Ok(Statement::DropTableStatement(DropTableStatement {
             name,
@@ -548,15 +569,15 @@ impl<'a> Parser<'a> {
             self.consume(TokenTypeVariant::Exists)?;
         }
 
-        let name = self.parse_path()?.expr;
+        let name = self.parse_path()?;
 
         let schema = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut column_schema = vec![];
             loop {
-                let col_name = self.consume_identifier()?.clone();
+                let col_name = self.consume_identifier_into_name()?;
                 let col_type = self.parse_parameterized_bq_type()?;
                 column_schema.push(ColumnSchema {
-                    name: ParseToken::Single(col_name),
+                    name: col_name,
                     r#type: col_type,
                 });
 
@@ -604,8 +625,8 @@ impl<'a> Parser<'a> {
 
         let mut var_names = vec![];
         loop {
-            let var_name = self.consume_identifier()?;
-            var_names.push(ParseToken::Single(var_name.clone()));
+            let var_name = self.consume_identifier_into_name()?;
+            var_names.push(var_name);
 
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -642,22 +663,29 @@ impl<'a> Parser<'a> {
             // multiple vars
             vars = vec![];
             loop {
-                let tok = self
+                let var = match &self
                     .consume_one_of(&[
                         TokenTypeVariant::Identifier,
                         TokenTypeVariant::QuotedIdentifier,
                         TokenTypeVariant::SystemVariable,
                     ])?
-                    .clone();
-                let var = match &tok.kind {
-                    TokenType::Identifier(_) | TokenType::QuotedIdentifier(_) => {
-                        SetVariable::UserVariable {
-                            name: ParseToken::Single(tok),
-                        }
+                    .kind
+                {
+                    TokenType::Identifier(ident) => {
+                        SetVariable::UserVariable(Name::Identifier(Identifier {
+                            name: ident.clone(),
+                        }))
                     }
-                    TokenType::SystemVariable(_) => SetVariable::SystemVariable {
-                        name: ParseToken::Single(tok),
-                    },
+                    TokenType::QuotedIdentifier(ident) => {
+                        SetVariable::UserVariable(Name::QuotedIdentifier(QuotedIdentifier {
+                            name: ident.clone(),
+                        }))
+                    }
+                    TokenType::SystemVariable(sysvar) => {
+                        SetVariable::SystemVariable(SystemVariable {
+                            name: sysvar.clone(),
+                        })
+                    }
                     _ => unreachable!(),
                 };
                 vars.push(var);
@@ -687,22 +715,27 @@ impl<'a> Parser<'a> {
                 self.consume(TokenTypeVariant::RightParen)?;
             }
         } else {
-            let tok = self
+            let var = match &self
                 .consume_one_of(&[
                     TokenTypeVariant::Identifier,
                     TokenTypeVariant::QuotedIdentifier,
                     TokenTypeVariant::SystemVariable,
                 ])?
-                .clone();
-            let var = match &tok.kind {
-                TokenType::Identifier(_) | TokenType::QuotedIdentifier(_) => {
-                    SetVariable::UserVariable {
-                        name: ParseToken::Single(tok),
-                    }
+                .kind
+            {
+                TokenType::Identifier(ident) => {
+                    SetVariable::UserVariable(Name::Identifier(Identifier {
+                        name: ident.clone(),
+                    }))
                 }
-                TokenType::SystemVariable(_) => SetVariable::SystemVariable {
-                    name: ParseToken::Single(tok),
-                },
+                TokenType::QuotedIdentifier(ident) => {
+                    SetVariable::UserVariable(Name::QuotedIdentifier(QuotedIdentifier {
+                        name: ident.clone(),
+                    }))
+                }
+                TokenType::SystemVariable(sysvar) => SetVariable::SystemVariable(SystemVariable {
+                    name: sysvar.clone(),
+                }),
                 _ => unreachable!(),
             };
             vars = vec![var];
@@ -720,12 +753,12 @@ impl<'a> Parser<'a> {
     fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("insert")?;
         self.match_token_type(TokenTypeVariant::Into);
-        let table = self.parse_path()?.expr;
+        let table = self.parse_path()?;
         let columns = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut columns = vec![];
             loop {
-                let column_name = self.consume_identifier()?;
-                columns.push(ParseToken::Single(column_name.clone()));
+                let column_name = self.consume_identifier_into_name()?;
+                columns.push(column_name);
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
                 }
@@ -777,10 +810,8 @@ impl<'a> Parser<'a> {
     fn parse_delete_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("delete")?;
         self.match_token_type(TokenTypeVariant::From);
-        let table = self.parse_path()?.expr;
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let table = self.parse_path()?;
+        let alias = self.parse_as_alias()?;
         self.consume(TokenTypeVariant::Where)?;
         let cond = self.parse_expr()?;
         Ok(Statement::Delete(DeleteStatement { table, alias, cond }))
@@ -791,14 +822,12 @@ impl<'a> Parser<'a> {
     // set_clause = ("Identifier" | "QuotedIdentifier") = expr ("," ("Identifier" | "QuotedIdentifier") = expr)*
     fn parse_update_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("update")?;
-        let table = self.parse_path()?.expr;
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let table = self.parse_path()?;
+        let alias = self.parse_as_alias()?;
         self.consume(TokenTypeVariant::Set)?;
         let mut update_items = vec![];
         loop {
-            let column_path = self.parse_path()?.expr;
+            let column_path = self.parse_field_access_expr()?;
             self.consume(TokenTypeVariant::Equal)?;
             let expr = self.parse_expr()?;
             update_items.push(UpdateItem {
@@ -831,7 +860,7 @@ impl<'a> Parser<'a> {
     fn parse_truncate_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("truncate")?;
         self.consume_non_reserved_keyword("table")?;
-        let table = self.parse_path()?.expr;
+        let table = self.parse_path()?;
         Ok(Statement::Truncate(TruncateStatement { table }))
     }
 
@@ -843,19 +872,15 @@ impl<'a> Parser<'a> {
     fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Merge)?;
         self.match_token_type(TokenTypeVariant::Into);
-        let target_table = self.parse_path()?.expr;
-        let target_alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let target_table = self.parse_path()?;
+        let target_alias = self.parse_as_alias()?;
         self.consume(TokenTypeVariant::Using)?;
         let source = if self.check_token_type(TokenTypeVariant::LeftParen) {
             MergeSource::Subquery(self.parse_query_expr()?)
         } else {
-            MergeSource::Table(self.parse_path()?.expr)
+            MergeSource::Table(self.parse_path()?)
         };
-        let source_alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let source_alias = self.parse_as_alias()?;
         self.consume(TokenTypeVariant::On)?;
         let condition = self.parse_expr()?;
 
@@ -934,7 +959,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Set)?;
         let mut update_items = vec![];
         loop {
-            let column_path = self.parse_path()?.expr;
+            let column_path = self.parse_field_access_expr()?;
             self.consume(TokenTypeVariant::Equal)?;
             let expr = self.parse_expr()?;
             update_items.push(UpdateItem {
@@ -961,8 +986,8 @@ impl<'a> Parser<'a> {
         let columns = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut columns = vec![];
             loop {
-                let column_name = self.consume_identifier()?;
-                columns.push(ParseToken::Single(column_name.clone()));
+                let column_name = self.consume_identifier_into_name()?;
+                columns.push(column_name);
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
                 }
@@ -1076,14 +1101,16 @@ impl<'a> Parser<'a> {
         let limit = if self.match_token_type(TokenTypeVariant::Limit) {
             let tok = self.consume(TokenTypeVariant::Number)?;
             let count = match &tok.kind {
-                TokenType::Number(num) => Expr::Number(num.clone()),
+                TokenType::Number(num) => Expr::Number(Number { value: num.clone() }),
                 _ => unreachable!(),
             };
 
             let offset = if self.match_non_reserved_keyword("offset") {
                 let tok = self.consume(TokenTypeVariant::Number)?;
                 match &tok.kind {
-                    TokenType::Number(num) => Some(Box::new(Expr::Number(num.clone()))),
+                    TokenType::Number(num) => {
+                        Some(Box::new(Expr::Number(Number { value: num.clone() })))
+                    }
                     _ => unreachable!(),
                 }
             } else {
@@ -1148,10 +1175,10 @@ impl<'a> Parser<'a> {
         self.match_token_type(TokenTypeVariant::Recursive);
         let mut ctes = vec![];
         loop {
-            let cte_name = self.consume_identifier()?.clone();
+            let cte_name = self.consume_identifier_into_name()?;
             self.consume(TokenTypeVariant::As)?;
             self.consume(TokenTypeVariant::LeftParen)?;
-            ctes.push(self.parse_cte(&cte_name)?);
+            ctes.push(self.parse_cte(cte_name)?);
 
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -1160,21 +1187,21 @@ impl<'a> Parser<'a> {
         Ok(With { ctes })
     }
 
-    fn parse_cte(&mut self, name: &Token) -> anyhow::Result<Cte> {
+    fn parse_cte(&mut self, name: Name) -> anyhow::Result<Cte> {
         let cte_query = self.parse_query_expr()?;
         if self.match_token_type(TokenTypeVariant::Union) {
             self.consume(TokenTypeVariant::All)?;
             let recursive_query = self.parse_query_expr()?;
             self.consume(TokenTypeVariant::RightParen)?;
             Ok(Cte::Recursive(RecursiveCte {
-                name: ParseToken::Single(name.clone()),
+                name,
                 base_query: cte_query,
                 recursive_query,
             }))
         } else {
             self.consume(TokenTypeVariant::RightParen)?;
             Ok(Cte::NonRecursive(NonRecursiveCte {
-                name: ParseToken::Single(name.clone()),
+                name,
                 query: cte_query,
             }))
         }
@@ -1389,7 +1416,7 @@ impl<'a> Parser<'a> {
 
             aggregates.push(PivotAggregate {
                 expr: aggregate_expr,
-                alias: aggregate_alias.map(|tok| ParseToken::Single(tok.clone())),
+                alias: aggregate_alias,
             });
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -1397,7 +1424,7 @@ impl<'a> Parser<'a> {
         }
 
         self.consume(TokenTypeVariant::For)?;
-        let input_column = ParseToken::Single(self.consume_identifier()?.clone());
+        let input_column = self.consume_identifier_into_name()?;
         self.consume(TokenTypeVariant::In)?;
 
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -1407,7 +1434,7 @@ impl<'a> Parser<'a> {
             let col_alias = self.parse_as_alias()?;
             pivot_columns.push(PivotColumn {
                 expr: col_expr,
-                alias: col_alias.map(|tok| ParseToken::Single(tok.clone())),
+                alias: col_alias,
             });
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 break;
@@ -1417,9 +1444,7 @@ impl<'a> Parser<'a> {
 
         self.consume(TokenTypeVariant::RightParen)?;
 
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let alias = self.parse_as_alias()?;
 
         Ok(Pivot {
             aggregates,
@@ -1451,26 +1476,14 @@ impl<'a> Parser<'a> {
         let kind = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut values_columns = vec![];
             loop {
-                values_columns.push(ParseToken::Single(
-                    self.consume_one_of(&[
-                        TokenTypeVariant::Identifier,
-                        TokenTypeVariant::QuotedIdentifier,
-                    ])?
-                    .clone(),
-                ));
+                values_columns.push(self.consume_identifier_into_name()?);
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
                 }
             }
             self.consume(TokenTypeVariant::RightParen)?;
             self.consume(TokenTypeVariant::For)?;
-            let name_column = ParseToken::Single(
-                self.consume_one_of(&[
-                    TokenTypeVariant::Identifier,
-                    TokenTypeVariant::QuotedIdentifier,
-                ])?
-                .clone(),
-            );
+            let name_column = self.consume_identifier_into_name()?;
             self.consume(TokenTypeVariant::In)?;
             self.consume(TokenTypeVariant::LeftParen)?;
             let mut column_sets_to_unpivot = vec![];
@@ -1478,13 +1491,7 @@ impl<'a> Parser<'a> {
                 self.consume(TokenTypeVariant::LeftParen)?;
                 let mut names = vec![];
                 loop {
-                    names.push(ParseToken::Single(
-                        self.consume_one_of(&[
-                            TokenTypeVariant::Identifier,
-                            TokenTypeVariant::QuotedIdentifier,
-                        ])?
-                        .clone(),
-                    ));
+                    names.push(self.consume_identifier_into_name()?);
                     if !self.match_token_type(TokenTypeVariant::Comma) {
                         break;
                     }
@@ -1508,32 +1515,14 @@ impl<'a> Parser<'a> {
                 column_sets_to_unpivot,
             })
         } else {
-            let values_column = ParseToken::Single(
-                self.consume_one_of(&[
-                    TokenTypeVariant::Identifier,
-                    TokenTypeVariant::QuotedIdentifier,
-                ])?
-                .clone(),
-            );
+            let values_column = self.consume_identifier_into_name()?;
             self.consume(TokenTypeVariant::For)?;
-            let name_column = ParseToken::Single(
-                self.consume_one_of(&[
-                    TokenTypeVariant::Identifier,
-                    TokenTypeVariant::QuotedIdentifier,
-                ])?
-                .clone(),
-            );
+            let name_column = self.consume_identifier_into_name()?;
             self.consume(TokenTypeVariant::In)?;
             self.consume(TokenTypeVariant::LeftParen)?;
             let mut columns_to_unpivot = vec![];
             loop {
-                let name = ParseToken::Single(
-                    self.consume_one_of(&[
-                        TokenTypeVariant::Identifier,
-                        TokenTypeVariant::QuotedIdentifier,
-                    ])?
-                    .clone(),
-                );
+                let name = self.consume_identifier_into_name()?;
                 let alias = if self.match_token_type(TokenTypeVariant::As) {
                     Some(self.parse_expr()?)
                 } else {
@@ -1553,9 +1542,7 @@ impl<'a> Parser<'a> {
             })
         };
         self.consume(TokenTypeVariant::RightParen)?;
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let alias = self.parse_as_alias()?;
 
         Ok(Unpivot { nulls, kind, alias })
     }
@@ -1580,14 +1567,12 @@ impl<'a> Parser<'a> {
             return Ok(SelectExpr::ColAll(SelectColAllExpr { expr, except }));
         }
 
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let alias = self.parse_as_alias()?;
         Ok(SelectExpr::Col(SelectColExpr { expr, alias }))
     }
 
     // except -> "EXCEPT" "(" ("Identifier" | "QuotedIdentifier") ["," ("Identifier" | "QuotedIdentifier")]* ")"
-    fn parse_except(&mut self) -> anyhow::Result<Option<Vec<ParseToken>>> {
+    fn parse_except(&mut self) -> anyhow::Result<Option<Vec<Name>>> {
         if !self.match_token_type(TokenTypeVariant::Except) {
             return Ok(None);
         }
@@ -1595,10 +1580,10 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::LeftParen)?;
 
         let mut except_columns = vec![];
-        let column = self.consume_identifier()?;
-        except_columns.push(ParseToken::Single(column.clone()));
+        let column = self.consume_identifier_into_name()?;
+        except_columns.push(column);
         while self.match_token_type(TokenTypeVariant::Comma) {
-            except_columns.push(ParseToken::Single(self.consume_identifier()?.clone()));
+            except_columns.push(self.consume_identifier_into_name()?);
         }
         self.consume(TokenTypeVariant::RightParen)?;
         Ok(Some(except_columns))
@@ -1697,18 +1682,18 @@ impl<'a> Parser<'a> {
             let bool_expr = self.parse_expr()?;
             Ok(JoinCondition::On(bool_expr))
         } else if self.match_token_type(TokenTypeVariant::Using) {
-            let mut using_tokens = vec![];
+            let mut using_columns = vec![];
             self.consume(TokenTypeVariant::LeftParen)?;
-            let ident = self.consume_identifier()?.clone();
-            using_tokens.push(ident);
+            let ident = self.consume_identifier_into_name()?;
+            using_columns.push(ident);
             while self.match_token_type(TokenTypeVariant::Comma) {
-                let ident = self.consume_identifier()?.clone();
-                using_tokens.push(ident);
+                let ident = self.consume_identifier_into_name()?;
+                using_columns.push(ident);
             }
             self.consume(TokenTypeVariant::RightParen)?;
-            Ok(JoinCondition::Using(
-                using_tokens.into_iter().map(ParseToken::Single).collect(),
-            ))
+            Ok(JoinCondition::Using {
+                columns: using_columns,
+            })
         } else {
             return Err(anyhow!(
                 self.error(self.peek(), "Expected `ON` or `USING`.")
@@ -1716,7 +1701,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_from_item_alias(&mut self) -> anyhow::Result<Option<&Token>> {
+    fn parse_from_item_alias(&mut self) -> anyhow::Result<Option<Name>> {
         Ok(
             if self.check_non_reserved_keyword("pivot")
                 || self.check_non_reserved_keyword("unpivot")
@@ -1744,7 +1729,7 @@ impl<'a> Parser<'a> {
                 let alias = self.parse_from_item_alias()?;
                 Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
                     query: Box::new(query_expr),
-                    alias: alias.map(|tok| ParseToken::Single(tok.clone())),
+                    alias,
                 }))
             } else {
                 self.curr = curr;
@@ -1770,10 +1755,7 @@ impl<'a> Parser<'a> {
             let path = self.parse_path()?;
             let alias = self.parse_from_item_alias()?;
 
-            Ok(FromExpr::Path(FromPathExpr {
-                path,
-                alias: alias.map(|tok| ParseToken::Single(tok.clone())),
-            }))
+            Ok(FromExpr::Path(FromPathExpr { path, alias }))
         }
     }
 
@@ -1789,14 +1771,11 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_expr()?
         };
-        let alias = self
-            .parse_as_alias()?
-            .map(|tok| ParseToken::Single(tok.clone()));
+        let alias = self.parse_as_alias()?;
         let has_offset = self.match_token_type(TokenTypeVariant::With);
         let offset_alias = if has_offset {
             self.consume_non_reserved_keyword("offset")?;
             self.parse_as_alias()?
-                .map(|tok| ParseToken::Single(tok.clone()))
         } else {
             None
         };
@@ -1810,56 +1789,91 @@ impl<'a> Parser<'a> {
     }
 
     // as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
-    fn parse_as_alias(&mut self) -> anyhow::Result<Option<&Token>> {
+    fn parse_as_alias(&mut self) -> anyhow::Result<Option<Name>> {
         if self.match_token_type(TokenTypeVariant::As) {
-            return Ok(Some(self.consume_identifier()?));
+            return Ok(Some(self.consume_identifier_into_name()?));
         }
         if self.match_identifier() {
-            return Ok(Some(self.peek_prev()));
+            return Ok(Some(match &self.peek_prev().kind {
+                TokenType::Identifier(ident) => Name::Identifier(Identifier {
+                    name: ident.clone(),
+                }),
+                TokenType::QuotedIdentifier(qident) => Name::QuotedIdentifier(QuotedIdentifier {
+                    name: qident.clone(),
+                }),
+                _ => unreachable!(),
+            }));
         }
         Ok(None)
     }
 
-    // path -> path_expr ("." path_expr)*
-    fn parse_path(&mut self) -> anyhow::Result<PathExpr> {
-        let mut path_identifiers = vec![];
-        let identifier = self.parse_path_expression()?;
-        path_identifiers.extend(identifier);
+    // path -> path_part ("." path_part)*
+    fn parse_path(&mut self) -> anyhow::Result<PathName> {
+        let mut parts = vec![];
+        let path_parts = self.parse_path_part()?;
+        parts.extend(path_parts);
         while self.match_token_type(TokenTypeVariant::Dot) {
-            path_identifiers.push(self.peek_prev().clone());
-            let identifier = self.parse_path_expression()?;
-            path_identifiers.extend(identifier);
+            parts.push(PathPart::DotSeparator);
+            parts.extend(self.parse_path_part()?);
         }
-        Ok(PathExpr {
-            expr: ParseToken::Multiple(path_identifiers),
-        })
+        Ok(PathName::from(parts))
     }
 
-    // path_expr -> first_part (("/" | ":" | "-") subsequent_part)*
+    // path_part -> first_part (("/" | ":" | "-") subsequent_part)*
     // where:
     // first_part -> ("QuotedIdentifier" | "Identifier")
     // subsequent_part -> ("QuotedIdentifier" | "Identifier" | "Number")
-    fn parse_path_expression(&mut self) -> anyhow::Result<Vec<Token>> {
-        let mut path_expression_parts = vec![];
-        path_expression_parts.push(self.consume_identifier()?.clone());
+    fn parse_path_part(&mut self) -> anyhow::Result<Vec<PathPart>> {
+        let mut path_parts = vec![];
+
+        match &self.consume_identifier()?.kind {
+            TokenType::Identifier(ident) => path_parts.push(PathPart::Identifier(Identifier {
+                name: ident.clone(),
+            })),
+            TokenType::QuotedIdentifier(qident) => {
+                path_parts.push(PathPart::QuotedIdentifier(QuotedIdentifier {
+                    name: qident.clone(),
+                }))
+            }
+            _ => unreachable!(),
+        }
 
         while self.match_token_types(&[
             TokenTypeVariant::Slash,
             TokenTypeVariant::Colon,
             TokenTypeVariant::Minus,
         ]) {
-            path_expression_parts.push(self.peek_prev().clone());
-            path_expression_parts.push(
-                self.consume_one_of(&[
+            match &self.peek_prev().kind {
+                TokenType::Slash => path_parts.push(PathPart::SlashSeparator),
+                TokenType::Colon => path_parts.push(PathPart::ColonSeparator),
+                TokenType::Minus => path_parts.push(PathPart::DashSeparator),
+                _ => unreachable!(),
+            }
+
+            match &self
+                .consume_one_of(&[
                     TokenTypeVariant::QuotedIdentifier,
                     TokenTypeVariant::Identifier,
                     TokenTypeVariant::Number,
                 ])?
-                .clone(),
-            );
+                .kind
+            {
+                TokenType::Identifier(ident) => path_parts.push(PathPart::Identifier(Identifier {
+                    name: ident.clone(),
+                })),
+                TokenType::QuotedIdentifier(qident) => {
+                    path_parts.push(PathPart::QuotedIdentifier(QuotedIdentifier {
+                        name: qident.clone(),
+                    }))
+                }
+                TokenType::Number(num) => {
+                    path_parts.push(PathPart::Number(Number { value: num.clone() }))
+                }
+                _ => unreachable!(),
+            }
         }
 
-        Ok(path_expression_parts)
+        Ok(path_parts)
     }
 
     // where_expr -> expr
@@ -1974,11 +1988,11 @@ impl<'a> Parser<'a> {
     // frame -> window_frame
     fn parse_named_window_expr(&mut self) -> anyhow::Result<NamedWindowExpr> {
         if !self.match_token_type(TokenTypeVariant::LeftParen) {
-            let name = ParseToken::Single(self.consume_identifier()?.clone());
+            let name = self.consume_identifier_into_name()?;
             return Ok(NamedWindowExpr::Reference(name));
         }
         let ref_window = if self.check_identifier() {
-            Some(ParseToken::Single(self.consume_identifier()?.clone()))
+            Some(self.consume_identifier_into_name()?)
         } else {
             None
         };
@@ -2045,7 +2059,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Window)?;
         let mut named_windows = vec![];
         loop {
-            let name = ParseToken::Single(self.consume_identifier()?.clone());
+            let name = self.consume_identifier_into_name()?;
             self.consume(TokenTypeVariant::As)?;
             let named_window_expr = self.parse_named_window_expr()?;
             named_windows.push(NamedWindow {
@@ -2391,8 +2405,7 @@ impl<'a> Parser<'a> {
         loop {
             let field_expr = self.parse_expr()?;
             let field_alias = if self.match_token_type(TokenTypeVariant::As) {
-                let alias = self.consume_identifier()?.clone();
-                Some(ParseToken::Single(alias))
+                Some(self.consume_identifier_into_name()?)
             } else {
                 None
             };
@@ -2536,7 +2549,17 @@ impl<'a> Parser<'a> {
                         | TokenTypeVariant::Range
                 )) {
                 self.advance();
-                Some(ParseToken::Single(self.peek_prev().clone()))
+                Some(match &self.peek_prev().kind {
+                    TokenType::Identifier(ident) => Name::Identifier(Identifier {
+                        name: ident.clone(),
+                    }),
+                    TokenType::QuotedIdentifier(qident) => {
+                        Name::QuotedIdentifier(QuotedIdentifier {
+                            name: qident.clone(),
+                        })
+                    }
+                    _ => unreachable!(),
+                })
             } else {
                 None
             };
@@ -2656,15 +2679,10 @@ impl<'a> Parser<'a> {
         self.consume(TokenTypeVariant::Less)?;
         let mut struct_field_types = vec![];
         loop {
-            let field_name = self
-                .consume_one_of(&[
-                    TokenTypeVariant::Identifier,
-                    TokenTypeVariant::QuotedIdentifier,
-                ])?
-                .clone();
+            let field_name = self.consume_identifier_into_name()?;
             let field_type = self.parse_parameterized_bq_type()?;
             struct_field_types.push(StructParameterizedFieldType {
-                name: ParseToken::Single(field_name),
+                name: field_name,
                 r#type: field_type,
             });
 
@@ -3115,12 +3133,7 @@ impl<'a> Parser<'a> {
     //  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
     //  ["LIMIT" "Number"]
     fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
-        let function_name = self
-            .consume_one_of(&[
-                TokenTypeVariant::Identifier,
-                TokenTypeVariant::QuotedIdentifier,
-            ])?
-            .clone();
+        let function_name = self.consume_identifier_into_name()?;
         self.consume(TokenTypeVariant::LeftParen)?;
 
         let mut arguments = vec![];
@@ -3239,7 +3252,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Expr::GenericFunction(Box::new(GenericFunctionExpr {
-            name: ParseToken::Single(function_name),
+            name: function_name,
             arguments,
             over,
         })))
@@ -3479,7 +3492,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "timestamp" => {
@@ -3492,7 +3505,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "datetime" => {
@@ -3503,7 +3516,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "time" => {
@@ -3514,7 +3527,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "numeric" => {
@@ -3525,7 +3538,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "bignumeric" => {
@@ -3536,7 +3549,7 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         "json" => {
@@ -3547,17 +3560,17 @@ impl<'a> Parser<'a> {
                                     _ => unreachable!(),
                                 }
                             } else {
-                                Expr::Identifier(ident)
+                                Expr::Identifier(Identifier { name: ident })
                             }
                         }
                         _ => {
                             self.advance();
-                            Expr::Identifier(ident)
+                            Expr::Identifier(Identifier { name: ident })
                         }
                     }
                 } else {
                     self.advance();
-                    Expr::Identifier(ident)
+                    Expr::Identifier(Identifier { name: ident })
                 }
             }
             TokenType::QuotedIdentifier(qident) => {
@@ -3565,7 +3578,7 @@ impl<'a> Parser<'a> {
                     return self.parse_function_expr();
                 } else {
                     self.advance();
-                    Expr::QuotedIdentifier(qident)
+                    Expr::QuotedIdentifier(QuotedIdentifier { name: qident })
                 }
             }
             TokenType::QueryNamedParameter(param) => {
@@ -3578,13 +3591,14 @@ impl<'a> Parser<'a> {
             }
             TokenType::SystemVariable(sysvar) => {
                 self.advance();
-                Expr::SystemVariable(sysvar)
+                Expr::SystemVariable(SystemVariable { name: sysvar })
             }
             TokenType::Number(num) => {
                 self.advance();
-                Expr::Number(num)
+                Expr::Number(Number { value: num })
             }
             TokenType::String(ref str) | TokenType::RawString(ref str) => {
+                let curr_tok = self.peek().clone();
                 self.advance();
                 if self.check_token_types(&[
                     TokenTypeVariant::String,
@@ -3592,13 +3606,16 @@ impl<'a> Parser<'a> {
                     TokenTypeVariant::Bytes,
                     TokenTypeVariant::RawBytes,
                 ]) {
-                    let mut strings = vec![ParseToken::Single(peek_token.clone())];
+                    let mut strings = match &curr_tok.kind {
+                        TokenType::String(_) => vec![Expr::String(str.clone())],
+                        TokenType::RawString(_) => vec![Expr::RawString(str.clone())],
+                        _ => unreachable!(),
+                    };
                     loop {
                         let peek = self.peek();
                         match &peek.kind {
-                            TokenType::String(_) | TokenType::RawString(_) => {
-                                strings.push(ParseToken::Single(peek.clone()));
-                            }
+                            TokenType::String(s) => strings.push(Expr::String(s.clone())),
+                            TokenType::RawString(s) => strings.push(Expr::RawString(s.clone())),
                             TokenType::Bytes(_) | TokenType::RawBytes(_) => {
                                 // TODO: this is actually not propagated to the user, but it will be once we improve errors
                                 return Err(anyhow!(self.error(
@@ -3614,10 +3631,15 @@ impl<'a> Parser<'a> {
                     }
                     Expr::StringConcat(StringConcatExpr { strings })
                 } else {
-                    Expr::String(str.clone())
+                    match &curr_tok.kind {
+                        TokenType::String(_) => Expr::String(str.clone()),
+                        TokenType::RawString(_) => Expr::RawString(str.clone()),
+                        _ => unreachable!(),
+                    }
                 }
             }
-            TokenType::Bytes(ref str) | TokenType::RawBytes(ref str) => {
+            TokenType::Bytes(ref byt) | TokenType::RawBytes(ref byt) => {
+                let curr_tok = self.peek().clone();
                 self.advance();
                 if self.check_token_types(&[
                     TokenTypeVariant::String,
@@ -3625,13 +3647,16 @@ impl<'a> Parser<'a> {
                     TokenTypeVariant::Bytes,
                     TokenTypeVariant::RawBytes,
                 ]) {
-                    let mut bytes = vec![ParseToken::Single(peek_token.clone())];
+                    let mut bytes = match &curr_tok.kind {
+                        TokenType::Bytes(_) => vec![Expr::Bytes(byt.clone())],
+                        TokenType::RawBytes(_) => vec![Expr::RawBytes(byt.clone())],
+                        _ => unreachable!(),
+                    };
                     loop {
                         let peek = self.peek();
                         match &peek.kind {
-                            TokenType::Bytes(_) | TokenType::RawBytes(_) => {
-                                bytes.push(ParseToken::Single(peek.clone()));
-                            }
+                            TokenType::Bytes(s) => bytes.push(Expr::Bytes(s.clone())),
+                            TokenType::RawBytes(s) => bytes.push(Expr::RawBytes(s.clone())),
                             TokenType::String(_) | TokenType::RawString(_) => {
                                 // TODO: this is actually not propagated to the user, but it will be once we improve errors
                                 return Err(anyhow!(self.error(
@@ -3647,7 +3672,11 @@ impl<'a> Parser<'a> {
                     }
                     Expr::BytesConcat(BytesConcatExpr { bytes })
                 } else {
-                    Expr::Bytes(str.clone())
+                    match &curr_tok.kind {
+                        TokenType::Bytes(_) => Expr::Bytes(byt.clone()),
+                        TokenType::RawBytes(_) => Expr::RawBytes(byt.clone()),
+                        _ => unreachable!(),
+                    }
                 }
             }
             TokenType::Default => {

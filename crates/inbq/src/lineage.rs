@@ -3,12 +3,12 @@ use crate::{
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         CreateTableStatement, Cte, DeclareVarStatement, DropTableStatement, Expr, FromExpr,
-        FromPathExpr, FunctionExpr, GroupingQueryExpr, InsertStatement, IntervalExpr,
+        FromPathExpr, FunctionExpr, GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr,
         JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
-        ParameterizedType, ParseToken, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+        ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
         SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
         SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
-        StatementsBlock, StructExpr, TokenType, Type, UpdateStatement, When, With,
+        StatementsBlock, StructExpr, Type, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -769,14 +769,14 @@ impl LineageExtractor {
     fn cte_lin(&mut self, cte: &Cte) -> anyhow::Result<()> {
         match cte {
             Cte::NonRecursive(non_recursive_cte) => {
-                let cte_name = non_recursive_cte.name.identifier();
+                let cte_name = &non_recursive_cte.name;
 
                 let consumed_lineage_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                     this.query_expr_lin(&non_recursive_cte.query, true)
                 })?;
 
                 let cte_idx = self.context.allocate_new_ctx_object(
-                    &cte_name,
+                    cte_name.as_str(),
                     ContextObjectKind::Cte,
                     consumed_lineage_nodes
                         .into_iter()
@@ -833,7 +833,7 @@ impl LineageExtractor {
             .copied()
     }
 
-    fn get_column(&self, table: Option<&String>, column: &str) -> anyhow::Result<ArenaIndex> {
+    fn get_column(&self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
         // column names are case insensitive
         let column = column.to_lowercase();
         if let Some(table) = table {
@@ -945,10 +945,13 @@ impl LineageExtractor {
             {
                 match (left, right) {
                     (
-                        Expr::Identifier(left_ident) | Expr::QuotedIdentifier(left_ident),
-                        Expr::Identifier(right_ident) | Expr::QuotedIdentifier(right_ident),
+                        Expr::Identifier(Identifier { name: left_ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: left_ident }),
+                        Expr::Identifier(Identifier { name: right_ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: right_ident }),
                     ) => {
                         assert!(matches!(op, BinaryOperator::FieldAccess));
+
                         if access_path.path.is_empty() {
                             if let Ok(col_or_node_idx) = self.get_col_or_var(left_ident) {
                                 // col.struct (or var.struct)
@@ -989,7 +992,8 @@ impl LineageExtractor {
                                 if matches!(binary_expr.operator, BinaryOperator::ArrayIndex) =>
                             {
                                 let field_name = match &binary_expr.left.as_ref() {
-                                    Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
+                                    Expr::Identifier(Identifier { name: ident })
+                                    | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
                                         ident.clone()
                                     }
                                     _ => unreachable!(),
@@ -1000,7 +1004,8 @@ impl LineageExtractor {
                                     AccessOp::Field(field_name),
                                 ]);
                             }
-                            Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
+                            Expr::Identifier(Identifier { name: ident })
+                            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
                                 access_path.path.push(AccessOp::Field(ident.clone()));
                             }
                             Expr::Star => {
@@ -1049,11 +1054,13 @@ impl LineageExtractor {
                         break;
                     }
                     (
-                        Expr::Identifier(ident) | Expr::QuotedIdentifier(ident),
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::Binary(bin_expr),
                     ) => {
                         let array_field = match bin_expr.left.as_ref() {
-                            Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
+                            Expr::Identifier(Identifier { name: ident })
+                            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
                                 ident.clone()
                             }
                             _ => unreachable!(),
@@ -1078,7 +1085,8 @@ impl LineageExtractor {
                     }
                     (
                         Expr::Struct(struct_expr),
-                        Expr::Identifier(ident) | Expr::QuotedIdentifier(ident),
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                     ) => {
                         assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::Field(ident.clone()));
@@ -1101,7 +1109,11 @@ impl LineageExtractor {
                         self.nested_node_lin(&access_path, nested_node_idx);
                         break;
                     }
-                    (Expr::Identifier(ident) | Expr::QuotedIdentifier(ident), Expr::Star) => {
+                    (
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
+                        Expr::Star,
+                    ) => {
                         if let Ok(col_or_var_idx) = self.get_col_or_var(ident) {
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let access_path = AccessPath {
@@ -1123,7 +1135,11 @@ impl LineageExtractor {
                         }
                         break;
                     }
-                    (Expr::Identifier(ident) | Expr::QuotedIdentifier(ident), Expr::Number(_)) => {
+                    (
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
+                        Expr::Number(_),
+                    ) => {
                         // array[]
                         assert!(matches!(op, BinaryOperator::ArrayIndex));
                         let col_or_var_idx = self.get_col_or_var(ident)?;
@@ -1137,7 +1153,8 @@ impl LineageExtractor {
                     }
                     (
                         Expr::Grouping(_) | Expr::Query(_),
-                        Expr::Identifier(ident) | Expr::QuotedIdentifier(ident),
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                     ) => {
                         // select (select struct(1 as a, 2 as b)).a
                         assert!(matches!(op, BinaryOperator::FieldAccess));
@@ -1215,7 +1232,7 @@ impl LineageExtractor {
         let mut fields = vec![];
         let mut input = vec![];
         for field in struct_expr.fields.iter() {
-            let name = field.alias.as_ref().map(|tok| tok.identifier());
+            let name = field.alias.as_ref().map(|tok| tok.as_str().to_owned());
 
             let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                 this.select_expr_col_expr_lin(&field.expr, false)
@@ -1350,6 +1367,8 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         match expr {
             Expr::String(_)
+            | Expr::RawString(_)
+            | Expr::RawBytes(_)
             | Expr::Bytes(_)
             | Expr::Number(_)
             | Expr::Numeric(_)
@@ -1375,7 +1394,8 @@ impl LineageExtractor {
             Expr::Grouping(grouping_expr) => {
                 self.select_expr_col_expr_lin(&grouping_expr.expr, expand_value_table)?
             }
-            Expr::Identifier(ident) | Expr::QuotedIdentifier(ident) => {
+            Expr::Identifier(Identifier { name: ident })
+            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
                 let col_or_var_idx = self.get_col_or_var(ident)?;
                 self.context.lineage_stack.push(col_or_var_idx);
             }
@@ -1532,8 +1552,8 @@ impl LineageExtractor {
             .except
             .clone()
             .map_or(HashSet::default(), |cols| {
-                cols.into_iter()
-                    .map(|c| c.identifier().to_lowercase())
+                cols.iter()
+                    .map(|c| c.as_str().to_lowercase())
                     .collect::<HashSet<String>>()
             });
         for (col_name, sources) in self
@@ -1618,8 +1638,8 @@ impl LineageExtractor {
         lineage_nodes: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
-            cols.into_iter()
-                .map(|c| c.identifier().to_lowercase())
+            cols.iter()
+                .map(|c| c.as_str().to_lowercase())
                 .collect::<HashSet<String>>()
         });
 
@@ -1686,7 +1706,7 @@ impl LineageExtractor {
         pending_node.input.extend(consumed_nodes.clone());
 
         if let Some(alias) = &col_expr.alias {
-            pending_node.name = NodeName::Defined(alias.identifier().to_lowercase());
+            pending_node.name = NodeName::Defined(alias.as_str().to_lowercase());
         }
 
         if pending_node.input.len() == 1 {
@@ -1733,73 +1753,68 @@ impl LineageExtractor {
         joined_tables: &[ArenaIndex],
         check_unnest: bool,
     ) -> anyhow::Result<()> {
-        let table_name = from_path_expr.path.expr.identifier();
-        let table_like_obj_id = self.get_table_from_context(&table_name);
+        let table_name = &from_path_expr.path.name;
+        let table_like_obj_id = self.get_table_from_context(table_name);
+        let path_identifiers = from_path_expr.path.identifiers();
 
         if table_like_obj_id.is_none() {
             if check_unnest {
-                match &from_path_expr.path.expr {
-                    ParseToken::Multiple(vec) => {
-                        let identifiers = vec
+                if path_identifiers.len() > 1 {
+                    let table = path_identifiers[0];
+                    let column = path_identifiers[1];
+                    let mut access_path = AccessPath {
+                        path: path_identifiers
+                            .into_iter()
+                            .skip(2)
+                            .map(|f| AccessOp::Field(f.to_owned()))
+                            .collect::<Vec<AccessOp>>(),
+                    };
+                    access_path.path.push(AccessOp::Index);
+
+                    // Push new context just for unnest expr
+                    let mut ctx_objects = from_tables
+                        .iter()
+                        .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
+                        .collect::<IndexMap<String, ArenaIndex>>();
+
+                    ctx_objects.extend(
+                        joined_tables
                             .iter()
-                            .filter(|token| token.lexeme != ".")
-                            .map(|token| ParseToken::Single(token.clone()).identifier())
-                            .collect::<Vec<String>>();
-                        let table = identifiers[0].clone();
-                        let column = identifiers[1].clone();
-                        let mut access_path = AccessPath {
-                            path: identifiers
-                                .into_iter()
-                                .skip(2)
-                                .map(AccessOp::Field)
-                                .collect::<Vec<AccessOp>>(),
-                        };
-                        access_path.path.push(AccessOp::Index);
+                            .cloned()
+                            .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
+                    );
+                    self.context.push_new_ctx(ctx_objects, true);
 
-                        // Push new context just for unnest expr
-                        let mut ctx_objects = from_tables
-                            .iter()
-                            .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
-                            .collect::<IndexMap<String, ArenaIndex>>();
+                    let col_source_idx = self.get_column(Some(table), column)?;
+                    let col_node = &self.context.arena_lineage_nodes[col_source_idx];
+                    let nested_node_idx = col_node.access(&access_path)?;
 
-                        ctx_objects.extend(
-                            joined_tables
-                                .iter()
-                                .cloned()
-                                .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
-                        );
-                        self.context.push_new_ctx(ctx_objects, true);
+                    let name = from_path_expr
+                        .alias
+                        .as_ref()
+                        .map_or(self.get_anon_obj_name("unnest"), |alias| {
+                            alias.as_str().to_owned()
+                        });
 
-                        let col_source_idx = self.get_column(Some(&table), &column)?;
-                        let col_node = &self.context.arena_lineage_nodes[col_source_idx];
-                        let nested_node_idx = col_node.access(&access_path)?;
+                    let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
+                    let col_name = from_path_expr
+                        .alias
+                        .as_ref()
+                        .map_or(NodeName::Anonymous, |alias| {
+                            NodeName::Defined(alias.as_str().to_owned())
+                        });
 
-                        let name = from_path_expr
-                            .alias
-                            .as_ref()
-                            .map_or(self.get_anon_obj_name("unnest"), |alias| alias.identifier());
+                    let unnest_idx = self.context.allocate_new_ctx_object(
+                        &name,
+                        ContextObjectKind::Unnest,
+                        vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                    );
 
-                        let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
-                        let col_name = from_path_expr
-                            .alias
-                            .as_ref()
-                            .map_or(NodeName::Anonymous, |alias| {
-                                NodeName::Defined(alias.identifier())
-                            });
+                    self.context.pop_curr_ctx();
 
-                        let unnest_idx = self.context.allocate_new_ctx_object(
-                            &name,
-                            ContextObjectKind::Unnest,
-                            vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
-                        );
-
-                        self.context.pop_curr_ctx();
-
-                        self.context
-                            .update_output_lineage_with_object_nodes(unnest_idx);
-                        self.add_new_from_table(from_tables, unnest_idx)?;
-                    }
-                    ParseToken::Single(_) => {}
+                    self.context
+                        .update_output_lineage_with_object_nodes(unnest_idx);
+                    self.add_new_from_table(from_tables, unnest_idx)?;
                 }
 
                 return Ok(());
@@ -1813,7 +1828,7 @@ impl LineageExtractor {
 
         let contains_alias = from_path_expr.alias.is_some();
         let table_like_name = if contains_alias {
-            from_path_expr.alias.as_ref().unwrap().identifier()
+            from_path_expr.alias.as_ref().unwrap().as_str().to_owned()
         } else {
             table_name.clone()
         };
@@ -1889,12 +1904,14 @@ impl LineageExtractor {
                 let name = unnest_expr
                     .alias
                     .as_ref()
-                    .map_or(self.get_anon_obj_name("unnest"), |alias| alias.identifier());
+                    .map_or(self.get_anon_obj_name("unnest"), |alias| {
+                        alias.as_str().to_owned()
+                    });
                 let col_name = unnest_expr
                     .alias
                     .as_ref()
                     .map_or(NodeName::Anonymous, |alias| {
-                        NodeName::Defined(alias.identifier())
+                        NodeName::Defined(alias.as_str().to_owned())
                     });
 
                 assert!(consumed_nodes.len() == 1);
@@ -1924,7 +1941,7 @@ impl LineageExtractor {
                 let source_name = &from_grouping_query_expr
                     .alias
                     .as_ref()
-                    .map(|alias| alias.identifier());
+                    .map(|alias| alias.as_str().to_owned());
 
                 let consumed_lineage_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                     this.query_expr_lin(&from_grouping_query_expr.query, true)
@@ -1966,7 +1983,10 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
         self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
-        if let JoinCondition::Using(using_columns) = &join_expr.cond {
+        if let JoinCondition::Using {
+            columns: using_columns,
+        } = &join_expr.cond
+        {
             let mut joined_table_names: Vec<&str> = vec![];
             let mut lineage_nodes = vec![];
             let from_tables_len = from_tables.len();
@@ -1987,7 +2007,7 @@ impl LineageExtractor {
 
             let mut using_columns_added = HashSet::new();
             for col in using_columns {
-                let col_name = col.identifier().to_lowercase();
+                let col_name = col.as_str().to_lowercase();
                 let left_lineage_node_idx = left_join_table
                     .lineage_nodes
                     .iter()
@@ -2303,7 +2323,7 @@ impl LineageExtractor {
         &mut self,
         create_table_statement: &CreateTableStatement,
     ) -> anyhow::Result<()> {
-        let table_name = create_table_statement.name.identifier();
+        let table_name = &create_table_statement.name.name;
         let table_kind = if create_table_statement.is_temporary {
             ContextObjectKind::TempTable
         } else {
@@ -2315,7 +2335,7 @@ impl LineageExtractor {
                 self.call_func_and_consume_lineage_nodes(|this| this.query_expr_lin(query, false))?;
 
             self.context.allocate_new_ctx_object(
-                &table_name,
+                table_name,
                 table_kind,
                 consumed_lineage_nodes
                     .into_iter()
@@ -2331,13 +2351,13 @@ impl LineageExtractor {
                 .as_ref()
                 .ok_or(anyhow!("Schema not found for table: `{:?}`.", table_name))?;
             self.context.allocate_new_ctx_object(
-                &table_name,
+                table_name,
                 table_kind,
                 schema
                     .iter()
                     .map(|col_schema| {
                         (
-                            NodeName::Defined(col_schema.name.identifier()),
+                            NodeName::Defined(col_schema.name.as_str().to_owned()),
                             node_type_from_parser_parameterized_type(&col_schema.r#type),
                             vec![],
                         )
@@ -2405,14 +2425,14 @@ impl LineageExtractor {
     }
 
     fn update_statement_lin(&mut self, update_statement: &UpdateStatement) -> anyhow::Result<()> {
-        let target_table = update_statement.table.identifier();
+        let target_table = &update_statement.table.name;
         let target_table_alias = if let Some(ref alias) = update_statement.alias {
-            &alias.identifier()
+            alias.as_str()
         } else {
-            &target_table
+            target_table
         };
 
-        let target_table_id = self.get_table_from_context(&target_table);
+        let target_table_id = self.get_table_from_context(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -2432,20 +2452,22 @@ impl LineageExtractor {
 
         // NOTE: we push the target table after pushing the from context
         self.context.push_new_ctx(
-            IndexMap::from([(target_table_alias.clone(), target_table_id.unwrap())]),
+            IndexMap::from([(target_table_alias.to_owned(), target_table_id.unwrap())]),
             true,
         );
 
         for update_item in &update_statement.update_items {
             let column = match &update_item.column {
                 // col = ...
-                ParseToken::Single(_) => update_item.column.identifier(),
+                Expr::Identifier(Identifier { name })
+                | Expr::QuotedIdentifier(QuotedIdentifier { name }) => name,
                 // table.col = ...
-                ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
-                    TokenType::Identifier(ident) => ident.to_owned(),
-                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                Expr::Binary(binary_expr) => match binary_expr.right.as_ref() {
+                    Expr::Identifier(Identifier { name })
+                    | Expr::QuotedIdentifier(QuotedIdentifier { name }) => name,
                     _ => unreachable!(),
                 },
+                _ => unreachable!(),
             }
             .to_lowercase();
 
@@ -2475,9 +2497,9 @@ impl LineageExtractor {
     }
 
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
-        let target_table = insert_statement.table.identifier();
+        let target_table = &insert_statement.table.name;
 
-        let target_table_id = self.get_table_from_context(&target_table);
+        let target_table_id = self.get_table_from_context(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -2491,7 +2513,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &insert_statement.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.identifier();
+                let col_name = col.as_str().to_owned();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -2552,7 +2574,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &merge_insert.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.identifier();
+                let col_name = col.as_str().to_owned();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
@@ -2591,13 +2613,15 @@ impl LineageExtractor {
         for update_item in &merge_update.update_items {
             let column = match &update_item.column {
                 // col = ...
-                ParseToken::Single(_) => update_item.column.identifier(),
+                Expr::Identifier(Identifier { name })
+                | Expr::QuotedIdentifier(QuotedIdentifier { name }) => name,
                 // table.col = ...
-                ParseToken::Multiple(vec) => match &vec.last().unwrap().kind {
-                    TokenType::Identifier(ident) => ident.to_owned(),
-                    TokenType::QuotedIdentifier(qident) => qident.to_owned(),
+                Expr::Binary(binary_expr) => match binary_expr.right.as_ref() {
+                    Expr::Identifier(Identifier { name })
+                    | Expr::QuotedIdentifier(QuotedIdentifier { name }) => name,
                     _ => unreachable!(),
                 },
+                _ => unreachable!(),
             }
             .to_lowercase();
 
@@ -2655,14 +2679,14 @@ impl LineageExtractor {
     }
 
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
-        let target_table = merge_statement.target_table.identifier();
+        let target_table = &merge_statement.target_table.name;
         let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
-            &alias.identifier()
+            alias.as_str()
         } else {
-            &target_table
+            target_table
         };
 
-        let target_table_id = self.get_table_from_context(&target_table);
+        let target_table_id = self.get_table_from_context(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -2671,9 +2695,9 @@ impl LineageExtractor {
         }
         let target_table_id = target_table_id.unwrap();
 
-        let source_table_id = if let MergeSource::Table(parse_token) = &merge_statement.source {
-            let source_table = parse_token.identifier();
-            let source_table_id = self.get_table_from_context(&source_table);
+        let source_table_id = if let MergeSource::Table(path_name) = &merge_statement.source {
+            let source_table = &path_name.name;
+            let source_table_id = self.get_table_from_context(source_table);
             if source_table_id.is_none() {
                 return Err(anyhow!(
                     "Table like obj name `{}` not in context.",
@@ -2693,9 +2717,9 @@ impl LineageExtractor {
                 })?;
 
                 if let Some(alias) = &merge_statement.source_alias {
-                    let new_source_name = alias.identifier();
+                    let new_source_name = alias.as_str();
                     let source_idx = self.context.allocate_new_ctx_object(
-                        &new_source_name,
+                        new_source_name,
                         ContextObjectKind::Query,
                         consumed_nodes
                             .iter()
@@ -2717,10 +2741,10 @@ impl LineageExtractor {
 
         let source_table_id = source_table_id.or(subquery_table_id);
 
-        let mut new_ctx = IndexMap::from([(target_table_alias.clone(), target_table_id)]);
+        let mut new_ctx = IndexMap::from([(target_table_alias.to_owned(), target_table_id)]);
         if let Some(alias) = &merge_statement.source_alias {
-            let source_alias = alias.identifier();
-            new_ctx.insert(source_alias.clone(), source_table_id.unwrap());
+            let source_alias = alias.as_str().to_owned();
+            new_ctx.insert(source_alias, source_table_id.unwrap());
         }
 
         for when in &merge_statement.whens {
@@ -2782,7 +2806,7 @@ impl LineageExtractor {
 
         for var in &declare_var_statement.vars {
             // Var names are case insensitive (like column names)
-            let var_ident = var.identifier().to_lowercase();
+            let var_ident = var.as_str().to_lowercase();
             let obj_name = format!("!var_{}", var_ident);
 
             let object_idx = self.context.allocate_new_ctx_object(
@@ -2814,27 +2838,27 @@ impl LineageExtractor {
 
             for (i, var) in set_var_statement.vars.iter().enumerate() {
                 match var {
-                    SetVariable::UserVariable { name: var_name } => {
-                        let var_node_idx = self.context.vars.get(&var_name.identifier()).unwrap();
+                    SetVariable::UserVariable(var_name) => {
+                        let var_node_idx = self.context.vars.get(var_name.as_str()).unwrap();
                         let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
                         var_node.input = vec![consumed_nodes[i]];
                     }
-                    SetVariable::SystemVariable { name: _ } => {}
+                    SetVariable::SystemVariable(_) => {}
                 }
             }
         } else {
             assert!(set_var_statement.vars.len() == set_var_statement.exprs.len());
             for (var, expr) in set_var_statement.vars.iter().zip(&set_var_statement.exprs) {
                 match var {
-                    SetVariable::UserVariable { name: var_name } => {
+                    SetVariable::UserVariable(var_name) => {
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(expr, false)
                         })?;
-                        let var_node_idx = self.context.vars.get(&var_name.identifier()).unwrap();
+                        let var_node_idx = self.context.vars.get(var_name.as_str()).unwrap();
                         let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
                         var_node.input = consumed_nodes;
                     }
-                    SetVariable::SystemVariable { name: _ } => {}
+                    SetVariable::SystemVariable(_) => {}
                 }
             }
         }
@@ -2846,14 +2870,14 @@ impl LineageExtractor {
         &mut self,
         drop_table_statement: &DropTableStatement,
     ) -> anyhow::Result<()> {
-        let table_name = drop_table_statement.name.identifier();
-        let removed = self.context.source_objects.swap_remove(&table_name);
+        let table_name = &drop_table_statement.name.name;
+        let removed = self.context.source_objects.swap_remove(table_name);
 
         if removed.is_none() {
             // Not a source object, it is a table created in this script
             self.context
                 .objects_stack
-                .retain(|obj_idx| self.context.arena_objects[*obj_idx].name != table_name);
+                .retain(|obj_idx| self.context.arena_objects[*obj_idx].name != *table_name);
         }
         Ok(())
     }
@@ -3070,7 +3094,7 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
                     name: field
                         .name
                         .as_ref()
-                        .map_or("anonymous".to_owned(), |name| name.identifier()),
+                        .map_or("anonymous".to_owned(), |name| name.as_str().to_owned()),
                     r#type: node_type_from_parser_type(&field.r#type, types_vec),
                     input: vec![],
                 })
@@ -3114,7 +3138,7 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
             fields: fields
                 .iter()
                 .map(|field| StructNodeFieldType {
-                    name: field.name.identifier(),
+                    name: field.name.as_str().to_owned(),
                     r#type: node_type_from_parser_parameterized_type(&field.r#type),
                     input: vec![],
                 })

@@ -45,6 +45,19 @@ class AstNode:
             "Return": "Statement_Return",
             "Call": "Statement_Call",
         },
+        "Name": {
+            "Identifier": "Name_Identifier",
+            "QuotedIdentifier": "Name_QuotedIdentifier",
+        },
+        "PathPart": {
+            "Identifier": "PathPart_Identifier",
+            "QuotedIdentifier": "PathPart_QuotedIdentifier",
+            "Number": "PathPart_Number",
+            "DotSeparator": "PathPart_DotSeparator",
+            "SlashSeparator": "PathPart_SlashSeparator",
+            "DashSeparator": "PathPart_DashSeparator",
+            "ColonSeparator": "PathPart_ColonSeparator",
+        },
         "SetVariable": {
             "UserVariable": "SetVariable_UserVariable",
             "SystemVariable": "SetVariable_SystemVariable",
@@ -114,8 +127,10 @@ class AstNode:
             "QueryPositionalParameter": "Expr_QueryPositionalParameter",
             "SystemVariable": "Expr_SystemVariable",
             "String": "Expr_String",
+            "RawString": "Expr_RawString",
             "StringConcat": "Expr_StringConcat",
             "Bytes": "Expr_Bytes",
+            "RawBytes": "Expr_RawBytes",
             "BytesConcat": "Expr_BytesConcat",
             "Numeric": "Expr_Numeric",
             "BigNumeric": "Expr_BigNumeric",
@@ -334,10 +349,6 @@ class AstNode:
             "Range": "WindowFrameKind_Range",
             "Rows": "WindowFrameKind_Rows",
         },
-        "ParseToken": {
-            "Single": "ParseToken_Single",
-            "Multiple": "ParseToken_Multiple",
-        },
         "TokenType": {
             "LeftParen": "TokenType_LeftParen",
             "RightParen": "TokenType_RightParen",
@@ -526,13 +537,13 @@ class AstNode:
         elif get_origin(ty) is list:
             return [cls._instantiate_type_from_data(get_args(ty)[0], el) for el in data]
 
-        elif "ast_nodes" in cls.__module__:
+        elif "ast_nodes" in ty.__module__:
             ty_hints = {
                 k: v for k, v in get_type_hints(ty).items() if not k.startswith("_")
             }
             cls_dict = {}
 
-            if "_" in cls.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
+            if "_" in ty.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
                 cls_dict["value"] = cls._instantiate_type_from_data(
                     ty_hints["value"], data
                 )
@@ -557,6 +568,12 @@ class Ast(AstNode):
 
 
 @dataclass
+class PathName(AstNode):
+    name: "str"
+    parts: "list[PathPart]"
+
+
+@dataclass
 class CaseStatement(AstNode):
     case_: "Optional[Expr]"
     when_thens: "list[CaseWhenThenStatements]"
@@ -571,7 +588,7 @@ class CaseWhenThenStatements(AstNode):
 
 @dataclass
 class CallStatement(AstNode):
-    procedure_name: "ParseToken"
+    procedure_name: "PathName"
     arguments: "list[Expr]"
 
 
@@ -601,7 +618,7 @@ class StatementsBlock(AstNode):
 
 @dataclass
 class DeclareVarStatement(AstNode):
-    vars: "list[ParseToken]"
+    vars: "list[Name]"
     type_: "Optional[ParameterizedType]"
     default: "Optional[Expr]"
 
@@ -614,7 +631,7 @@ class SetVarStatement(AstNode):
 
 @dataclass
 class CreateTableStatement(AstNode):
-    name: "ParseToken"
+    name: "PathName"
     schema: "Optional[list[ColumnSchema]]"
     replace: "bool"
     is_temporary: "bool"
@@ -624,25 +641,25 @@ class CreateTableStatement(AstNode):
 
 @dataclass
 class DropTableStatement(AstNode):
-    name: "ParseToken"
+    name: "PathName"
     if_exists: "bool"
 
 
 @dataclass
 class ColumnSchema(AstNode):
-    name: "ParseToken"
+    name: "Name"
     type_: "ParameterizedType"
 
 
 @dataclass
 class StructParameterizedFieldType(AstNode):
-    name: "ParseToken"
+    name: "Name"
     type_: "ParameterizedType"
 
 
 @dataclass
 class StructFieldType(AstNode):
-    name: "Optional[ParseToken]"
+    name: "Optional[Name]"
     type_: "Type"
 
 
@@ -653,29 +670,29 @@ class QueryStatement(AstNode):
 
 @dataclass
 class InsertStatement(AstNode):
-    table: "ParseToken"
-    columns: "Optional[list[ParseToken]]"
+    table: "PathName"
+    columns: "Optional[list[Name]]"
     values: "Optional[list[Expr]]"
     query: "Optional[QueryExpr]"
 
 
 @dataclass
 class DeleteStatement(AstNode):
-    table: "ParseToken"
-    alias: "Optional[ParseToken]"
+    table: "PathName"
+    alias: "Optional[Name]"
     cond: "Expr"
 
 
 @dataclass
 class UpdateItem(AstNode):
-    column: "ParseToken"
+    column: "Expr"
     expr: "Expr"
 
 
 @dataclass
 class UpdateStatement(AstNode):
-    table: "ParseToken"
-    alias: "Optional[ParseToken]"
+    table: "PathName"
+    alias: "Optional[Name]"
     update_items: "list[UpdateItem]"
     from_: "Optional[From]"
     where: "Where"
@@ -683,15 +700,15 @@ class UpdateStatement(AstNode):
 
 @dataclass
 class TruncateStatement(AstNode):
-    table: "ParseToken"
+    table: "PathName"
 
 
 @dataclass
 class MergeStatement(AstNode):
-    target_table: "ParseToken"
-    target_alias: "Optional[ParseToken]"
+    target_table: "PathName"
+    target_alias: "Optional[Name]"
     source: "MergeSource"
-    source_alias: "Optional[ParseToken]"
+    source_alias: "Optional[Name]"
     condition: "Expr"
     whens: "list[When]"
 
@@ -703,7 +720,7 @@ class MergeUpdate(AstNode):
 
 @dataclass
 class MergeInsert(AstNode):
-    columns: "Optional[list[ParseToken]]"
+    columns: "Optional[list[Name]]"
     values: "list[Expr]"
 
 
@@ -726,13 +743,33 @@ class WhenNotMatchedBySource(AstNode):
 
 
 @dataclass
+class SystemVariable(AstNode):
+    name: "str"
+
+
+@dataclass
+class Number(AstNode):
+    value: "str"
+
+
+@dataclass
+class Identifier(AstNode):
+    name: "str"
+
+
+@dataclass
+class QuotedIdentifier(AstNode):
+    name: "str"
+
+
+@dataclass
 class StringConcatExpr(AstNode):
-    strings: "list[ParseToken]"
+    strings: "list[Expr]"
 
 
 @dataclass
 class BytesConcatExpr(AstNode):
-    bytes: "list[ParseToken]"
+    bytes: "list[Expr]"
 
 
 @dataclass
@@ -810,7 +847,7 @@ class IfFunctionExpr(AstNode):
 
 @dataclass
 class GenericFunctionExpr(AstNode):
-    name: "ParseToken"
+    name: "Name"
     arguments: "list[GenericFunctionExprArg]"
     over: "Optional[NamedWindowExpr]"
 
@@ -881,7 +918,7 @@ class StructExpr(AstNode):
 @dataclass
 class StructField(AstNode):
     expr: "Expr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
@@ -935,13 +972,13 @@ class With(AstNode):
 
 @dataclass
 class NonRecursiveCte(AstNode):
-    name: "ParseToken"
+    name: "Name"
     query: "QueryExpr"
 
 
 @dataclass
 class RecursiveCte(AstNode):
-    name: "ParseToken"
+    name: "Name"
     base_query: "QueryExpr"
     recursive_query: "QueryExpr"
 
@@ -962,18 +999,18 @@ class Select(AstNode):
 @dataclass
 class SelectColExpr(AstNode):
     expr: "Expr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
 class SelectColAllExpr(AstNode):
     expr: "Expr"
-    except_: "Optional[list[ParseToken]]"
+    except_: "Optional[list[Name]]"
 
 
 @dataclass
 class SelectAllExpr(AstNode):
-    except_: "Optional[list[ParseToken]]"
+    except_: "Optional[list[Name]]"
 
 
 @dataclass
@@ -986,53 +1023,53 @@ class From(AstNode):
 @dataclass
 class Pivot(AstNode):
     aggregates: "list[PivotAggregate]"
-    input_column: "ParseToken"
+    input_column: "Name"
     pivot_columns: "list[PivotColumn]"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
 class PivotAggregate(AstNode):
     expr: "Expr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
 class PivotColumn(AstNode):
     expr: "Expr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
 class Unpivot(AstNode):
     nulls: "UnpivotNulls"
     kind: "UnpivotKind"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
 class SingleColumnUnpivot(AstNode):
-    values_column: "ParseToken"
-    name_column: "ParseToken"
+    values_column: "Name"
+    name_column: "Name"
     columns_to_unpivot: "list[ColumnToUnpivot]"
 
 
 @dataclass
 class MultiColumnUnpivot(AstNode):
-    values_columns: "list[ParseToken]"
-    name_column: "ParseToken"
+    values_columns: "list[Name]"
+    name_column: "Name"
     column_sets_to_unpivot: "list[ColumnSetToUnpivot]"
 
 
 @dataclass
 class ColumnToUnpivot(AstNode):
-    name: "ParseToken"
+    name: "Name"
     alias: "Optional[Expr]"
 
 
 @dataclass
 class ColumnSetToUnpivot(AstNode):
-    names: "list[ParseToken]"
+    names: "list[Name]"
     alias: "Optional[Expr]"
 
 
@@ -1053,20 +1090,15 @@ class JoinExpr(AstNode):
 @dataclass
 class UnnestExpr(AstNode):
     array: "Expr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
     with_offset: "bool"
-    offset_alias: "Optional[ParseToken]"
-
-
-@dataclass
-class PathExpr(AstNode):
-    expr: "ParseToken"
+    offset_alias: "Optional[Name]"
 
 
 @dataclass
 class FromPathExpr(AstNode):
-    path: "PathExpr"
-    alias: "Optional[ParseToken]"
+    path: "PathName"
+    alias: "Optional[Name]"
 
 
 @dataclass
@@ -1077,7 +1109,7 @@ class GroupingFromExpr(AstNode):
 @dataclass
 class FromGroupingQueryExpr(AstNode):
     query: "QueryExpr"
-    alias: "Optional[ParseToken]"
+    alias: "Optional[Name]"
 
 
 @dataclass
@@ -1113,13 +1145,13 @@ class WindowOrderByExpr(AstNode):
 
 @dataclass
 class NamedWindow(AstNode):
-    name: "ParseToken"
+    name: "Name"
     window: "NamedWindowExpr"
 
 
 @dataclass
 class WindowSpec(AstNode):
-    window_name: "Optional[ParseToken]"
+    window_name: "Optional[Name]"
     partition_by: "Optional[list[Expr]]"
     order_by: "Optional[list[WindowOrderByExpr]]"
     frame: "Optional[WindowFrame]"
@@ -1235,13 +1267,60 @@ Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | 
 
 
 @dataclass
+class Name_Identifier(AstNode):
+    value: "Identifier"
+
+
+@dataclass
+class Name_QuotedIdentifier(AstNode):
+    value: "QuotedIdentifier"
+
+
+Name: TypeAlias = "Name_Identifier | Name_QuotedIdentifier"
+
+
+@dataclass
+class PathPart_Identifier(AstNode):
+    value: "Identifier"
+
+
+@dataclass
+class PathPart_QuotedIdentifier(AstNode):
+    value: "QuotedIdentifier"
+
+
+@dataclass
+class PathPart_Number(AstNode):
+    value: "Number"
+
+
+@dataclass
+class PathPart_DotSeparator(AstNode): ...
+
+
+@dataclass
+class PathPart_SlashSeparator(AstNode): ...
+
+
+@dataclass
+class PathPart_DashSeparator(AstNode): ...
+
+
+@dataclass
+class PathPart_ColonSeparator(AstNode): ...
+
+
+PathPart: TypeAlias = "PathPart_Identifier | PathPart_QuotedIdentifier | PathPart_Number | PathPart_DotSeparator | PathPart_SlashSeparator | PathPart_DashSeparator | PathPart_ColonSeparator"
+
+
+@dataclass
 class SetVariable_UserVariable(AstNode):
-    name: "ParseToken"
+    value: "Name"
 
 
 @dataclass
 class SetVariable_SystemVariable(AstNode):
-    name: "ParseToken"
+    value: "SystemVariable"
 
 
 SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"
@@ -1403,7 +1482,7 @@ Type: TypeAlias = "Type_Array | Type_BigNumeric | Type_Bool | Type_Bytes | Type_
 
 @dataclass
 class MergeSource_Table(AstNode):
-    value: "ParseToken"
+    value: "PathName"
 
 
 @dataclass
@@ -1480,12 +1559,12 @@ class Expr_Struct(AstNode):
 
 @dataclass
 class Expr_Identifier(AstNode):
-    value: "str"
+    value: "Identifier"
 
 
 @dataclass
 class Expr_QuotedIdentifier(AstNode):
-    value: "str"
+    value: "QuotedIdentifier"
 
 
 @dataclass
@@ -1499,11 +1578,16 @@ class Expr_QueryPositionalParameter(AstNode): ...
 
 @dataclass
 class Expr_SystemVariable(AstNode):
-    value: "str"
+    value: "SystemVariable"
 
 
 @dataclass
 class Expr_String(AstNode):
+    value: "str"
+
+
+@dataclass
+class Expr_RawString(AstNode):
     value: "str"
 
 
@@ -1514,6 +1598,11 @@ class Expr_StringConcat(AstNode):
 
 @dataclass
 class Expr_Bytes(AstNode):
+    value: "str"
+
+
+@dataclass
+class Expr_RawBytes(AstNode):
     value: "str"
 
 
@@ -1534,7 +1623,7 @@ class Expr_BigNumeric(AstNode):
 
 @dataclass
 class Expr_Number(AstNode):
-    value: "str"
+    value: "Number"
 
 
 @dataclass
@@ -1619,7 +1708,7 @@ class Expr_Exists(AstNode):
     value: "QueryExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_StringConcat | Expr_Bytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_RawString | Expr_StringConcat | Expr_Bytes | Expr_RawBytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
 
 
 @dataclass
@@ -2255,7 +2344,7 @@ class JoinCondition_On(AstNode):
 
 @dataclass
 class JoinCondition_Using(AstNode):
-    value: "list[ParseToken]"
+    columns: "list[Name]"
 
 
 JoinCondition: TypeAlias = "JoinCondition_On | JoinCondition_Using"
@@ -2275,7 +2364,7 @@ GroupByExpr: TypeAlias = "GroupByExpr_Items | GroupByExpr_All"
 
 @dataclass
 class NamedWindowExpr_Reference(AstNode):
-    value: "ParseToken"
+    value: "Name"
 
 
 @dataclass
@@ -2320,19 +2409,6 @@ class WindowFrameKind_Rows(AstNode): ...
 
 
 WindowFrameKind: TypeAlias = "WindowFrameKind_Range | WindowFrameKind_Rows"
-
-
-@dataclass
-class ParseToken_Single(AstNode):
-    value: "Token"
-
-
-@dataclass
-class ParseToken_Multiple(AstNode):
-    value: "list[Token]"
-
-
-ParseToken: TypeAlias = "ParseToken_Single | ParseToken_Multiple"
 
 
 @dataclass

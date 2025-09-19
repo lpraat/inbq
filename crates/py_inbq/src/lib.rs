@@ -15,21 +15,21 @@ use inbq::ast::{
     FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
     FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
     FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, IfBranch,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
     IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
     JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, NamedWindow, NamedWindowExpr, NonRecursiveCte, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, ParseToken, PathExpr,
-    Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, RaiseStatement, RangeExpr, RecursiveCte, RightFunctionExpr,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-    StructField, StructFieldType, StructParameterizedFieldType, Token, TokenType,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
+    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
+    PathPart, Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, SystemVariable, Token, TokenType, TruncateStatement, Type,
+    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
+    UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+    WhenThen, Where, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 
 struct PyContext<'a> {
@@ -585,18 +585,70 @@ impl RsToPyObject for Token {
     }
 }
 
-impl RsToPyObject for ParseToken {
+impl RsToPyObject for Name {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            ParseToken::Single(token) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, token)];
-                instantiate_py_class(py_ctx, get_class!(py_ctx, ParseToken::Single)?, kwargs)
+            Name::Identifier(identifier) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, identifier)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Name::Identifier)?, kwargs)
             }
-            ParseToken::Multiple(tokens) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, tokens)];
-                instantiate_py_class(py_ctx, get_class!(py_ctx, ParseToken::Multiple)?, kwargs)
+            Name::QuotedIdentifier(quoted_identifier) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quoted_identifier)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Name::QuotedIdentifier)?, kwargs)
             }
         }
+    }
+}
+
+impl RsToPyObject for Number {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "value", self.value)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, Number)?, kwargs)
+    }
+}
+
+impl RsToPyObject for PathPart {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            PathPart::Identifier(identifier) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, identifier)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::Identifier)?, kwargs)
+            }
+            PathPart::QuotedIdentifier(quoted_identifier) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quoted_identifier)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_class!(py_ctx, PathPart::QuotedIdentifier)?,
+                    kwargs,
+                )
+            }
+            PathPart::Number(number) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, number)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::Number)?, kwargs)
+            }
+            PathPart::DotSeparator => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::DotSeparator)?, &[])
+            }
+            PathPart::SlashSeparator => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::SlashSeparator)?, &[])
+            }
+            PathPart::DashSeparator => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::DashSeparator)?, &[])
+            }
+            PathPart::ColonSeparator => {
+                instantiate_py_class(py_ctx, get_class!(py_ctx, PathPart::ColonSeparator)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for PathName {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "parts", self.parts),
+        ];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, PathName)?, kwargs)
     }
 }
 
@@ -1588,6 +1640,27 @@ impl RsToPyObject for BytesConcatExpr {
     }
 }
 
+impl RsToPyObject for Identifier {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, Identifier)?, kwargs)
+    }
+}
+
+impl RsToPyObject for QuotedIdentifier {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, QuotedIdentifier)?, kwargs)
+    }
+}
+
+impl RsToPyObject for SystemVariable {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
+        instantiate_py_class(py_ctx, get_class!(py_ctx, SystemVariable)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1640,9 +1713,17 @@ impl RsToPyObject for Expr {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::String)?, kwargs)
             }
+            Expr::RawString(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::RawString)?, kwargs)
+            }
             Expr::Bytes(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::Bytes)?, kwargs)
+            }
+            Expr::RawBytes(value) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
+                instantiate_py_class(py_ctx, get_class!(py_ctx, Expr::RawBytes)?, kwargs)
             }
             Expr::StringConcat(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
@@ -1908,8 +1989,8 @@ impl RsToPyObject for JoinCondition {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, expr)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, JoinCondition::On)?, kwargs)
             }
-            JoinCondition::Using(parse_tokens) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_tokens)];
+            JoinCondition::Using { columns } => {
+                let kwargs = &[kwarg!(py_ctx, "columns", columns)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, JoinCondition::Using)?, kwargs)
             }
         }
@@ -1935,13 +2016,6 @@ impl RsToPyObject for CrossJoinExpr {
             kwarg!(py_ctx, "right", self.right),
         ];
         instantiate_py_class(py_ctx, get_class!(py_ctx, CrossJoinExpr)?, kwargs)
-    }
-}
-
-impl RsToPyObject for PathExpr {
-    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_class!(py_ctx, PathExpr)?, kwargs)
     }
 }
 
@@ -2513,16 +2587,16 @@ impl RsToPyObject for DeclareVarStatement {
 impl RsToPyObject for SetVariable {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            SetVariable::UserVariable { name } => {
-                let kwargs = &[kwarg!(py_ctx, "name", name)];
+            SetVariable::UserVariable(name) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, name)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, SetVariable::UserVariable)?,
                     kwargs,
                 )
             }
-            SetVariable::SystemVariable { name } => {
-                let kwargs = &[kwarg!(py_ctx, "name", name)];
+            SetVariable::SystemVariable(system_variable) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, system_variable)];
                 instantiate_py_class(
                     py_ctx,
                     get_class!(py_ctx, SetVariable::SystemVariable)?,
