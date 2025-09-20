@@ -543,10 +543,8 @@ class AstNode:
             }
             cls_dict = {}
 
-            if "_" in ty.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
-                cls_dict["value"] = cls._instantiate_type_from_data(
-                    ty_hints["value"], data
-                )
+            if "_" in ty.__name__ and len(ty_hints) == 1 and "vty" in ty_hints:
+                cls_dict["vty"] = cls._instantiate_type_from_data(ty_hints["vty"], data)
             else:
                 for field, field_ty in ty_hints.items():
                     original_field = field
@@ -1174,67 +1172,67 @@ class Token(AstNode):
 
 @dataclass
 class Statement_Query(AstNode):
-    value: "QueryStatement"
+    vty: "QueryStatement"
 
 
 @dataclass
 class Statement_Insert(AstNode):
-    value: "InsertStatement"
+    vty: "InsertStatement"
 
 
 @dataclass
 class Statement_Delete(AstNode):
-    value: "DeleteStatement"
+    vty: "DeleteStatement"
 
 
 @dataclass
 class Statement_Update(AstNode):
-    value: "UpdateStatement"
+    vty: "UpdateStatement"
 
 
 @dataclass
 class Statement_Truncate(AstNode):
-    value: "TruncateStatement"
+    vty: "TruncateStatement"
 
 
 @dataclass
 class Statement_Merge(AstNode):
-    value: "MergeStatement"
+    vty: "MergeStatement"
 
 
 @dataclass
 class Statement_DeclareVar(AstNode):
-    value: "DeclareVarStatement"
+    vty: "DeclareVarStatement"
 
 
 @dataclass
 class Statement_SetVar(AstNode):
-    value: "SetVarStatement"
+    vty: "SetVarStatement"
 
 
 @dataclass
 class Statement_Block(AstNode):
-    value: "StatementsBlock"
+    vty: "StatementsBlock"
 
 
 @dataclass
 class Statement_CreateTable(AstNode):
-    value: "CreateTableStatement"
+    vty: "CreateTableStatement"
 
 
 @dataclass
 class Statement_DropTableStatement(AstNode):
-    value: "DropTableStatement"
+    vty: "DropTableStatement"
 
 
 @dataclass
 class Statement_If(AstNode):
-    value: "IfStatement"
+    vty: "IfStatement"
 
 
 @dataclass
 class Statement_Case(AstNode):
-    value: "CaseStatement"
+    vty: "CaseStatement"
 
 
 @dataclass
@@ -1251,7 +1249,7 @@ class Statement_RollbackTransaction(AstNode): ...
 
 @dataclass
 class Statement_Raise(AstNode):
-    value: "RaiseStatement"
+    vty: "RaiseStatement"
 
 
 @dataclass
@@ -1260,7 +1258,7 @@ class Statement_Return(AstNode): ...
 
 @dataclass
 class Statement_Call(AstNode):
-    value: "CallStatement"
+    vty: "CallStatement"
 
 
 Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call"
@@ -1268,12 +1266,12 @@ Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | 
 
 @dataclass
 class Name_Identifier(AstNode):
-    value: "Identifier"
+    vty: "Identifier"
 
 
 @dataclass
 class Name_QuotedIdentifier(AstNode):
-    value: "QuotedIdentifier"
+    vty: "QuotedIdentifier"
 
 
 Name: TypeAlias = "Name_Identifier | Name_QuotedIdentifier"
@@ -1281,17 +1279,17 @@ Name: TypeAlias = "Name_Identifier | Name_QuotedIdentifier"
 
 @dataclass
 class PathPart_Identifier(AstNode):
-    value: "Identifier"
+    vty: "Identifier"
 
 
 @dataclass
 class PathPart_QuotedIdentifier(AstNode):
-    value: "QuotedIdentifier"
+    vty: "QuotedIdentifier"
 
 
 @dataclass
 class PathPart_Number(AstNode):
-    value: "Number"
+    vty: "Number"
 
 
 @dataclass
@@ -1315,12 +1313,12 @@ PathPart: TypeAlias = "PathPart_Identifier | PathPart_QuotedIdentifier | PathPar
 
 @dataclass
 class SetVariable_UserVariable(AstNode):
-    value: "Name"
+    vty: "Name"
 
 
 @dataclass
 class SetVariable_SystemVariable(AstNode):
-    value: "SystemVariable"
+    vty: "SystemVariable"
 
 
 SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"
@@ -1482,12 +1480,12 @@ Type: TypeAlias = "Type_Array | Type_BigNumeric | Type_Bool | Type_Bytes | Type_
 
 @dataclass
 class MergeSource_Table(AstNode):
-    value: "PathName"
+    vty: "PathName"
 
 
 @dataclass
 class MergeSource_Subquery(AstNode):
-    value: "QueryExpr"
+    vty: "QueryExpr"
 
 
 MergeSource: TypeAlias = "MergeSource_Table | MergeSource_Subquery"
@@ -1495,12 +1493,12 @@ MergeSource: TypeAlias = "MergeSource_Table | MergeSource_Subquery"
 
 @dataclass
 class Merge_Update(AstNode):
-    value: "MergeUpdate"
+    vty: "MergeUpdate"
 
 
 @dataclass
 class Merge_Insert(AstNode):
-    value: "MergeInsert"
+    vty: "MergeInsert"
 
 
 @dataclass
@@ -1516,17 +1514,17 @@ Merge: TypeAlias = "Merge_Update | Merge_Insert | Merge_InsertRow | Merge_Delete
 
 @dataclass
 class When_Matched(AstNode):
-    value: "WhenMatched"
+    vty: "WhenMatched"
 
 
 @dataclass
 class When_NotMatchedByTarget(AstNode):
-    value: "WhenNotMatchedByTarget"
+    vty: "WhenNotMatchedByTarget"
 
 
 @dataclass
 class When_NotMatchedBySource(AstNode):
-    value: "WhenNotMatchedBySource"
+    vty: "WhenNotMatchedBySource"
 
 
 When: TypeAlias = "When_Matched | When_NotMatchedByTarget | When_NotMatchedBySource"
@@ -1534,42 +1532,42 @@ When: TypeAlias = "When_Matched | When_NotMatchedByTarget | When_NotMatchedBySou
 
 @dataclass
 class Expr_Binary(AstNode):
-    value: "BinaryExpr"
+    vty: "BinaryExpr"
 
 
 @dataclass
 class Expr_Unary(AstNode):
-    value: "UnaryExpr"
+    vty: "UnaryExpr"
 
 
 @dataclass
 class Expr_Grouping(AstNode):
-    value: "GroupingExpr"
+    vty: "GroupingExpr"
 
 
 @dataclass
 class Expr_Array(AstNode):
-    value: "ArrayExpr"
+    vty: "ArrayExpr"
 
 
 @dataclass
 class Expr_Struct(AstNode):
-    value: "StructExpr"
+    vty: "StructExpr"
 
 
 @dataclass
 class Expr_Identifier(AstNode):
-    value: "Identifier"
+    vty: "Identifier"
 
 
 @dataclass
 class Expr_QuotedIdentifier(AstNode):
-    value: "QuotedIdentifier"
+    vty: "QuotedIdentifier"
 
 
 @dataclass
 class Expr_QueryNamedParameter(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
@@ -1578,92 +1576,92 @@ class Expr_QueryPositionalParameter(AstNode): ...
 
 @dataclass
 class Expr_SystemVariable(AstNode):
-    value: "SystemVariable"
+    vty: "SystemVariable"
 
 
 @dataclass
 class Expr_String(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_RawString(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_StringConcat(AstNode):
-    value: "StringConcatExpr"
+    vty: "StringConcatExpr"
 
 
 @dataclass
 class Expr_Bytes(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_RawBytes(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_BytesConcat(AstNode):
-    value: "BytesConcatExpr"
+    vty: "BytesConcatExpr"
 
 
 @dataclass
 class Expr_Numeric(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_BigNumeric(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_Number(AstNode):
-    value: "Number"
+    vty: "Number"
 
 
 @dataclass
 class Expr_Bool(AstNode):
-    value: "bool"
+    vty: "bool"
 
 
 @dataclass
 class Expr_Date(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_Time(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_Datetime(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_Timestamp(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class Expr_Range(AstNode):
-    value: "RangeExpr"
+    vty: "RangeExpr"
 
 
 @dataclass
 class Expr_Interval(AstNode):
-    value: "IntervalExpr"
+    vty: "IntervalExpr"
 
 
 @dataclass
 class Expr_Json(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
@@ -1680,32 +1678,32 @@ class Expr_Star(AstNode): ...
 
 @dataclass
 class Expr_Query(AstNode):
-    value: "QueryExpr"
+    vty: "QueryExpr"
 
 
 @dataclass
 class Expr_Case(AstNode):
-    value: "CaseExpr"
+    vty: "CaseExpr"
 
 
 @dataclass
 class Expr_GenericFunction(AstNode):
-    value: "GenericFunctionExpr"
+    vty: "GenericFunctionExpr"
 
 
 @dataclass
 class Expr_Function(AstNode):
-    value: "FunctionExpr"
+    vty: "FunctionExpr"
 
 
 @dataclass
 class Expr_QuantifiedLike(AstNode):
-    value: "QuantifiedLikeExpr"
+    vty: "QuantifiedLikeExpr"
 
 
 @dataclass
 class Expr_Exists(AstNode):
-    value: "QueryExpr"
+    vty: "QueryExpr"
 
 
 Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_RawString | Expr_StringConcat | Expr_Bytes | Expr_RawBytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
@@ -1772,42 +1770,42 @@ IntervalPart: TypeAlias = "IntervalPart_Year | IntervalPart_Quarter | IntervalPa
 
 @dataclass
 class FunctionExpr_Array(AstNode):
-    value: "ArrayFunctionExpr"
+    vty: "ArrayFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_ArrayAgg(AstNode):
-    value: "ArrayAggFunctionExpr"
+    vty: "ArrayAggFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_Concat(AstNode):
-    value: "ConcatFunctionExpr"
+    vty: "ConcatFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_Cast(AstNode):
-    value: "CastFunctionExpr"
+    vty: "CastFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_Extract(AstNode):
-    value: "ExtractFunctionExpr"
+    vty: "ExtractFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_If(AstNode):
-    value: "IfFunctionExpr"
+    vty: "IfFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_SafeCast(AstNode):
-    value: "SafeCastFunctionExpr"
+    vty: "SafeCastFunctionExpr"
 
 
 @dataclass
 class FunctionExpr_CurrentDate(AstNode):
-    value: "CurrentDateFunctionExpr"
+    vty: "CurrentDateFunctionExpr"
 
 
 @dataclass
@@ -1816,7 +1814,7 @@ class FunctionExpr_CurrentTimestamp(AstNode): ...
 
 @dataclass
 class FunctionExpr_Right(AstNode):
-    value: "RightFunctionExpr"
+    vty: "RightFunctionExpr"
 
 
 FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_Extract | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp | FunctionExpr_Right"
@@ -1860,7 +1858,7 @@ class ExtractFunctionPart_Week(AstNode): ...
 
 @dataclass
 class ExtractFunctionPart_WeekWithBegin(AstNode):
-    value: "WeekBegin"
+    vty: "WeekBegin"
 
 
 @dataclass
@@ -2147,17 +2145,17 @@ QuantifiedLikeExprPattern: TypeAlias = (
 
 @dataclass
 class QueryExpr_Grouping(AstNode):
-    value: "GroupingQueryExpr"
+    vty: "GroupingQueryExpr"
 
 
 @dataclass
 class QueryExpr_Select(AstNode):
-    value: "SelectQueryExpr"
+    vty: "SelectQueryExpr"
 
 
 @dataclass
 class QueryExpr_SetSelect(AstNode):
-    value: "SetSelectQueryExpr"
+    vty: "SetSelectQueryExpr"
 
 
 QueryExpr: TypeAlias = "QueryExpr_Grouping | QueryExpr_Select | QueryExpr_SetSelect"
@@ -2206,12 +2204,12 @@ OrderByNulls: TypeAlias = "OrderByNulls_First | OrderByNulls_Last"
 
 @dataclass
 class Cte_NonRecursive(AstNode):
-    value: "NonRecursiveCte"
+    vty: "NonRecursiveCte"
 
 
 @dataclass
 class Cte_Recursive(AstNode):
-    value: "RecursiveCte"
+    vty: "RecursiveCte"
 
 
 Cte: TypeAlias = "Cte_NonRecursive | Cte_Recursive"
@@ -2230,17 +2228,17 @@ SelectTableValue: TypeAlias = "SelectTableValue_Struct | SelectTableValue_Value"
 
 @dataclass
 class SelectExpr_Col(AstNode):
-    value: "SelectColExpr"
+    vty: "SelectColExpr"
 
 
 @dataclass
 class SelectExpr_ColAll(AstNode):
-    value: "SelectColAllExpr"
+    vty: "SelectColAllExpr"
 
 
 @dataclass
 class SelectExpr_All(AstNode):
-    value: "SelectAllExpr"
+    vty: "SelectAllExpr"
 
 
 SelectExpr: TypeAlias = "SelectExpr_Col | SelectExpr_ColAll | SelectExpr_All"
@@ -2259,12 +2257,12 @@ UnpivotNulls: TypeAlias = "UnpivotNulls_Include | UnpivotNulls_Exclude"
 
 @dataclass
 class UnpivotKind_SingleColumn(AstNode):
-    value: "SingleColumnUnpivot"
+    vty: "SingleColumnUnpivot"
 
 
 @dataclass
 class UnpivotKind_MultiColumn(AstNode):
-    value: "MultiColumnUnpivot"
+    vty: "MultiColumnUnpivot"
 
 
 UnpivotKind: TypeAlias = "UnpivotKind_SingleColumn | UnpivotKind_MultiColumn"
@@ -2272,47 +2270,47 @@ UnpivotKind: TypeAlias = "UnpivotKind_SingleColumn | UnpivotKind_MultiColumn"
 
 @dataclass
 class FromExpr_Join(AstNode):
-    value: "JoinExpr"
+    vty: "JoinExpr"
 
 
 @dataclass
 class FromExpr_FullJoin(AstNode):
-    value: "JoinExpr"
+    vty: "JoinExpr"
 
 
 @dataclass
 class FromExpr_LeftJoin(AstNode):
-    value: "JoinExpr"
+    vty: "JoinExpr"
 
 
 @dataclass
 class FromExpr_RightJoin(AstNode):
-    value: "JoinExpr"
+    vty: "JoinExpr"
 
 
 @dataclass
 class FromExpr_CrossJoin(AstNode):
-    value: "CrossJoinExpr"
+    vty: "CrossJoinExpr"
 
 
 @dataclass
 class FromExpr_Path(AstNode):
-    value: "FromPathExpr"
+    vty: "FromPathExpr"
 
 
 @dataclass
 class FromExpr_Unnest(AstNode):
-    value: "UnnestExpr"
+    vty: "UnnestExpr"
 
 
 @dataclass
 class FromExpr_GroupingQuery(AstNode):
-    value: "FromGroupingQueryExpr"
+    vty: "FromGroupingQueryExpr"
 
 
 @dataclass
 class FromExpr_GroupingFrom(AstNode):
-    value: "GroupingFromExpr"
+    vty: "GroupingFromExpr"
 
 
 FromExpr: TypeAlias = "FromExpr_Join | FromExpr_FullJoin | FromExpr_LeftJoin | FromExpr_RightJoin | FromExpr_CrossJoin | FromExpr_Path | FromExpr_Unnest | FromExpr_GroupingQuery | FromExpr_GroupingFrom"
@@ -2339,7 +2337,7 @@ JoinKind: TypeAlias = "JoinKind_Inner | JoinKind_Left | JoinKind_Right | JoinKin
 
 @dataclass
 class JoinCondition_On(AstNode):
-    value: "Expr"
+    vty: "Expr"
 
 
 @dataclass
@@ -2352,7 +2350,7 @@ JoinCondition: TypeAlias = "JoinCondition_On | JoinCondition_Using"
 
 @dataclass
 class GroupByExpr_Items(AstNode):
-    value: "list[Expr]"
+    exprs: "list[Expr]"
 
 
 @dataclass
@@ -2364,12 +2362,12 @@ GroupByExpr: TypeAlias = "GroupByExpr_Items | GroupByExpr_All"
 
 @dataclass
 class NamedWindowExpr_Reference(AstNode):
-    value: "Name"
+    vty: "Name"
 
 
 @dataclass
 class NamedWindowExpr_WindowSpec(AstNode):
-    value: "WindowSpec"
+    vty: "WindowSpec"
 
 
 NamedWindowExpr: TypeAlias = "NamedWindowExpr_Reference | NamedWindowExpr_WindowSpec"
@@ -2381,7 +2379,7 @@ class FrameBound_UnboundedPreceding(AstNode): ...
 
 @dataclass
 class FrameBound_Preceding(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
@@ -2390,7 +2388,7 @@ class FrameBound_UnboundedFollowing(AstNode): ...
 
 @dataclass
 class FrameBound_Following(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
@@ -2525,42 +2523,42 @@ class TokenType_LessEqual(AstNode): ...
 
 @dataclass
 class TokenType_QuotedIdentifier(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_Identifier(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_String(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_RawString(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_Bytes(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_RawBytes(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_Number(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
 class TokenType_QueryNamedParameter(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass
@@ -2569,7 +2567,7 @@ class TokenType_QueryPositionalParameter(AstNode): ...
 
 @dataclass
 class TokenType_SystemVariable(AstNode):
-    value: "str"
+    vty: "str"
 
 
 @dataclass

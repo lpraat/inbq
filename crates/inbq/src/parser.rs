@@ -1889,11 +1889,11 @@ impl<'a> Parser<'a> {
         if self.match_token_type(TokenTypeVariant::All) {
             Ok(GroupByExpr::All)
         } else {
-            let mut items = vec![self.parse_expr()?];
+            let mut exprs = vec![self.parse_expr()?];
             while self.match_token_type(TokenTypeVariant::Comma) {
-                items.push(self.parse_expr()?);
+                exprs.push(self.parse_expr()?);
             }
-            Ok(GroupByExpr::Items(items))
+            Ok(GroupByExpr::Items { exprs })
         }
     }
 

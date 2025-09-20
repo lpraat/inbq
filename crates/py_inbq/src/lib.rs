@@ -67,7 +67,7 @@ macro_rules! kwarg {
     };
 }
 
-static VARIANT_FIELD_NAME: &str = "value";
+static VARIANT_FIELD_NAME: &str = "vty";
 
 trait RsToPyObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>>;
@@ -2247,8 +2247,8 @@ impl RsToPyObject for Where {
 impl RsToPyObject for GroupByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            GroupByExpr::Items(exprs) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, exprs)];
+            GroupByExpr::Items { exprs } => {
+                let kwargs = &[kwarg!(py_ctx, "exprs", exprs)];
                 instantiate_py_class(py_ctx, get_class!(py_ctx, GroupByExpr::Items)?, kwargs)
             }
             GroupByExpr::All => {

@@ -1001,7 +1001,7 @@ pub struct Where {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GroupByExpr {
-    Items(Vec<Expr>),
+    Items { exprs: Vec<Expr> },
     All,
 }
 

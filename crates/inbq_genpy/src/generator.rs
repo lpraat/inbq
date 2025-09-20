@@ -319,7 +319,7 @@ class {}(AstNode):
                         r#"
 @dataclass
 class {}(AstNode):
-    value: {}
+    vty: {}
                     "#,
                         py_variant,
                         tuple_ty.py_type()
@@ -453,9 +453,9 @@ class AstNode:
             }}
             cls_dict = {{}}
 
-            if "_" in ty.__name__ and len(ty_hints) == 1 and "value" in ty_hints:
-                cls_dict["value"] = cls._instantiate_type_from_data(
-                    ty_hints["value"], data
+            if "_" in ty.__name__ and len(ty_hints) == 1 and "vty" in ty_hints:
+                cls_dict["vty"] = cls._instantiate_type_from_data(
+                    ty_hints["vty"], data
                 )
             else:
                 for field, field_ty in ty_hints.items():
