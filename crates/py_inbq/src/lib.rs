@@ -34,7 +34,7 @@ use inbq::ast::{
 
 struct PyContext<'a> {
     py: Python<'a>,
-    inbq_module: Bound<'a, PyModule>,
+    ast_nodes: Bound<'a, PyAny>,
 }
 
 impl<'a> PyContext<'a> {
@@ -42,7 +42,7 @@ impl<'a> PyContext<'a> {
     where
         N: IntoPyObject<'a, Target = PyString>,
     {
-        Ok(self.inbq_module.getattr(cls_name)?)
+        Ok(self.ast_nodes.getattr(cls_name)?)
     }
 }
 
@@ -2829,7 +2829,8 @@ fn parse_sql(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     let inbq_module = py
         .import(intern!(py, "inbq"))
         .map_err(|e| PyModuleNotFoundError::new_err(e.to_string()))?;
-    let mut py_ctx = PyContext { py, inbq_module };
+    let ast_nodes = inbq_module.getattr(intern!(py, "ast_nodes"))?;
+    let mut py_ctx = PyContext { py, ast_nodes };
     let rs_ast = inbq::parser::parse_sql(sql)
         .map_err(|e| PyValueError::new_err(e.to_string()))?
         .to_py_obj(&mut py_ctx)

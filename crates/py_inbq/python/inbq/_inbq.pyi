@@ -11,7 +11,7 @@ def parse_sql(sql: str) -> Ast:
     """
     ...
 
-def parse_sql_out_json(sql: str) -> Ast:
+def parse_sql_out_json(sql: str) -> str:
     """Parse a BigQuery SQL using the inbq Rust backend
 
     Args:

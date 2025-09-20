@@ -4,7 +4,7 @@ import tomllib
 from typing import Literal
 
 from inbq import parse_sql, parse_sql_out_json
-from inbq import Ast
+from inbq.ast_nodes import Ast
 
 
 @pytest.fixture()
