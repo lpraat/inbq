@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use pyo3::{
     exceptions::{PyModuleNotFoundError, PyRuntimeError, PyValueError},
+    ffi::c_str,
     intern,
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyNone, PyString, PyTuple},
@@ -2817,11 +2818,19 @@ impl RsToPyObject for Ast {
 }
 
 #[pyfunction]
-fn parse_sql_out_json(sql: &str) -> PyResult<String> {
+fn parse_sql_to_dict(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     let rs_ast = inbq::parser::parse_sql(sql).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let json_ast =
         serde_json::to_string(&rs_ast).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
-    Ok(json_ast)
+    let locals = PyDict::new(py);
+    locals.set_item(intern!(py, "py_json_ast"), json_ast)?;
+    py.run(
+        c_str!("import json; out = json.loads(py_json_ast)"),
+        None,
+        Some(&locals),
+    )?;
+    let out = locals.get_item(intern!(py, "out"))?.unwrap();
+    Ok(out.into())
 }
 
 #[pyfunction]
@@ -2838,9 +2847,72 @@ fn parse_sql(py: Python<'_>, sql: &str) -> PyResult<Py<PyAny>> {
     Ok(rs_ast.into())
 }
 
+#[pyfunction]
+fn parse_sqls_and_extract_lineage(
+    py: Python<'_>,
+    sqls: Vec<String>,
+    catalog: &Bound<'_, PyDict>,
+    include_raw: bool,
+) -> PyResult<Py<PyAny>> {
+    let locals = PyDict::new(py);
+    locals.set_item(intern!(py, "catalog"), catalog)?;
+    locals.set_item(intern!(py, "include_raw"), include_raw)?;
+
+    py.run(
+        c_str!("import json; catalog_str = json.dumps(catalog)"),
+        None,
+        Some(&locals),
+    )?;
+    let catalog_str = locals.get_item(intern!(py, "catalog_str"))?.unwrap();
+    let rs_catalog_str: &str = catalog_str.extract()?;
+    let rs_catalog =
+        serde_json::from_str(rs_catalog_str).map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    let inbq_module = py
+        .import(intern!(py, "inbq"))
+        .map_err(|e| PyModuleNotFoundError::new_err(e.to_string()))?;
+    let ast_nodes = inbq_module.getattr(intern!(py, "ast_nodes"))?;
+    let mut py_ctx = PyContext { py, ast_nodes };
+
+    let mut asts = vec![];
+    let mut lineages = vec![];
+    for sql in &sqls {
+        let ast = inbq::parser::parse_sql(sql).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let lineage = inbq::lineage::extract_lineage(&ast, &rs_catalog)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        locals.set_item(
+            intern!(py, "lineage_str"),
+            serde_json::to_string(&lineage).map_err(|e| PyValueError::new_err(e.to_string()))?,
+        )?;
+
+        py.run(
+            c_str!(
+                r#"
+lineage_dict = json.loads(lineage_str)
+if not include_raw:
+    lineage_dict['raw_lineage'] = None
+"#
+            ),
+            None,
+            Some(&locals),
+        )?;
+
+        let lineage_dict = PyDict::new(py);
+        lineage_dict.set_item(
+            intern!(py, "lineage"),
+            locals.get_item(intern!(py, "lineage_dict"))?,
+        )?;
+        asts.push(ast.to_py_obj(&mut py_ctx).unwrap());
+        lineages.push(lineage_dict);
+    }
+    let output = (asts, lineages).into_pyobject(py)?;
+    Ok(output.into())
+}
+
 #[pymodule]
 fn _inbq(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(parse_sql_out_json, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_sql_to_dict, m)?)?;
     m.add_function(wrap_pyfunction!(parse_sql, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_sqls_and_extract_lineage, m)?)?;
     Ok(())
 }

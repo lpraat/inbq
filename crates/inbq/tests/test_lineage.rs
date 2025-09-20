@@ -46,7 +46,7 @@ fn test_lineage() {
         let lineage = lineage.unwrap();
 
         let target_ready_lineage = test.ready_lineage;
-        let ready_lineage = lineage.ready;
+        let ready_lineage = lineage.lineage;
 
         let mut ready_lineage_map: IndexMap<String, IndexMap<String, Vec<String>>> =
             IndexMap::new();

@@ -950,7 +950,7 @@ impl LineageExtractor {
                         Expr::Identifier(Identifier { name: right_ident })
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: right_ident }),
                     ) => {
-                        assert!(matches!(op, BinaryOperator::FieldAccess));
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
 
                         if access_path.path.is_empty() {
                             if let Ok(col_or_node_idx) = self.get_col_or_var(left_ident) {
@@ -986,7 +986,7 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Binary(left), right) => {
-                        assert!(matches!(op, BinaryOperator::FieldAccess));
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         match right {
                             Expr::Binary(binary_expr)
                                 if matches!(binary_expr.operator, BinaryOperator::ArrayIndex) =>
@@ -1043,7 +1043,7 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Array(array_expr), _) => {
-                        assert!(matches!(op, BinaryOperator::ArrayIndex));
+                        debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
                         let node_idx = self.array_expr_lin(array_expr)?;
@@ -1088,7 +1088,7 @@ impl LineageExtractor {
                         Expr::Identifier(Identifier { name: ident })
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                     ) => {
-                        assert!(matches!(op, BinaryOperator::FieldAccess));
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
@@ -1099,7 +1099,7 @@ impl LineageExtractor {
                         break;
                     }
                     (Expr::Struct(struct_expr), Expr::Star) => {
-                        assert!(matches!(op, BinaryOperator::FieldAccess));
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
@@ -1141,7 +1141,7 @@ impl LineageExtractor {
                         Expr::Number(_),
                     ) => {
                         // array[]
-                        assert!(matches!(op, BinaryOperator::ArrayIndex));
+                        debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         let col_or_var_idx = self.get_col_or_var(ident)?;
                         let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                         let access_path = AccessPath {
@@ -1157,11 +1157,11 @@ impl LineageExtractor {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                     ) => {
                         // select (select struct(1 as a, 2 as b)).a
-                        assert!(matches!(op, BinaryOperator::FieldAccess));
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(left, false)
                         })?;
-                        assert!(consumed_nodes.len() == 1);
+                        debug_assert!(consumed_nodes.len() == 1);
                         let access_path = AccessPath {
                             path: vec![AccessOp::Field(ident.clone())],
                         };
@@ -1174,11 +1174,11 @@ impl LineageExtractor {
                     }
                     (Expr::Grouping(_) | Expr::Query(_), Expr::Number(_)) => {
                         // select (select [1,2,3])[0]
-                        assert!(matches!(op, BinaryOperator::ArrayIndex));
+                        debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(left, false)
                         })?;
-                        assert!(consumed_nodes.len() == 1);
+                        debug_assert!(consumed_nodes.len() == 1);
                         let access_path = AccessPath {
                             path: vec![AccessOp::Index],
                         };
@@ -1914,7 +1914,7 @@ impl LineageExtractor {
                         NodeName::Defined(alias.as_str().to_owned())
                     });
 
-                assert!(consumed_nodes.len() == 1);
+                debug_assert!(consumed_nodes.len() == 1);
 
                 let consumed_node = &self.context.arena_lineage_nodes[consumed_nodes[0]];
                 let nested_node_idx = consumed_node.access(&AccessPath {
@@ -2847,7 +2847,7 @@ impl LineageExtractor {
                 }
             }
         } else {
-            assert!(set_var_statement.vars.len() == set_var_statement.exprs.len());
+            debug_assert!(set_var_statement.vars.len() == set_var_statement.exprs.len());
             for (var, expr) in set_var_statement.vars.iter().zip(&set_var_statement.exprs) {
                 match var {
                     SetVariable::UserVariable(var_name) => {
@@ -3062,10 +3062,10 @@ pub enum SchemaObjectKind {
     View { columns: Vec<Column> },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Lineage {
-    pub raw: RawLineage,
-    pub ready: ReadyLineage,
+    pub raw_lineage: RawLineage,
+    pub lineage: ReadyLineage,
 }
 
 fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) -> NodeType {
@@ -3379,8 +3379,8 @@ pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> 
     };
 
     let lineage = Lineage {
-        raw: raw_lineage,
-        ready: ready_lineage,
+        raw_lineage,
+        lineage: ready_lineage,
     };
 
     Ok(lineage)

@@ -3,7 +3,7 @@ import pytest
 import tomllib
 from typing import Literal
 
-from inbq import parse_sql, parse_sql_out_json
+from inbq import parse_sql, parse_sql_to_dict
 from inbq.ast_nodes import Ast
 
 
@@ -22,5 +22,5 @@ def test_rs_instantation_matches_py_instantiation(
     for test in parsing_tests:
         sql = test["sql"]
         rs_ast = parse_sql(sql)
-        py_ast = Ast.from_json_str(parse_sql_out_json(sql))
+        py_ast = Ast.from_dict(parse_sql_to_dict(sql))
         assert repr(rs_ast) == repr(py_ast)

@@ -37,7 +37,7 @@ impl Scanner {
     }
 
     fn n_advance(&mut self, n: usize) -> char {
-        assert!(n > 0);
+        debug_assert!(n > 0);
         let mut c = self.advance();
         for _ in 1..n {
             c = self.advance();

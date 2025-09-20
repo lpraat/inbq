@@ -488,11 +488,11 @@ class AstNode:
     }
 
     @classmethod
-    def from_json_str(cls, json_str: str) -> Self:
-        return cls.from_dict(json.loads(json_str))
-
-    @classmethod
     def from_dict(cls, data: dict) -> Self:
+        """
+        Instantiating a `inbq.Ast` using this method is more than 100x slower than using `inbq.parse_sql`.
+        This method is primarily intended for internal use and testing.
+        """
         return cls._instantiate_type_from_data(cls, data)
 
     @classmethod
