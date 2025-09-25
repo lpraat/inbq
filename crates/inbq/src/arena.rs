@@ -5,7 +5,7 @@ pub struct ArenaIndex {
     pub index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Arena<T> {
     nodes: Vec<T>,
 }
@@ -36,6 +36,10 @@ impl<T> Arena<T> {
 
     pub fn last(&self) -> Option<&T> {
         self.nodes.last()
+    }
+
+    pub fn truncate(&mut self, n: usize) {
+        self.nodes.truncate(n);
     }
 }
 

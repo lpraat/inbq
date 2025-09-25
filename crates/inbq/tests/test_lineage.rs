@@ -32,12 +32,15 @@ fn test_lineage() {
         let ast = parse_sql(&test.sql)
             .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err));
 
-        let lineage = extract_lineage(
-            &ast,
+        let mut lineages = extract_lineage(
+            &[&ast],
             &Catalog {
                 schema_objects: test.schema_objects,
             },
+            false,
+            false,
         );
+        let lineage = lineages.pop().unwrap();
         if let Err(err) = &lineage {
             println!("Could not extract lineage due to: {}", err);
         }

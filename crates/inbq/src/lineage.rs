@@ -15,6 +15,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use indexmap::IndexMap;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::result::Result::Ok;
 use std::{
@@ -243,6 +244,20 @@ struct Context {
 }
 
 impl Context {
+    fn reset(&mut self, n_objects: usize, n_nodes: usize) {
+        // Truncate to just keep source objects/nodes
+        self.arena_objects.truncate(n_objects);
+        self.arena_lineage_nodes.truncate(n_nodes);
+
+        // Clear the rest
+        self.objects_stack.clear();
+        self.stack.clear();
+        self.columns_stack.clear();
+        self.vars.clear();
+        self.struct_node_field_types_stack.clear();
+        self.output.clear();
+    }
+
     fn allocate_new_ctx_object(
         &mut self,
         name: &str,
@@ -3064,7 +3079,7 @@ pub enum SchemaObjectKind {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Lineage {
-    pub raw_lineage: RawLineage,
+    pub raw_lineage: Option<RawLineage>,
     pub lineage: ReadyLineage,
 }
 
@@ -3162,15 +3177,40 @@ fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
     Ok(node_type_from_parser_parameterized_type(&r#type))
 }
 
-pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> {
+pub fn extract_lineage(
+    asts: &[&Ast],
+    catalog: &Catalog,
+    include_raw: bool,
+    parallel: bool,
+) -> Vec<anyhow::Result<Lineage>> {
+    if parallel {
+        let n_chunks = std::cmp::max(
+            1,
+            asts.len() / std::thread::available_parallelism().unwrap().get(),
+        );
+        let lineages: Vec<anyhow::Result<Lineage>> = asts
+            .par_chunks(n_chunks)
+            .flat_map(|asts| _extract_lineage(asts, catalog, include_raw))
+            .collect();
+        lineages
+    } else {
+        _extract_lineage(asts, catalog, include_raw)
+    }
+}
+
+fn _extract_lineage(
+    asts: &[&Ast],
+    catalog: &Catalog,
+    include_raw: bool,
+) -> Vec<anyhow::Result<Lineage>> {
     let mut ctx = Context::default();
     let mut source_objects = IndexMap::new();
     for schema_object in &catalog.schema_objects {
         if source_objects.contains_key(&schema_object.name) {
-            return Err(anyhow!(
+            panic!(
                 "Found duplicate definition of schema object `{}`.",
                 schema_object.name
-            ));
+            );
         }
 
         match &schema_object.kind {
@@ -3187,23 +3227,24 @@ pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> 
                     is_unique
                 });
                 if !are_columns_unique {
-                    return Err(anyhow!(
+                    panic!(
                         "Found duplicate columns in schema object `{}`: `{:?}`.",
-                        &schema_object.name,
-                        duplicate_columns
-                    ));
+                        &schema_object.name, duplicate_columns
+                    );
                 }
 
                 let mut nodes = vec![];
 
                 for col in columns {
-                    let node_type = parse_column_dtype(col).map_err(|e| {
-                        anyhow!(
-                            "Cannot retrieve node type from column {:?} due to: {}",
-                            col,
-                            e
-                        )
-                    })?;
+                    let node_type = match parse_column_dtype(col) {
+                        Err(err) => {
+                            panic!(
+                                "Cannot retrieve node type from column {:?} due to: {}",
+                                col, err
+                            );
+                        }
+                        Ok(node_type) => node_type,
+                    };
 
                     // Check that struct field names are unique
                     if let NodeType::Struct(ref struct_node_type) = node_type {
@@ -3211,12 +3252,10 @@ pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> 
 
                         for field in &struct_node_type.fields {
                             if set.contains(&field.name) {
-                                return Err(anyhow!(
+                                panic!(
                                     "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
-                                    &col.name,
-                                    &schema_object.name,
-                                    &field.name
-                                ));
+                                    &col.name, &schema_object.name, &field.name
+                                );
                             }
                             set.insert(&field.name);
                         }
@@ -3237,151 +3276,180 @@ pub fn extract_lineage(ast: &Ast, catalog: &Catalog) -> anyhow::Result<Lineage> 
     }
     ctx.source_objects = source_objects;
 
-    let mut lineage = LineageExtractor {
+    let n_objects = ctx.arena_objects.len();
+    let n_nodes = ctx.arena_lineage_nodes.len();
+
+    let mut lineages = vec![];
+    let mut lineage_extractor = LineageExtractor {
         anon_id: 0,
         context: ctx,
     };
-    lineage.ast_lin(ast)?;
 
-    // Remove duplicates
-    for obj in &lineage.context.arena_objects {
-        for node_idx in &obj.lineage_nodes {
-            let lineage_node = &mut lineage.context.arena_lineage_nodes[*node_idx];
-            let mut set = HashSet::new();
-            let mut unique_input = vec![];
-            for inp_idx in &lineage_node.input {
-                if !set.contains(&inp_idx) {
-                    unique_input.push(*inp_idx);
-                    set.insert(inp_idx);
-                }
-            }
-            lineage_node.input = unique_input
+    for (i, &ast) in asts.iter().enumerate() {
+        if i > 0 {
+            lineage_extractor.context.reset(n_objects, n_nodes);
         }
-    }
-
-    log::debug!("Output Lineage Nodes:");
-    for pending_node in &lineage.context.output {
-        LineageNode::pretty_log_lineage_node(*pending_node, &lineage.context);
-    }
-
-    let mut objects: IndexMap<ArenaIndex, IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>> =
-        IndexMap::new();
-
-    for output_node_idx in &lineage.context.output {
-        let output_node = &lineage.context.arena_lineage_nodes[*output_node_idx];
-        let output_source_idx = output_node.source_obj;
-
-        let mut stack = output_node.input.clone();
-        loop {
-            if stack.is_empty() {
-                break;
-            }
-            let node_idx = stack.pop().unwrap();
-            let node = &lineage.context.arena_lineage_nodes[node_idx];
-
-            let source_obj_idx = node.source_obj;
-            let source_obj = &lineage.context.arena_objects[source_obj_idx];
-
-            if lineage
-                .context
-                .source_objects
-                .contains_key(&source_obj.name)
-            {
-                objects
-                    .entry(output_source_idx)
-                    .or_default()
-                    .entry(*output_node_idx)
-                    .and_modify(|s| {
-                        s.insert((source_obj_idx, node_idx));
-                    })
-                    .or_insert(HashSet::from([(source_obj_idx, node_idx)]));
-            } else {
-                stack.extend(&node.input);
-            }
-        }
-    }
-
-    let just_include_source_objects = true;
-
-    let mut ready_lineage = ReadyLineage { objects: vec![] };
-    for (obj_idx, obj_map) in objects {
-        let obj = &lineage.context.arena_objects[obj_idx];
-        if just_include_source_objects && !lineage.context.source_objects.contains_key(&obj.name) {
+        if let Err(err) = lineage_extractor.ast_lin(ast) {
+            lineages.push(Err(err));
             continue;
+        };
+
+        // Remove duplicates
+        for obj in &lineage_extractor.context.arena_objects {
+            for node_idx in &obj.lineage_nodes {
+                let lineage_node = &mut lineage_extractor.context.arena_lineage_nodes[*node_idx];
+                let mut set = HashSet::new();
+                let mut unique_input = vec![];
+                for inp_idx in &lineage_node.input {
+                    if !set.contains(&inp_idx) {
+                        unique_input.push(*inp_idx);
+                        set.insert(inp_idx);
+                    }
+                }
+                lineage_node.input = unique_input
+            }
         }
 
-        let mut obj_nodes = vec![];
+        log::debug!("Output Lineage Nodes:");
+        for pending_node in &lineage_extractor.context.output {
+            LineageNode::pretty_log_lineage_node(*pending_node, &lineage_extractor.context);
+        }
 
-        for (node_idx, input) in obj_map {
-            let node = &lineage.context.arena_lineage_nodes[node_idx];
-            let mut node_input = vec![];
-            for (inp_obj_idx, inp_node_idx) in input {
-                let inp_obj = &lineage.context.arena_objects[inp_obj_idx];
-                if just_include_source_objects
-                    && !lineage.context.source_objects.contains_key(&inp_obj.name)
-                {
-                    continue;
+        let mut objects: IndexMap<
+            ArenaIndex,
+            IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>,
+        > = IndexMap::new();
+
+        for output_node_idx in &lineage_extractor.context.output {
+            let output_node = &lineage_extractor.context.arena_lineage_nodes[*output_node_idx];
+            let output_source_idx = output_node.source_obj;
+
+            let mut stack = output_node.input.clone();
+            loop {
+                if stack.is_empty() {
+                    break;
                 }
-                let inp_node = &lineage.context.arena_lineage_nodes[inp_node_idx];
-                node_input.push(ReadyLineageNodeInput {
-                    obj_name: inp_obj.name.clone(),
-                    node_name: inp_node.name.nested_path().to_owned(),
+                let node_idx = stack.pop().unwrap();
+                let node = &lineage_extractor.context.arena_lineage_nodes[node_idx];
+
+                let source_obj_idx = node.source_obj;
+                let source_obj = &lineage_extractor.context.arena_objects[source_obj_idx];
+
+                if lineage_extractor
+                    .context
+                    .source_objects
+                    .contains_key(&source_obj.name)
+                {
+                    objects
+                        .entry(output_source_idx)
+                        .or_default()
+                        .entry(*output_node_idx)
+                        .and_modify(|s| {
+                            s.insert((source_obj_idx, node_idx));
+                        })
+                        .or_insert(HashSet::from([(source_obj_idx, node_idx)]));
+                } else {
+                    stack.extend(&node.input);
+                }
+            }
+        }
+
+        let just_include_source_objects = true;
+
+        let mut ready_lineage = ReadyLineage { objects: vec![] };
+        for (obj_idx, obj_map) in objects {
+            let obj = &lineage_extractor.context.arena_objects[obj_idx];
+            if just_include_source_objects
+                && !lineage_extractor
+                    .context
+                    .source_objects
+                    .contains_key(&obj.name)
+            {
+                continue;
+            }
+
+            let mut obj_nodes = vec![];
+
+            for (node_idx, input) in obj_map {
+                let node = &lineage_extractor.context.arena_lineage_nodes[node_idx];
+                let mut node_input = vec![];
+                for (inp_obj_idx, inp_node_idx) in input {
+                    let inp_obj = &lineage_extractor.context.arena_objects[inp_obj_idx];
+                    if just_include_source_objects
+                        && !lineage_extractor
+                            .context
+                            .source_objects
+                            .contains_key(&inp_obj.name)
+                    {
+                        continue;
+                    }
+                    let inp_node = &lineage_extractor.context.arena_lineage_nodes[inp_node_idx];
+                    node_input.push(ReadyLineageNodeInput {
+                        obj_name: inp_obj.name.clone(),
+                        node_name: inp_node.name.nested_path().to_owned(),
+                    });
+                }
+
+                obj_nodes.push(ReadyLineageNode {
+                    name: node.name.nested_path().to_owned(),
+                    input: node_input,
                 });
             }
-
-            obj_nodes.push(ReadyLineageNode {
-                name: node.name.nested_path().to_owned(),
-                input: node_input,
+            ready_lineage.objects.push(ReadyLineageObject {
+                name: obj.name.clone(),
+                kind: obj.kind.into(),
+                nodes: obj_nodes,
             });
         }
-        ready_lineage.objects.push(ReadyLineageObject {
-            name: obj.name.clone(),
-            kind: obj.kind.into(),
-            nodes: obj_nodes,
-        });
+
+        let raw_lineage = if include_raw {
+            let arena_objects = &lineage_extractor.context.arena_objects;
+            let objects = arena_objects
+                .into_iter()
+                .enumerate()
+                .map(|(idx, obj)| RawLineageObject {
+                    id: idx,
+                    name: obj.name.clone(),
+                    kind: obj.kind.into(),
+                    nodes: obj.lineage_nodes.iter().map(|aidx| aidx.index).collect(),
+                })
+                .collect();
+
+            let arena_lineage_nodes = &lineage_extractor.context.arena_lineage_nodes;
+            let lineage_nodes = arena_lineage_nodes
+                .into_iter()
+                .enumerate()
+                .map(|(idx, node)| RawLineageNode {
+                    id: idx,
+                    name: node.name.clone().into(),
+                    source_object: node.source_obj.index,
+                    input: node.input.iter().map(|aidx| aidx.index).collect(),
+                })
+                .collect();
+
+            let output_lineage = lineage_extractor
+                .context
+                .output
+                .clone()
+                .iter()
+                .map(|aidx| aidx.index)
+                .collect();
+
+            Some(RawLineage {
+                objects,
+                lineage_nodes,
+                output_lineage,
+            })
+        } else {
+            None
+        };
+
+        let lineage = Lineage {
+            raw_lineage,
+            lineage: ready_lineage,
+        };
+        lineages.push(Ok(lineage));
     }
 
-    let raw_lineage = RawLineage {
-        objects: lineage
-            .context
-            .arena_objects
-            .into_iter()
-            .enumerate()
-            .map(|(idx, obj)| RawLineageObject {
-                id: idx,
-                name: obj.name,
-                kind: obj.kind.into(),
-                nodes: obj
-                    .lineage_nodes
-                    .into_iter()
-                    .map(|aidx| aidx.index)
-                    .collect(),
-            })
-            .collect(),
-        lineage_nodes: lineage
-            .context
-            .arena_lineage_nodes
-            .into_iter()
-            .enumerate()
-            .map(|(idx, node)| RawLineageNode {
-                id: idx,
-                name: node.name.into(),
-                source_object: node.source_obj.index,
-                input: node.input.into_iter().map(|aidx| aidx.index).collect(),
-            })
-            .collect(),
-        output_lineage: lineage
-            .context
-            .output
-            .into_iter()
-            .map(|aidx| aidx.index)
-            .collect(),
-    };
-
-    let lineage = Lineage {
-        raw_lineage,
-        lineage: ready_lineage,
-    };
-
-    Ok(lineage)
+    lineages
 }

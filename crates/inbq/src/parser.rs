@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use rayon::prelude::*;
 use strum::IntoDiscriminant;
 
 use crate::ast::{
@@ -3742,4 +3743,12 @@ pub fn parse_sql(sql: &str) -> anyhow::Result<Ast> {
     let ast = parser.parse()?;
     log::debug!("AST: {:?}", ast);
     Ok(ast)
+}
+
+pub fn parse_sqls(sqls: &[&str], parallel: bool) -> Vec<anyhow::Result<Ast>> {
+    if parallel {
+        sqls.par_iter().map(|sql| parse_sql(sql)).collect()
+    } else {
+        sqls.iter().map(|sql| parse_sql(sql)).collect()
+    }
 }

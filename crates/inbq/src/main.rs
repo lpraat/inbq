@@ -1,11 +1,16 @@
+use std::mem;
+use std::mem::MaybeUninit;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
 use clap::Parser as ClapParser;
 use clap::Subcommand;
-use inbq::lineage::{Catalog, RawLineage, ReadyLineage, extract_lineage};
+use inbq::ast::Ast;
+use inbq::lineage::Lineage;
+use inbq::lineage::extract_lineage;
 use inbq::parser::parse_sql;
 use indexmap::IndexMap;
+use rayon::prelude::*;
 use serde::Serialize;
 use std::time::Instant;
 
@@ -37,52 +42,16 @@ struct LineageCommand {
     /// Pretty-print the output lineage.
     #[arg(long)]
     pretty: bool,
+    /// Process the SQLs in parallel
+    #[arg(long)]
+    parallel: bool,
 }
 
 #[derive(Serialize)]
 #[serde(untagged)]
 enum OutLineage {
-    Ok(OkLineage),
-    ErrLineage { error: String },
-}
-
-#[derive(Serialize)]
-struct OkLineage {
-    lineage: ReadyLineage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    raw: Option<RawLineage>,
-}
-
-fn output_lineage(
-    lineage_command: &LineageCommand,
-    catalog: &Catalog,
-    sql_file_path: &PathBuf,
-) -> anyhow::Result<OutLineage> {
-    let sql = std::fs::read_to_string(sql_file_path).map_err(|_| {
-        anyhow!(
-            "Failed to read sql file {}",
-            sql_file_path.display().to_string()
-        )
-    })?;
-    let lineage = extract_lineage(&parse_sql(&sql)?, catalog);
-    let out_lineage = match lineage {
-        Ok(lineage) => OutLineage::Ok(OkLineage {
-            lineage: lineage.ready,
-            raw: if lineage_command.include_raw {
-                Some(lineage.raw)
-            } else {
-                None
-            },
-        }),
-        Err(err) => OutLineage::ErrLineage {
-            error: format!(
-                "Could not extract lineage from SQL in file {} due to error: {}",
-                sql_file_path.display(),
-                err
-            ),
-        },
-    };
-    Ok(out_lineage)
+    Ok(Lineage),
+    Err { error: String },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -109,8 +78,8 @@ fn main() -> anyhow::Result<()> {
                     err
                 )
             })?;
-            let out_str = if sql_file_or_dir.is_dir() {
-                let mut file_lineages: IndexMap<String, OutLineage> = IndexMap::new();
+
+            let sql_file_paths = if sql_file_or_dir.is_dir() {
                 let sql_in_dir: Vec<_> = std::fs::read_dir(sql_file_or_dir)?
                     .filter_map(|res| res.ok())
                     .map(|entry| entry.path())
@@ -122,26 +91,103 @@ fn main() -> anyhow::Result<()> {
                         }
                     })
                     .collect();
+                sql_in_dir
+            } else {
+                vec![sql_file_or_dir.clone()] // todo:remove this clone
+            };
 
-                for sql_file in sql_in_dir {
-                    let output_lineage = output_lineage(lineage_command, &catalog, &sql_file)?;
-                    file_lineages.insert(
-                        std::path::absolute(sql_file)?.display().to_string(),
-                        output_lineage,
+            let out_str = {
+                let mut sqls = vec![];
+                for sql_file_path in &sql_file_paths {
+                    let sql = std::fs::read_to_string(sql_file_path).map_err(|_| {
+                        anyhow!(
+                            "Failed to read sql file {}",
+                            sql_file_path.display().to_string()
+                        )
+                    })?;
+                    sqls.push(sql);
+                }
+
+                let asts: Vec<anyhow::Result<Ast>> = if lineage_command.parallel {
+                    sqls.par_iter().map(|sql| parse_sql(sql)).collect()
+                } else {
+                    sqls.iter().map(|sql| parse_sql(sql)).collect()
+                };
+
+                let closure = |asts: &[anyhow::Result<Ast>]| -> Vec<anyhow::Result<Lineage>> {
+                    let ok_asts: Vec<(usize, &Ast)> = asts
+                        .iter()
+                        .map(|r| r.as_ref())
+                        .enumerate()
+                        .filter(|(_, ast)| ast.is_ok())
+                        .map(|(idx, el)| (idx, el.unwrap()))
+                        .collect();
+
+                    let ko_asts: Vec<(usize, anyhow::Result<Lineage>)> = asts
+                        .iter()
+                        .map(|r| r.as_ref())
+                        .enumerate()
+                        .filter(|(_, ast)| ast.is_err())
+                        .map(|(idx, res)| match res {
+                            Err(err) => (idx, Err(anyhow!(err.to_string()))),
+                            _ => unreachable!(),
+                        })
+                        .collect();
+
+                    let lineages = extract_lineage(
+                        &ok_asts.iter().map(|(_, ast)| *ast).collect::<Vec<&Ast>>(),
+                        &catalog,
+                        lineage_command.include_raw,
+                        false,
                     );
+
+                    let mut output: Vec<MaybeUninit<anyhow::Result<Lineage>>> =
+                        Vec::with_capacity(asts.len());
+                    unsafe { output.set_len(asts.len()) };
+
+                    for (index, result) in ko_asts {
+                        output[index].write(result);
+                    }
+                    for ((index, _), lin) in ok_asts.into_iter().zip(lineages) {
+                        output[index].write(lin);
+                    }
+
+                    unsafe { mem::transmute::<_, Vec<anyhow::Result<Lineage>>>(output) }
+                };
+
+                let lineages: Vec<anyhow::Result<Lineage>> = if lineage_command.parallel {
+                    let n_chunks = std::cmp::max(
+                        1,
+                        asts.len() / std::thread::available_parallelism().unwrap().get(),
+                    );
+                    asts.par_chunks(n_chunks).flat_map(closure).collect()
+                } else {
+                    closure(&asts)
+                };
+
+                let mut file_lineages: IndexMap<String, OutLineage> = IndexMap::new();
+
+                for (sql_file, lin) in sql_file_paths.into_iter().zip(lineages) {
+                    let path_name = std::path::absolute(sql_file)?.display().to_string();
+                    match lin {
+                        Ok(lin) => {
+                            file_lineages.insert(path_name, OutLineage::Ok(lin));
+                        }
+                        Err(err) => {
+                            file_lineages.insert(
+                                path_name,
+                                OutLineage::Err {
+                                    error: err.to_string(),
+                                },
+                            );
+                        }
+                    }
                 }
 
                 if lineage_command.pretty {
                     serde_json::to_string_pretty(&file_lineages)?
                 } else {
                     serde_json::to_string(&file_lineages)?
-                }
-            } else {
-                let output_lineage = output_lineage(lineage_command, &catalog, sql_file_or_dir)?;
-                if lineage_command.pretty {
-                    serde_json::to_string_pretty(&output_lineage)?
-                } else {
-                    serde_json::to_string(&output_lineage)?
                 }
             };
             println!("{}", out_str);
