@@ -234,7 +234,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // query -> statement (";" statement [";"])*
+    /// Rule:
+    /// ```text
+    /// query -> statement (";" statement [";"])*
+    /// ```
     fn parse_query(&mut self) -> anyhow::Result<Ast> {
         let mut statements = vec![];
 
@@ -259,6 +262,15 @@ impl<'a> Parser<'a> {
         Ok(Ast { statements })
     }
 
+    /// Rule:
+    /// ```text
+    /// statement ->
+    ///  create_table_statement | merge_statement | set_var_statement | if_statement
+    ///  | case_statement | insert_statement | delete_statement | update_statement
+    ///  | truncate_statement | declare_var_statement | begin_transaction | commit_transaction
+    ///  | rollback_transaction  | raise_statement | drop_statement | call_statement | return_statement
+    ///  | query_statement
+    /// ```
     fn parse_statement(&mut self) -> anyhow::Result<Statement> {
         let peek = self.peek();
 
@@ -316,9 +328,12 @@ impl<'a> Parser<'a> {
         Ok(statement)
     }
 
-    // case_statement -> "CASE" expr "WHEN" expr "THEN" statements ("," "WHEN" expr "THEN" statements)* ["ELSE" statements] "END" "CASE"
-    // where:
-    // statements -> statement (";" statement)*
+    /// Rule:
+    /// ```text
+    /// case_statement -> "CASE" expr "WHEN" expr "THEN" statements ("," "WHEN" expr "THEN" statements)* ["ELSE" statements] "END" "CASE"
+    /// where:
+    /// statements -> statement (";" statement)*
+    /// ```
     fn parse_case_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Case)?;
 
@@ -374,7 +389,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // call_statement -> "CALL" path "(" expr ("," expr)* ")"
+    /// Rule:
+    /// ```text
+    /// call_statement -> "CALL" path "(" expr ("," expr)* ")"
+    /// ```
     fn parse_call_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("call")?;
         let procedure_name = self.parse_path()?;
@@ -393,7 +411,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // raise_statement -> "RAISE" ["USING" "MESSAGE" "=" expr]
+    /// Rule:
+    /// ```text
+    /// raise_statement -> "RAISE" ["USING" "MESSAGE" "=" expr]
+    /// ```
     fn parse_raise_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("raise")?;
         let message = if self.match_token_type(TokenTypeVariant::Using) {
@@ -406,9 +427,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::Raise(RaiseStatement { message }))
     }
 
-    // if_statement -> "IF" expr "THEN" statements ["ELSEIF" expr "THEN" statements]* ["ELSE" statements] "END" "IF"
-    // where:
-    // statements -> statement (";" statement)*
+    /// Rule:
+    /// ```text
+    /// if_statement -> "IF" expr "THEN" statements ["ELSEIF" expr "THEN" statements]* ["ELSE" statements] "END" "IF"
+    /// where:
+    /// statements -> statement (";" statement)*
+    /// ```
     fn parse_if_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::If)?;
         let condition = self.parse_expr()?;
@@ -476,6 +500,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// Rule:
+    /// ```text
+    /// drop_statement -> drop_table_statement
+    /// ```
     fn parse_drop_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("drop")?;
 
@@ -500,7 +528,10 @@ impl<'a> Parser<'a> {
         Ok(statement)
     }
 
-    // drop_table_statement -> "DROP" "TABLE" ["IF" "EXISTS"] table_name
+    /// Rule:
+    /// ```text
+    /// drop_table_statement -> "DROP" "TABLE" ["IF" "EXISTS"] table_name
+    /// ```
     fn parse_drop_table_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("table")?;
 
@@ -519,7 +550,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // statements_block -> "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END"
+    /// Rule:
+    /// ```text
+    /// statements_block -> "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END"
+    /// ```
     fn parse_statements_block(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("begin")?;
 
@@ -549,11 +583,14 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // TODO: add collate, partition, etc...
-    // CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] TABLE [ IF NOT EXISTS ] table_name
-    // ["(" column_name parameterized_bq_type ("," column_name parameterized_bq_Type)* ")"]
-    // ["AS" query_statement]
+    /// Rule:
+    /// ```text
+    /// CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] TABLE [ IF NOT EXISTS ] table_name
+    /// ["(" column_name parameterized_bq_type ("," column_name parameterized_bq_Type)* ")"]
+    /// ["AS" query_statement]
+    /// ```
     fn parse_create_table_statement(&mut self) -> anyhow::Result<Statement> {
+        // TODO: add collate, partition, etc...
         self.consume(TokenTypeVariant::Create)?;
         let replace = self.match_token_type(TokenTypeVariant::Or);
         if replace {
@@ -614,13 +651,19 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // query_statement -> query_expr
+    /// Rule:
+    /// ```text
+    /// query_statement -> query_expr
+    /// ```
     fn parse_query_statement(&mut self) -> anyhow::Result<Statement> {
         let query_expr = self.parse_query_expr()?;
         Ok(Statement::Query(QueryStatement { query: query_expr }))
     }
 
-    // declare_var_statement -> "DECLARE" var_name ("," var_name)* [bq_parameterized_type] ["DEFAULT" expr]
+    /// Rule:
+    /// ```text
+    /// declare_var_statement -> "DECLARE" var_name ("," var_name)* [bq_parameterized_type] ["DEFAULT" expr]
+    /// ```
     fn parse_declare_var_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("declare")?;
 
@@ -654,7 +697,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // set_var_statement -> "SET" (var_name = expr | "(" var_name ("," var_name)* ")" = "(" expr ("," expr)* ")"
+    /// Rule:
+    /// ```text
+    /// set_var_statement -> "SET" (var_name = expr | "(" var_name ("," var_name)* ")" = "(" expr ("," expr)* ")"
+    /// ```
     fn parse_set_var_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Set)?;
 
@@ -747,10 +793,13 @@ impl<'a> Parser<'a> {
         Ok(Statement::SetVar(SetVarStatement { vars, exprs }))
     }
 
-    // insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
-    // where:
-    // input -> query_expr | "VALUES" "(" expr ")" ("(" expr ")")*
-    // column_name -> "Identifier" | "QuotedIdentifier"
+    /// Rule:
+    /// ```text
+    /// insert_statement -> "INSERT" ["INTO"] path ["(" column_name ("," column_name)* ")"] input
+    /// where:
+    /// input -> query_expr | "VALUES" "(" expr ")" ("(" expr ")")*
+    /// column_name -> "Identifier" | "QuotedIdentifier"
+    /// ```
     fn parse_insert_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("insert")?;
         self.match_token_type(TokenTypeVariant::Into);
@@ -807,7 +856,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // delete_statement -> "DELETE" ["FROM"] path ["AS"] [alias] "WHERE" expr
+    /// Rule:
+    /// ```text
+    /// delete_statement -> "DELETE" ["FROM"] path ["AS"] [alias] "WHERE" expr
+    /// ```
     fn parse_delete_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("delete")?;
         self.match_token_type(TokenTypeVariant::From);
@@ -818,9 +870,12 @@ impl<'a> Parser<'a> {
         Ok(Statement::Delete(DeleteStatement { table, alias, cond }))
     }
 
-    // update statement -> "UPDATE" path ["AS"] [alias] SET set_clause ["FROM" from_expr] "WHERE" expr
-    // where:
-    // set_clause = ("Identifier" | "QuotedIdentifier") = expr ("," ("Identifier" | "QuotedIdentifier") = expr)*
+    /// Rule:
+    /// ```text
+    /// update statement -> "UPDATE" path ["AS"] [alias] SET set_clause ["FROM" from_expr] "WHERE" expr
+    /// where:
+    /// set_clause = ("Identifier" | "QuotedIdentifier") "=" expr ("," ("Identifier" | "QuotedIdentifier") "=" expr)*
+    /// ```
     fn parse_update_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("update")?;
         let table = self.parse_path()?;
@@ -857,7 +912,10 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    // truncate_statement -> "TRUNCATE" "TABLE" path
+    /// Rule:
+    /// ```text
+    /// truncate_statement -> "TRUNCATE" "TABLE" path
+    /// ```
     fn parse_truncate_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("truncate")?;
         self.consume_non_reserved_keyword("table")?;
@@ -865,11 +923,14 @@ impl<'a> Parser<'a> {
         Ok(Statement::Truncate(TruncateStatement { table }))
     }
 
-    // merge_statement -> "MERGE" ["INTO"] path ["AS"] [alias] "USING" path "ON" merge_condition (when_clause)+
-    // where:
-    // when_clause -> matched_clause | not_matched_by_target_clause | not_matched_by_source_clause
-    // matched_clause -> "WHEN" "MATCHED" ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
-    // not_matched_by_target_clause -> "WHEN" "NOT" "MATCHED" ["BY" "TARGET"] ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
+    /// Rule:
+    /// ```text
+    /// merge_statement -> "MERGE" ["INTO"] path ["AS"] [alias] "USING" path "ON" merge_condition (when_clause)+
+    /// where:
+    /// when_clause -> matched_clause | not_matched_by_target_clause | not_matched_by_source_clause
+    /// matched_clause -> "WHEN" "MATCHED" ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
+    /// not_matched_by_target_clause -> "WHEN" "NOT" "MATCHED" ["BY" "TARGET"] ["AND" merge_search_condition] "THEN" (merge_update | merge_delete)
+    /// ```
     fn parse_merge_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Merge)?;
         self.match_token_type(TokenTypeVariant::Into);
@@ -952,9 +1013,12 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    // merge_update -> "UPDATE" "SET" update_item ("," update_item)*
-    // where:
-    // update_item -> ("Identifier" | "QuotedIdentifier") "=" expr
+    /// Rule:
+    /// ```text
+    /// merge_update -> "UPDATE" "SET" update_item ("," update_item)*
+    /// where:
+    /// update_item -> ("Identifier" | "QuotedIdentifier") "=" expr
+    /// ```
     fn parse_merge_update(&mut self) -> anyhow::Result<Merge> {
         self.consume_non_reserved_keyword("update")?;
         self.consume(TokenTypeVariant::Set)?;
@@ -975,9 +1039,12 @@ impl<'a> Parser<'a> {
         Ok(Merge::Update(MergeUpdate { update_items }))
     }
 
-    // merge_insert -> "INSERT" "ROW" | "INSERT" [(" column ("," column)*] ")"] "VALUES" "(" expr ("," expr)* ")"
-    // where:
-    // columns -> "Identifier" | "QuotedIdentifier"
+    /// Rule:
+    /// ```text
+    /// merge_insert -> "INSERT" "ROW" | "INSERT" [(" column ("," column)*] ")"] "VALUES" "(" expr ("," expr)* ")"
+    /// where:
+    /// columns -> "Identifier" | "QuotedIdentifier"
+    /// ```
     fn parse_merge_insert(&mut self) -> anyhow::Result<Merge> {
         self.consume_non_reserved_keyword("insert")?;
         if self.match_non_reserved_keyword("row") {
@@ -1021,7 +1088,10 @@ impl<'a> Parser<'a> {
         Ok(Merge::Insert(MergeInsert { columns, values }))
     }
 
-    // merge_search_condition -> ["AND" expr]
+    /// Rule:
+    /// ```text
+    /// merge_search_condition -> ["AND" expr]
+    /// ```
     fn parse_merge_search_condition(&mut self) -> anyhow::Result<Option<Expr>> {
         let expr = if self.match_token_type(TokenTypeVariant::And) {
             Some(self.parse_expr()?)
@@ -1031,11 +1101,14 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    // query_expr ->
-    // ["WITH" with_expr] select | "(" query_expr ")"
-    // select_query_expr (("UNION" [("ALL" | "Distinct")] | "Intersect" "Distinct" | "Except" "Distinct") select_query_expr)*
-    // ["ORDER BY" order_by_expr]
-    // ["LIMIT" limit_expr]
+    /// Rule:
+    /// ```text
+    /// query_expr ->
+    /// ["WITH" with_expr] select | "(" query_expr ")"
+    /// select_query_expr (("UNION" [("ALL" | "Distinct")] | "Intersect" "Distinct" | "Except" "Distinct") select_query_expr)*
+    /// ["ORDER BY" order_by_expr]
+    /// ["LIMIT" limit_expr]
+    /// ```
     fn parse_query_expr(&mut self) -> anyhow::Result<QueryExpr> {
         let with = if self.match_token_type(TokenTypeVariant::With) {
             Some(self.parse_with_expr()?)
@@ -1146,7 +1219,10 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // select_query_expr -> select | "(" query_expr ")"
+    /// Rule:
+    /// ```text
+    /// select_query_expr -> select | "(" query_expr ")"
+    /// ```
     fn parse_select_query_expr(&mut self) -> anyhow::Result<QueryExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             let query_expr = self.parse_query_expr()?;
@@ -1168,10 +1244,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // with_expr -> ["RECURSIVE"] (recursive_cte | non_recursive_cte) ("," (recursive_cte | non_recursive_cte))*
-    // where:
-    // non_recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr ")"
-    // recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr "UNION" "ALL" query_expr ")"
+    /// Rule:
+    /// ```text
+    /// with_expr -> ["RECURSIVE"] (recursive_cte | non_recursive_cte) ("," (recursive_cte | non_recursive_cte))*
+    /// where:
+    /// non_recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr ")"
+    /// recursive_cte -> ("Identifier" | "QuotedIdentifier") AS "(" query_expr "UNION" "ALL" query_expr ")"
+    /// ```
     fn parse_with_expr(&mut self) -> anyhow::Result<With> {
         self.match_token_type(TokenTypeVariant::Recursive);
         let mut ctes = vec![];
@@ -1208,7 +1287,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // order_by_expr -> order_by_expr_item [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," order_by_expr_item [("NULLS" "FIRST" | "NULLS" "LAST")])*
+    /// Rule:
+    /// ```text
+    /// order_by_expr -> order_by_expr_item [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," order_by_expr_item [("NULLS" "FIRST" | "NULLS" "LAST")])*
+    /// ```
     fn parse_order_by_expr(&mut self) -> anyhow::Result<Vec<OrderByExpr>> {
         let mut order_by_exprs = vec![];
 
@@ -1252,17 +1334,20 @@ impl<'a> Parser<'a> {
         Ok(order_by_exprs)
     }
 
-    // select ->
-    // "SELECT"
-    // [("ALL" | "DISTINCT")]
-    // ["AS" ("STRUCT" | "VALUE")]
-    // select_col_expr [","] (select_col_expr [","])*
-    // [from]
-    // ["WHERE" where_expr]
-    // ["GROUP BY" group_by_expr]
-    // ["HAVING" having_expr]
-    // ["QUALIFY" qualify_expr]
-    // ["WINDOW" window]
+    /// Rule:
+    /// ```text
+    /// select ->
+    /// "SELECT"
+    /// [("ALL" | "DISTINCT")]
+    /// ["AS" ("STRUCT" | "VALUE")]
+    /// select_col_expr [","] (select_col_expr [","])*
+    /// [from]
+    /// ["WHERE" where_expr]
+    /// ["GROUP BY" group_by_expr]
+    /// ["HAVING" having_expr]
+    /// ["QUALIFY" qualify_expr]
+    /// ["WINDOW" window]
+    /// ```
     fn parse_select(&mut self) -> anyhow::Result<Select> {
         self.consume(TokenTypeVariant::Select)?;
 
@@ -1374,7 +1459,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // from -> "FROM" from_expr [pivot | unpivot]
+    /// Rule:
+    /// ```text
+    /// from -> "FROM" from_expr [pivot | unpivot]
+    /// ```
     fn parse_from(&mut self) -> anyhow::Result<Option<From>> {
         Ok(if self.match_token_type(TokenTypeVariant::From) {
             let from_expr = self.parse_from_expr()?;
@@ -1403,10 +1491,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // pivot -> "PIVOT" "(" aggregates "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" pivot_columns ")" ")" [as alias]
-    // where
-    // aggregates -> expr [as_alias] ("," expr [as_alias])*
-    // pivot_columns -> expr [as_alias] ("," expr [as_alias])*
+    /// Rule:
+    /// ```text
+    /// pivot -> "PIVOT" "(" aggregates "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" pivot_columns ")" ")" [as alias]
+    /// where
+    /// aggregates -> expr [as_alias] ("," expr [as_alias])*
+    /// pivot_columns -> expr [as_alias] ("," expr [as_alias])*
+    /// ```
     fn parse_pivot(&mut self) -> anyhow::Result<Pivot> {
         self.consume_non_reserved_keyword("pivot")?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -1455,12 +1546,15 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // unpivot -> "UNPIVOT" [("INCLUDE" | "EXCLUDE") "NULLS"] "(" (single_col_unpivot | multi_col_unpivot) ")" [as_alias]
-    // where
-    // single_col_unpivot -> ("Identifier" | "QuotedIdentifier") "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" ("Identifier" | "QuotedIdentifier") ["AS"] expr ")"
-    // multi_col_unpivot -> ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* "FOR" ("Identifier" | "QuotedIdentifier") "IN"  "(" column_set_to_unpivot ("," column_set_to_unpivot)* ")"
-    // where
-    // column_set_to_unpivot -> "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* ["AS"] expr ")"
+    /// Rule:
+    /// ```text
+    /// unpivot -> "UNPIVOT" [("INCLUDE" | "EXCLUDE") "NULLS"] "(" (single_col_unpivot | multi_col_unpivot) ")" [as_alias]
+    /// where
+    /// single_col_unpivot -> ("Identifier" | "QuotedIdentifier") "FOR" ("Identifier" | "QuotedIdentifier") "IN" "(" ("Identifier" | "QuotedIdentifier") ["AS"] expr ")"
+    /// multi_col_unpivot -> ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* "FOR" ("Identifier" | "QuotedIdentifier") "IN"  "(" column_set_to_unpivot ("," column_set_to_unpivot)* ")"
+    /// where
+    /// column_set_to_unpivot -> "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))* ["AS"] expr ")"
+    /// ```
     fn parse_unpivot(&mut self) -> anyhow::Result<Unpivot> {
         self.consume_non_reserved_keyword("unpivot")?;
         let nulls = if self.check_non_reserved_keyword("include") {
@@ -1548,9 +1642,12 @@ impl<'a> Parser<'a> {
         Ok(Unpivot { nulls, kind, alias })
     }
 
-    // TODO: add replace
-    // select_expr -> [expr.]"*" [except] | expr [["AS"] "Identifier"]
+    /// Rule:
+    /// ```text
+    /// select_expr -> [expr.]"*" [except] | expr [["AS"] "Identifier"]
+    /// ```
     fn parse_select_expr(&mut self) -> anyhow::Result<SelectExpr> {
+        // TODO: add replace
         if self.match_token_type(TokenTypeVariant::Star) {
             let except = self.parse_except()?;
             return Ok(SelectExpr::All(SelectAllExpr { except }));
@@ -1567,7 +1664,10 @@ impl<'a> Parser<'a> {
         Ok(SelectExpr::Col(SelectColExpr { expr, alias }))
     }
 
-    // except -> "EXCEPT" "(" ("Identifier" | "QuotedIdentifier") ["," ("Identifier" | "QuotedIdentifier")]* ")"
+    /// Rule:
+    /// ```text
+    /// except -> "EXCEPT" "(" ("Identifier" | "QuotedIdentifier") ["," ("Identifier" | "QuotedIdentifier")]* ")"
+    /// ```
     fn parse_except(&mut self) -> anyhow::Result<Option<Vec<Name>>> {
         if !self.match_token_type(TokenTypeVariant::Except) {
             return Ok(None);
@@ -1585,11 +1685,14 @@ impl<'a> Parser<'a> {
         Ok(Some(except_columns))
     }
 
-    // from_expr -> from_item_expr (cross_join_op from_item_expr | cond_join_op from_item_expr cond)*
-    // where:
-    // cross_join_op -> "CROSS" "JOIN" | ","
-    // cond_join_op -> (["INNER"] "JOIN" | "FULL" ["OUTER"] "JOIN" | "LEFT" ["OUTER"] "JOIN" | "RIGHT" ["OUTER"] "JOIN")
-    // cond -> ("ON" expr | "USING" "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))*) ")")
+    /// Rule:
+    /// ```text
+    /// from_expr -> from_item_expr (cross_join_op from_item_expr | cond_join_op from_item_expr cond)*
+    /// where:
+    /// cross_join_op -> "CROSS" "JOIN" | ","
+    /// cond_join_op -> (["INNER"] "JOIN" | "FULL" ["OUTER"] "JOIN" | "LEFT" ["OUTER"] "JOIN" | "RIGHT" ["OUTER"] "JOIN")
+    /// cond -> ("ON" expr | "USING" "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))*) ")")
+    /// ```
     fn parse_from_expr(&mut self) -> anyhow::Result<FromExpr> {
         let expr = self.parse_from_item_expr()?;
         let mut output: FromExpr = expr;
@@ -1673,6 +1776,10 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
+    /// Rule:
+    /// ```text
+    /// cond -> ("ON" expr | "USING" "(" ("Identifier" | "QuotedIdentifier") ("," ("Identifier" | "QuotedIdentifier"))*) ")")
+    /// ```
     fn parse_cond(&mut self) -> anyhow::Result<JoinCondition> {
         if self.match_token_type(TokenTypeVariant::On) {
             let bool_expr = self.parse_expr()?;
@@ -1709,7 +1816,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
+    /// Rule:
+    /// ```text
+    /// from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
+    /// ```
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             let curr = self.curr;
@@ -1755,9 +1865,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // unnest -> ("UNNEST" "(" expr ")" [as_alias] | array_path [as alias]) ["WITH" "OFFSET" [as_alias]]
-    // where:
-    // array_path -> expr
+    /// Rule:
+    /// ```text
+    /// unnest -> ("UNNEST" "(" expr ")" [as_alias] | array_path [as alias]) ["WITH" "OFFSET" [as_alias]]
+    /// where:
+    /// array_path -> expr
+    /// ```
     fn parse_unnest(&mut self) -> anyhow::Result<UnnestExpr> {
         let array = if self.match_token_type(TokenTypeVariant::Unnest) {
             self.consume(TokenTypeVariant::LeftParen)?;
@@ -1784,7 +1897,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
+    /// Rule:
+    /// ```text
+    /// as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
+    /// ```
     fn parse_as_alias(&mut self) -> anyhow::Result<Option<Name>> {
         if self.match_token_type(TokenTypeVariant::As) {
             return Ok(Some(self.consume_identifier_into_name()?));
@@ -1803,7 +1919,10 @@ impl<'a> Parser<'a> {
         Ok(None)
     }
 
-    // path -> path_part ("." path_part)*
+    /// Rule:
+    /// ```text
+    /// path -> path_part ("." path_part)*
+    /// ```
     fn parse_path(&mut self) -> anyhow::Result<PathName> {
         let mut parts = vec![];
         let path_parts = self.parse_path_part()?;
@@ -1815,10 +1934,13 @@ impl<'a> Parser<'a> {
         Ok(PathName::from(parts))
     }
 
-    // path_part -> first_part (("/" | ":" | "-") subsequent_part)*
-    // where:
-    // first_part -> ("QuotedIdentifier" | "Identifier")
-    // subsequent_part -> ("QuotedIdentifier" | "Identifier" | "Number")
+    /// Rule:
+    /// ```text
+    /// path_part -> first_part (("/" | ":" | "-") subsequent_part)*
+    /// where:
+    /// first_part -> ("QuotedIdentifier" | "Identifier")
+    /// subsequent_part -> ("QuotedIdentifier" | "Identifier" | "Number")
+    /// ```
     fn parse_path_part(&mut self) -> anyhow::Result<Vec<PathPart>> {
         let mut path_parts = vec![];
 
@@ -1872,16 +1994,22 @@ impl<'a> Parser<'a> {
         Ok(path_parts)
     }
 
-    // where_expr -> expr
+    /// Rule:
+    /// ```text
+    /// where_expr -> expr
+    /// ```
     fn parse_where_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_expr()
     }
 
-    // group_by_expr -> "ALL" | group_by_items
-    // where:
-    // group_by_items -> expr ("," expr)*
-    // TODO: other group by expressions
+    /// Rule:
+    /// ```text
+    /// group_by_expr -> "ALL" | group_by_items
+    /// where:
+    /// group_by_items -> expr ("," expr)*
+    /// ```
     fn parse_group_by_expr(&mut self) -> anyhow::Result<GroupByExpr> {
+        // TODO: other group by expressions
         if self.match_token_type(TokenTypeVariant::All) {
             Ok(GroupByExpr::All)
         } else {
@@ -1893,17 +2021,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // having_expr -> expr
+    /// Rule:
+    /// ```text
+    /// having_expr -> expr
+    /// ```
     fn parse_having_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_expr()
     }
 
-    // qualify_expr -> expr
+    /// Rule:
+    /// ```text
+    /// qualify_expr -> expr
+    /// ```
     fn parse_qualify_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_expr()
     }
 
-    // frame_bound -> ("UNBOUNDED" "PRECEDING" | "UNBOUNDED" "FOLLOWING" | "Number" "PRECEDING" | "Number" "FOLLOWING" | "CURRENT" "ROW")
+    /// Rule:
+    /// ```text
+    /// frame_bound -> ("UNBOUNDED" "PRECEDING" | "UNBOUNDED" "FOLLOWING" | "Number" "PRECEDING" | "Number" "FOLLOWING" | "CURRENT" "ROW")
+    /// ```
     fn parse_frame_bound(&mut self) -> anyhow::Result<Option<FrameBound>> {
         let frame_bound = if self.match_non_reserved_keyword("unbounded") {
             let tok =
@@ -1937,10 +2074,13 @@ impl<'a> Parser<'a> {
         Ok(frame_bound)
     }
 
-    // window_frame -> ("ROWS" | "RANGE") (frame_start | frame_between)
-    // where:
-    // frame_start -> frame_bound
-    // frame_between -> "BETWEEN" frame_bound "AND" frame_bound
+    /// Rule:
+    /// ```text
+    /// window_frame -> ("ROWS" | "RANGE") (frame_start | frame_between)
+    /// where:
+    /// frame_start -> frame_bound
+    /// frame_between -> "BETWEEN" frame_bound "AND" frame_bound
+    /// ```
     fn parse_window_frame(&mut self) -> anyhow::Result<WindowFrame> {
         let tok = self.consume_one_of(&[TokenTypeVariant::Rows, TokenTypeVariant::Range])?;
         let kind = match &tok.kind {
@@ -1977,11 +2117,14 @@ impl<'a> Parser<'a> {
         Ok(WindowFrame { kind, start, end })
     }
 
-    // named_window_expr -> ((Identifier" | "QuotedIdentifier") |  [("Identifier" | "QuotedIdentifier")] [partition_by] [order_by] [frame])
-    // where:
-    // partition_by -> "PARTITION" "BY" expr ("," expr)*
-    // order_by -> "ORDER" "BY" expr [("ASC" | "DESC")] ("," expr [("ASC" | "DESC")?])*
-    // frame -> window_frame
+    /// Rule:
+    /// ```text
+    /// named_window_expr -> ((Identifier" | "QuotedIdentifier") |  [("Identifier" | "QuotedIdentifier")] [partition_by] [order_by] [frame])
+    /// where:
+    /// partition_by -> "PARTITION" "BY" expr ("," expr)*
+    /// order_by -> "ORDER" "BY" expr [("ASC" | "DESC")] ("," expr [("ASC" | "DESC")?])*
+    /// frame -> window_frame
+    /// ```
     fn parse_named_window_expr(&mut self) -> anyhow::Result<NamedWindowExpr> {
         if !self.match_token_type(TokenTypeVariant::LeftParen) {
             let name = self.consume_identifier_into_name()?;
@@ -2050,7 +2193,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // window -> "WINDOW" ("Identifier" | "QuotedIdentifier") "AS" named_window_expr ("," ("Identifier" | "QuotedIdentifier") "AS" named_window_expr)*
+    /// Rule:
+    /// ```text
+    /// window -> "WINDOW" ("Identifier" | "QuotedIdentifier") "AS" named_window_expr ("," ("Identifier" | "QuotedIdentifier") "AS" named_window_expr)*
+    /// ```
     fn parse_window(&mut self) -> anyhow::Result<Window> {
         self.consume(TokenTypeVariant::Window)?;
         let mut named_windows = vec![];
@@ -2069,7 +2215,10 @@ impl<'a> Parser<'a> {
         Ok(Window { named_windows })
     }
 
-    // expr -> or_expr
+    /// Rule:
+    /// ```text
+    /// expr -> or_expr
+    /// ```
     fn parse_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_or_expr()
     }
@@ -2112,17 +2261,26 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // or_expr -> and_expr ("OR" and_expr)*
+    /// Rule:
+    /// ```text
+    /// or_expr -> and_expr ("OR" and_expr)*
+    /// ```
     fn parse_or_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(&[TokenTypeVariant::Or], Self::parse_and_expr)
     }
 
-    // and_expr -> not_expr ("AND" not_expr)*
+    /// Rule:
+    /// ```text
+    /// and_expr -> not_expr ("AND" not_expr)*
+    /// ```
     fn parse_and_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(&[TokenTypeVariant::And], Self::parse_not_expr)
     }
 
-    // not_expr -> "NOT" not_expr | comparison_expr
+    /// Rule:
+    /// ```text
+    /// not_expr -> "NOT" not_expr | comparison_expr
+    /// ```
     fn parse_not_expr(&mut self) -> anyhow::Result<Expr> {
         if self.match_token_type(TokenTypeVariant::Not) {
             return Ok(Expr::Unary(UnaryExpr {
@@ -2147,12 +2305,15 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // comparison_expr ->
-    // bitwise_or_expr
-    // | bitwise_or_expr (("=" | ">" | "<" | ">=" | "<=", | "!=", | "<>") bitwise_or_expr)*
-    // | bitwise_or_expr (["Not"] ("In" | "Between") bitwise_or_expr)*
-    // | bitwise_or_expr (["Not"] "Like" ("ANY" | "SOME" | "ALL") bitwise_or_expr)*
-    // | bitwise_or_expr (["Not"] "Like") biwtise_or_expr)*
+    /// Rule:
+    /// ```text
+    /// comparison_expr ->
+    /// bitwise_or_expr
+    /// | bitwise_or_expr (("=" | ">" | "<" | ">=" | "<=", | "!=", | "<>") bitwise_or_expr)*
+    /// | bitwise_or_expr (["Not"] ("In" | "Between") bitwise_or_expr)*
+    /// | bitwise_or_expr (["Not"] "Like" ("ANY" | "SOME" | "ALL") bitwise_or_expr)*
+    /// | bitwise_or_expr (["Not"] "Like") biwtise_or_expr)*
+    /// ```
     fn parse_comparison_expr(&mut self) -> anyhow::Result<Expr> {
         let mut output = self.parse_bitwise_or_expr()?;
 
@@ -2229,7 +2390,10 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // bitwise_or_expr -> primary_expr | primary_expr ("|" primary_expr)*
+    /// Rule:
+    /// ```text
+    /// bitwise_or_expr -> primary_expr | primary_expr ("|" primary_expr)*
+    /// ```
     fn parse_bitwise_or_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
             &[TokenTypeVariant::BitwiseOr],
@@ -2237,7 +2401,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // bitwise_and_expr -> bitwise_shift_expr | bitwise_shift_expr ("&" bitwise_shift_expr)*
+    /// Rule:
+    /// ```text
+    /// bitwise_and_expr -> bitwise_shift_expr | bitwise_shift_expr ("&" bitwise_shift_expr)*
+    /// ```
     fn parse_bitwise_and_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
             &[TokenTypeVariant::BitwiseAnd],
@@ -2245,7 +2412,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // bitwise_shift_expr -> add_expr | add_expr (("<<" | ">>") add_expr)*
+    /// Rule:
+    /// ```text
+    /// bitwise_shift_expr -> add_expr | add_expr (("<<" | ">>") add_expr)*
+    /// ```
     fn parse_bitwise_shift_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
             &[
@@ -2256,7 +2426,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // add_expr -> mul_concat_expr | mul_concat_expr (("+" | "-") mul_concat_expr)*
+    /// Rule:
+    /// ```text
+    /// add_expr -> mul_concat_expr | mul_concat_expr (("+" | "-") mul_concat_expr)*
+    /// ```
     fn parse_add_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
             &[TokenTypeVariant::Plus, TokenTypeVariant::Minus],
@@ -2264,7 +2437,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // mul_concat_expr -> unary_expr | unary_expr (("*" | "/" | "||") unary_expr)*
+    /// Rule:
+    /// ```text
+    /// mul_concat_expr -> unary_expr | unary_expr (("*" | "/" | "||") unary_expr)*
+    /// ```
     fn parse_mul_concat_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_standard_binary_expr(
             &[
@@ -2276,7 +2452,10 @@ impl<'a> Parser<'a> {
         )
     }
 
-    // unary_expr -> ("+" | "-" | "~") field_access_expr | field_access_expr ("Is" ["Not"] ("True" | "False" | "Null"))
+    /// Rule:
+    /// ```text
+    /// unary_expr -> ("+" | "-" | "~") field_access_expr | field_access_expr ("Is" ["Not"] ("True" | "False" | "Null"))
+    /// ```
     fn parse_unary_expr(&mut self) -> anyhow::Result<Expr> {
         if self.match_token_types(&[
             TokenTypeVariant::Plus,
@@ -2324,7 +2503,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // field_access_expr -> array_subscript_operator | array_subscript_operator ("." array_subscript_operator )* ["." "*"]
+    /// Rule:
+    /// ```text
+    /// field_access_expr -> array_subscript_operator | array_subscript_operator ("." array_subscript_operator )* ["." "*"]
+    /// ```
     fn parse_field_access_expr(&mut self) -> anyhow::Result<Expr> {
         let mut output = self.parse_array_subscript_operator()?;
 
@@ -2346,7 +2528,10 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // array_subscript_operator -> primary_expr | primary_expr ("[" expr "]")*
+    /// Rule:
+    /// ```text
+    /// array_subscript_operator -> primary_expr | primary_expr ("[" expr "]")*
+    /// ```
     fn parse_array_subscript_operator(&mut self) -> anyhow::Result<Expr> {
         let mut output = self.parse_primary_expr()?;
 
@@ -2362,7 +2547,10 @@ impl<'a> Parser<'a> {
         Ok(output)
     }
 
-    // array_expr -> "ARRAY" ([array_type] "[" expr ("," expr)* "]" | "(" query_expr ")")
+    /// Rule:
+    /// ```text
+    /// array_expr -> "ARRAY" ([array_type] "[" expr ("," expr)* "]" | "(" query_expr ")")
+    /// ```
     fn parse_array_expr(&mut self) -> anyhow::Result<Expr> {
         let mut array_type: Option<Type> = None;
         if self.match_token_type(TokenTypeVariant::Array)
@@ -2383,9 +2571,12 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // struct_expr -> "STRUCT" [struct_type] "(" expr ["AS" field_name]] ("," expr ["AS" field_name])* ")"
-    // where:
-    // field_name -> "Identifier" | "QuotedIdentifier"
+    /// Rule:
+    /// ```text
+    /// struct_expr -> "STRUCT" [struct_type] "(" expr ["AS" field_name]] ("," expr ["AS" field_name])* ")"
+    /// where:
+    /// field_name -> "Identifier" | "QuotedIdentifier"
+    /// ```
     fn parse_struct_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Struct)?;
 
@@ -2422,7 +2613,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // struct_tuple_expr -> "(" expr ("," expr)* ")"
+    /// Rule:
+    /// ```text
+    /// struct_tuple_expr -> "(" expr ("," expr)* ")"
+    /// ```
     fn parse_struct_tuple_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::LeftParen)?;
 
@@ -2445,7 +2639,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
+    /// Rule:
+    /// ```text
+    /// interval_part -> "YEAR" | "QUARTER" | "MONTH" | "WEEK" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "MILLISECOND" | "MICROSECOND"
+    /// ```
     fn parse_interval_part(&mut self) -> anyhow::Result<IntervalPart> {
         match self.consume_and_get_identifier()?.to_lowercase().as_str() {
             "year" => Ok(IntervalPart::Year),
@@ -2461,10 +2658,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // interval_expr -> interval | interval_range
-    // where:
-    // interval -> "INTERVAL" expr interval_part
-    // interval_range -> "String" interval_part "TO" interval_part
+    /// Rule:
+    /// ```text
+    /// interval_expr -> interval | interval_range
+    /// where:
+    /// interval -> "INTERVAL" expr interval_part
+    /// interval_range -> "String" interval_part "TO" interval_part
+    /// ```
     fn parse_interval_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Interval)?;
 
@@ -2491,7 +2691,10 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // range_expr -> "RANGE" "<" bq_parameterized_type ">" "String"
+    /// Rule:
+    /// ```text
+    /// range_expr -> "RANGE" "<" bq_parameterized_type ">" "String"
+    /// ```
     fn parse_range_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Range)?;
         self.consume(TokenTypeVariant::Less)?;
@@ -2507,7 +2710,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // array_type -> "<" bq_type ">"
+    /// Rule:
+    /// ```text
+    /// array_type -> "<" bq_type ">"
+    /// ```
     fn parse_array_type(&mut self) -> anyhow::Result<Type> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_bq_type()?;
@@ -2517,7 +2723,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // range_type -> "<" bq_type ">"
+    /// Rule:
+    /// ```text
+    /// range_type -> "<" bq_type ">"
+    /// ```
     fn parse_range_type(&mut self) -> anyhow::Result<Type> {
         self.consume(TokenTypeVariant::Less)?;
         let range_type = self.parse_bq_type()?;
@@ -2527,7 +2736,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // struct_type -> "<" ["field_name"] bq_type ("," ["field_name"] bq_type)* ">"
+    /// Rule:
+    /// ```text
+    /// struct_type -> "<" ["field_name"] bq_type ("," ["field_name"] bq_type)* ">"
+    /// ```
     fn parse_struct_type(&mut self) -> anyhow::Result<Type> {
         self.consume(TokenTypeVariant::Less)?;
         let mut struct_field_types = vec![];
@@ -2577,10 +2789,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // bq_type ->
-    // "ARRAY" array_type | "STRUCT" struct_type
-    // | "BIGNUMERIC" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
-    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
+    /// Rule:
+    /// ```text
+    /// bq_type ->
+    /// "ARRAY" array_type | "STRUCT" struct_type
+    /// | "BIGNUMERIC" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
+    /// | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
+    /// ```
     fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
         let peek_token = self.advance().clone();
 
@@ -2648,7 +2863,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // range_type -> "<" bq_paramterized_type ">"
+    /// Rule:
+    /// ```text
+    /// parameterized_range_type -> "<" bq_paramterized_type ">"
+    /// ```
     fn parse_parameterized_range_type(&mut self) -> anyhow::Result<ParameterizedType> {
         self.consume(TokenTypeVariant::Less)?;
         let range_type = self.parse_parameterized_range_type()?;
@@ -2658,7 +2876,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // array_type -> "<" bq_paramterized_type ">"
+    /// Rule:
+    /// ```text
+    /// parameterized_array_type -> "<" bq_paramterized_type ">"
+    /// ```
     fn parse_parameterized_array_type(&mut self) -> anyhow::Result<ParameterizedType> {
         self.consume(TokenTypeVariant::Less)?;
         let array_type = self.parse_parameterized_bq_type()?;
@@ -2668,9 +2889,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // struct_type -> "<" field_name bq_paramterized_type ("," field_name bq_paramterized_type)* ">"
-    // where:
-    // field_name -> "Identifier" | "QuotedIdentifier"
+    /// Rule:
+    /// ```text
+    /// parameterized_struct_type -> "<" field_name bq_paramterized_type ("," field_name bq_paramterized_type)* ">"
+    /// where:
+    /// field_name -> "Identifier" | "QuotedIdentifier"
+    /// ```
     fn parse_parameterized_struct_type(&mut self) -> anyhow::Result<ParameterizedType> {
         self.consume(TokenTypeVariant::Less)?;
         let mut struct_field_types = vec![];
@@ -2693,13 +2917,16 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // parameterized_bq_type ->
-    // "ARRAY" array_type | "STRUCT" struct_type
-    // | "BIGNUMERIC" ["(" number ["," number] ")" ]
-    // | "NUMERIC" ["(" number ["," number] ")" ]
-    // | "BOOL" | "BYTES" ["(" number ")"] | "STRING" ["(" number ")"]
-    // | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
-    // | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" |  | "TIME"" | "TIMESTAMP"
+    /// Rule:
+    /// ```text
+    /// parameterized_bq_type ->
+    /// "ARRAY" array_type | "STRUCT" struct_type
+    /// | "BIGNUMERIC" ["(" number ["," number] ")" ]
+    /// | "NUMERIC" ["(" number ["," number] ")" ]
+    /// | "BOOL" | "BYTES" ["(" number ")"] | "STRING" ["(" number ")"]
+    /// | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
+    /// | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" |  | "TIME"" | "TIMESTAMP"
+    /// ```
     pub(crate) fn parse_parameterized_bq_type(&mut self) -> anyhow::Result<ParameterizedType> {
         let peek_token = self.advance().clone();
 
@@ -2838,7 +3065,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // array_fn -> "ARRAY" "(" query_expr ")"
+    /// Rule:
+    /// ```text
+    /// array_fn -> "ARRAY" "(" query_expr ")"
+    /// ```
     fn parse_array_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Array)?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -2849,7 +3079,10 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
+    /// Rule:
+    /// ```text
+    /// concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
+    /// ```
     fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -2887,7 +3120,10 @@ impl<'a> Parser<'a> {
         Ok((Box::new(expr), r#type, format))
     }
 
-    // cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    /// Rule:
+    /// ```text
+    /// cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    /// ```
     fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Cast)?;
         let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
@@ -2900,7 +3136,10 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    /// Rule:
+    /// ```text
+    /// safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    /// ```
     fn parse_safe_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -2916,15 +3155,18 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // array_agg -> ("Identifier" | "QuotedIdentifier") "(" arg ")" ["OVER" named_window_expr]
-    // where:
-    // arg ->
-    //  ["DISTINCT"]
-    //  expr
-    //  [("IGNORE" | "RESPECT") "NULLS"]
-    //  ["HAVING ("MAX" | "MIN") expr]
-    //  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
-    //  ["LIMIT" "Number"]
+    /// Rule:
+    /// ```text
+    /// array_agg -> ("Identifier" | "QuotedIdentifier") "(" arg ")" ["OVER" named_window_expr]
+    /// where:
+    /// arg ->
+    ///  ["DISTINCT"]
+    ///  expr
+    ///  [("IGNORE" | "RESPECT") "NULLS"]
+    ///  ["HAVING ("MAX" | "MIN") expr]
+    ///  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
+    ///  ["LIMIT" "Number"]
+    /// ```
     fn parse_array_agg_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -3039,7 +3281,10 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
+    /// Rule:
+    /// ```text
+    /// current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
+    /// ```
     fn parse_current_date_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -3063,7 +3308,10 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // current_timestamp -> "CURRENT_TIMESTAMP" | "CURRENT_TIMESTAMP" "(" ")"
+    /// Rule:
+    /// ```text
+    /// current_timestamp -> "CURRENT_TIMESTAMP" | "CURRENT_TIMESTAMP" "(" ")"
+    /// ```
     fn parse_current_timestamp_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
@@ -3077,7 +3325,10 @@ impl<'a> Parser<'a> {
         Ok(Expr::Function(Box::new(FunctionExpr::CurrentTimestamp)))
     }
 
-    // if -> "IF" "(" expr "," expr "," expr ")"
+    /// Rule:
+    /// ```text
+    /// if -> "IF" "(" expr "," expr "," expr ")"
+    /// ```
     fn parse_if_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::If)?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -3094,7 +3345,10 @@ impl<'a> Parser<'a> {
         }))))
     }
 
-    // right -> "RIGHT" "(" expr "," expr ")"
+    /// Rule:
+    /// ```text
+    /// right -> "RIGHT" "(" expr "," expr ")"
+    /// ```
     fn parse_right_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Right)?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -3123,15 +3377,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // generic_function -> ("Identifier" | "QuotedIdentifier") "(" arg ("," arg)* ")" ["OVER" named_window_expr]
-    // where:
-    // arg ->
-    //  ["DISTINCT"]
-    //  expr
-    //  [("IGNORE" | "RESPECT") "NULLS"]
-    //  ["HAVING ("MAX" | "MIN") expr]
-    //  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
-    //  ["LIMIT" "Number"]
+    /// Rule:
+    /// ```text
+    /// generic_function -> ("Identifier" | "QuotedIdentifier") "(" arg ("," arg)* ")" ["OVER" named_window_expr]
+    /// where:
+    /// arg ->
+    ///  ["DISTINCT"]
+    ///  expr
+    ///  [("IGNORE" | "RESPECT") "NULLS"]
+    ///  ["HAVING ("MAX" | "MIN") expr]
+    ///  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
+    ///  ["LIMIT" "Number"]
+    /// ```
     fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
         let function_name = self.consume_identifier_into_name()?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -3258,7 +3515,10 @@ impl<'a> Parser<'a> {
         })))
     }
 
-    // exists_subquery_expr -> "EXISTS" "(" query_Expr ")"
+    /// Rule:
+    /// ```text
+    /// exists_subquery_expr -> "EXISTS" "(" query_Expr ")"
+    /// ```
     fn parse_exists_subquery_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Exists)?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -3267,7 +3527,10 @@ impl<'a> Parser<'a> {
         Ok(Expr::Exists(Box::new(query_expr)))
     }
 
-    // case_expr -> "CASE" ("WHEN" expr "THEN" expr)+ "ELSE" expr "END"
+    /// Rule:
+    /// ```text
+    /// case_expr -> "CASE" ("WHEN" expr "THEN" expr)+ "ELSE" expr "END"
+    /// ```
     fn parse_case_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Case)?;
 
@@ -3312,10 +3575,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // extract_expr -> "EXTRACT" "(" part "FROM" expr ")"
-    // where part -> "MICROSECOND" | "MILLISECOND" | "SECOND" | "MINUTE" | "HOUR" | "DAYOFWEEK"
-    //  | "DAY" | "DAYOFYEAR" | "WEEK" | "WEEK" "(" ("SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY"
-    //  | "THURSDAY" | "FRIDAY" | "SATURDAY") ")" | "ISOWEEK" | "MONTH" | "QUARTER" | "YEAR" | "ISOYEAR"
+    /// Rule:
+    /// ```text
+    /// extract_expr -> "EXTRACT" "(" part "FROM" expr ")"
+    /// where part -> "MICROSECOND" | "MILLISECOND" | "SECOND" | "MINUTE" | "HOUR" | "DAYOFWEEK"
+    ///  | "DAY" | "DAYOFYEAR" | "WEEK" | "WEEK" "(" ("SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY"
+    ///  | "THURSDAY" | "FRIDAY" | "SATURDAY") ")" | "ISOWEEK" | "MONTH" | "QUARTER" | "YEAR" | "ISOYEAR"
+    /// ```
     fn parse_extract_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Extract)?;
         self.consume(TokenTypeVariant::LeftParen)?;
@@ -3376,10 +3642,13 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    // quantified_like_expr -> ("ANY" | "SOME" | "ALL") (pattern_expression_list | pattern_array)
-    // where:
-    // pattern_expression_list -> "(" expr ("," expr)* ")"
-    // pattern_array -> "UNNEST" "(" expr ")"
+    /// Rule:
+    /// ```text
+    /// quantified_like_expr -> ("ANY" | "SOME" | "ALL") (pattern_expression_list | pattern_array)
+    /// where:
+    /// pattern_expression_list -> "(" expr ("," expr)* ")"
+    /// pattern_array -> "UNNEST" "(" expr ")"
+    /// ```
     fn parse_quantified_like_expr(&mut self) -> anyhow::Result<Expr> {
         let quantifier = match &self
             .consume_one_of(&[
@@ -3421,20 +3690,23 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // primary_expr ->
-    // "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier"
-    // | "QueryNamedParameter" | "QueryPositionalParameter" | "SystemVariable"
-    // | "String" | "Number"
-    // | NUMERIC "Number" | BIGNUMERIC "Number"
-    // | DATE "String" | TIMESTAMP "String" | DATETIME "String" | TIME "String"
-    // | "RANGE" "<" bq_parameterized_type ">" "String"
-    // | interval_expr | json_expr
-    // | array_expr | struct_expr | struct_tuple_expr
-    // | case_expr
-    // | function_expr
-    // | quantified_like_expr
-    // | "(" expression ")" | "(" query_expr ")"
-    // | "EXISTS" "(" query_expr ")"
+    /// Rule:
+    /// ```text
+    /// primary_expr ->
+    /// "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier"
+    /// | "QueryNamedParameter" | "QueryPositionalParameter" | "SystemVariable"
+    /// | "String" | "Number"
+    /// | NUMERIC "Number" | BIGNUMERIC "Number"
+    /// | DATE "String" | TIMESTAMP "String" | DATETIME "String" | TIME "String"
+    /// | "RANGE" "<" bq_parameterized_type ">" "String"
+    /// | interval_expr | json_expr
+    /// | array_expr | struct_expr | struct_tuple_expr
+    /// | case_expr
+    /// | function_expr
+    /// | quantified_like_expr
+    /// | "(" expression ")" | "(" query_expr ")"
+    /// | "EXISTS" "(" query_expr ")"
+    /// ```
     fn parse_primary_expr(&mut self) -> anyhow::Result<Expr> {
         let peek_token = self.peek().clone();
         let primary_expr = match peek_token.kind {
