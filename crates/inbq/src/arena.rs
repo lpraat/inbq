@@ -1,12 +1,12 @@
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ArenaIndex {
-    pub index: usize,
+pub(crate) struct ArenaIndex {
+    pub(crate) index: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct Arena<T> {
+pub(crate) struct Arena<T> {
     nodes: Vec<T>,
 }
 
@@ -19,31 +19,23 @@ impl<T> Default for Arena<T> {
 }
 
 impl<T> Arena<T> {
-    pub fn allocate(&mut self, node: T) -> ArenaIndex {
+    pub(crate) fn allocate(&mut self, node: T) -> ArenaIndex {
         self.nodes.push(node);
         ArenaIndex {
             index: self.nodes.len() - 1,
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.nodes.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
-    }
-
-    pub fn last(&self) -> Option<&T> {
-        self.nodes.last()
-    }
-
-    pub fn truncate(&mut self, n: usize) {
+    pub(crate) fn truncate(&mut self, n: usize) {
         self.nodes.truncate(n);
     }
 }
 
-pub struct ArenaIter<'a, T> {
+pub(crate) struct ArenaIter<'a, T> {
     arena: &'a Arena<T>,
     i: usize,
 }
