@@ -1316,7 +1316,7 @@ impl<'a> Parser<'a> {
                     last_position = self.curr - (comma_matched as usize);
                 }
                 Err(_) => {
-                    return Err(anyhow!(self.error(self.peek(), "Expected expression.")));
+                    return Err(anyhow!(self.error(self.peek(), "Expected Expression.")));
                 }
             }
         }
@@ -1556,12 +1556,7 @@ impl<'a> Parser<'a> {
             return Ok(SelectExpr::All(SelectAllExpr { except }));
         }
 
-        let expr = match self.parse_expr() {
-            Err(_) => {
-                return Err(anyhow!(self.error(self.peek(), "Expected Expression.")));
-            }
-            Ok(expr) => expr,
-        };
+        let expr = self.parse_expr()?;
 
         if self.peek_prev().kind == TokenType::Star {
             let except = self.parse_except()?;
@@ -2835,7 +2830,11 @@ impl<'a> Parser<'a> {
                         )))
                     }
             }
-            _ => unreachable!()
+            _ => Err(anyhow!( self.error(
+                &peek_token,
+                "Expected BigQuery type. One of: `ARRAY`, `BIGNUMERIC`, `NUMERIC`, `BOOL`, `BYTES`, `DATE`, `DATETIME`, \
+                 `FLOAT64`, `GEOGRAPHY`, `INT64`, `INTERVAL`, `JSON`, `NUMERIC`, `RANGE`, `STRING`, `STRUCT`, `TIME`, `TIMESTAMP`."
+            )))
         }
     }
 
@@ -3288,28 +3287,29 @@ impl<'a> Parser<'a> {
 
             when_thens.push(WhenThen { when, then });
 
-            if self.match_token_type(TokenTypeVariant::End) {
-                return Ok(Expr::Case(CaseExpr {
-                    case,
-                    when_thens,
-                    r#else: None,
-                }));
-            }
-
-            if self.match_token_type(TokenTypeVariant::Else) {
+            if !self.match_token_type(TokenTypeVariant::When) {
                 break;
             }
         }
 
-        let r#else = self.parse_expr()?;
-
-        self.consume(TokenTypeVariant::End)?;
-
-        Ok(Expr::Case(CaseExpr {
-            case,
-            when_thens,
-            r#else: Some(Box::new(r#else)),
-        }))
+        let else_or_end = self.consume_one_of(&[TokenTypeVariant::Else, TokenTypeVariant::End])?;
+        match &else_or_end.kind {
+            TokenType::Else => {
+                let r#else = self.parse_expr()?;
+                self.consume(TokenTypeVariant::End)?;
+                Ok(Expr::Case(CaseExpr {
+                    case,
+                    when_thens,
+                    r#else: Some(Box::new(r#else)),
+                }))
+            }
+            TokenType::End => Ok(Expr::Case(CaseExpr {
+                case,
+                when_thens,
+                r#else: None,
+            })),
+            _ => unreachable!(),
+        }
     }
 
     // extract_expr -> "EXTRACT" "(" part "FROM" expr ")"
@@ -3618,7 +3618,6 @@ impl<'a> Parser<'a> {
                             TokenType::String(s) => strings.push(Expr::String(s.clone())),
                             TokenType::RawString(s) => strings.push(Expr::RawString(s.clone())),
                             TokenType::Bytes(_) | TokenType::RawBytes(_) => {
-                                // TODO: this is actually not propagated to the user, but it will be once we improve errors
                                 return Err(anyhow!(self.error(
                                     &peek_token,
                                     "String and bytes literals cannot be concatenated."
@@ -3659,7 +3658,6 @@ impl<'a> Parser<'a> {
                             TokenType::Bytes(s) => bytes.push(Expr::Bytes(s.clone())),
                             TokenType::RawBytes(s) => bytes.push(Expr::RawBytes(s.clone())),
                             TokenType::String(_) | TokenType::RawString(_) => {
-                                // TODO: this is actually not propagated to the user, but it will be once we improve errors
                                 return Err(anyhow!(self.error(
                                     &peek_token,
                                     "Bytes and string literals cannot be concatenated."
