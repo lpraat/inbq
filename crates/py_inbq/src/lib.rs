@@ -37,7 +37,7 @@ use inbq::{
         TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
         UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
         WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-        WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+        WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -1084,6 +1084,16 @@ impl RsToPyObject for BinaryOperator {
                 get_ast_class!(py_ctx, BinaryOperator::FieldAccess)?,
                 &[],
             ),
+            BinaryOperator::IsDistinctFrom => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::IsDistinctFrom)?,
+                &[],
+            ),
+            BinaryOperator::IsNotDistinctFrom => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::IsNotDistinctFrom)?,
+                &[],
+            ),
         }
     }
 }
@@ -1891,6 +1901,26 @@ impl RsToPyObject for SystemVariable {
     }
 }
 
+impl RsToPyObject for WithExprVar {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "value", self.value),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WithExprVar)?, kwargs)
+    }
+}
+
+impl RsToPyObject for WithExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "vars", self.vars),
+            kwarg!(py_ctx, "result", self.result),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WithExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2051,6 +2081,10 @@ impl RsToPyObject for Expr {
                     get_ast_class!(py_ctx, Expr::QuantifiedLike)?,
                     kwargs,
                 )
+            }
+            Expr::With(with_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, with_expr)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::With)?, kwargs)
             }
         }
     }

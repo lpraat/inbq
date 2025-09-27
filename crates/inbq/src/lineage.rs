@@ -1502,6 +1502,11 @@ impl LineageExtractor {
                     self.select_expr_col_expr_lin(expr, expand_value_table)?
                 }
             },
+            Expr::With(with_expr) => {
+                for with_var in &with_expr.vars {
+                    self.select_expr_col_expr_lin(&with_var.value, expand_value_table)?
+                }
+            }
         }
 
         Ok(())

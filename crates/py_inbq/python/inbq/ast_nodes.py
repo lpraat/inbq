@@ -145,6 +145,7 @@ class AstNode:
             "BigNumeric": "Expr_BigNumeric",
             "Number": "Expr_Number",
             "Bool": "Expr_Bool",
+            "With": "Expr_With",
             "Date": "Expr_Date",
             "Time": "Expr_Time",
             "Datetime": "Expr_Datetime",
@@ -264,6 +265,8 @@ class AstNode:
             "NotBetween": "BinaryOperator_NotBetween",
             "In": "BinaryOperator_In",
             "NotIn": "BinaryOperator_NotIn",
+            "IsDistinctFrom": "BinaryOperator_IsDistinctFrom",
+            "IsNotDistinctFrom": "BinaryOperator_IsNotDistinctFrom",
             "And": "BinaryOperator_And",
             "Or": "BinaryOperator_Or",
             "ArrayIndex": "BinaryOperator_ArrayIndex",
@@ -778,6 +781,18 @@ class WhenNotMatchedByTarget(AstNode):
 class WhenNotMatchedBySource(AstNode):
     search_condition: "Optional[Expr]"
     merge: "Merge"
+
+
+@dataclass
+class WithExpr(AstNode):
+    vars: "list[WithExprVar]"
+    result: "Expr"
+
+
+@dataclass
+class WithExprVar(AstNode):
+    name: "Name"
+    value: "Expr"
 
 
 @dataclass
@@ -1711,6 +1726,11 @@ class Expr_Bool(AstNode):
 
 
 @dataclass
+class Expr_With(AstNode):
+    vty: "WithExpr"
+
+
+@dataclass
 class Expr_Date(AstNode):
     vty: "str"
 
@@ -1787,7 +1807,7 @@ class Expr_Exists(AstNode):
     vty: "QueryExpr"
 
 
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_RawString | Expr_StringConcat | Expr_Bytes | Expr_RawBytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
+Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_RawString | Expr_StringConcat | Expr_Bytes | Expr_RawBytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_With | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
 
 
 @dataclass
@@ -2174,6 +2194,14 @@ class BinaryOperator_NotIn(AstNode): ...
 
 
 @dataclass
+class BinaryOperator_IsDistinctFrom(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_IsNotDistinctFrom(AstNode): ...
+
+
+@dataclass
 class BinaryOperator_And(AstNode): ...
 
 
@@ -2189,7 +2217,7 @@ class BinaryOperator_ArrayIndex(AstNode): ...
 class BinaryOperator_FieldAccess(AstNode): ...
 
 
-BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterThanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
+BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterThanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_IsDistinctFrom | BinaryOperator_IsNotDistinctFrom | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
 
 
 @dataclass

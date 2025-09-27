@@ -411,6 +411,7 @@ pub enum Expr {
     BigNumeric(String),
     Number(Number),
     Bool(bool),
+    With(WithExpr),
     Date(String),
     Time(String),
     Datetime(String),
@@ -427,6 +428,18 @@ pub enum Expr {
     Function(Box<FunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
     Exists(Box<QueryExpr>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithExpr {
+    pub vars: Vec<WithExprVar>,
+    pub result: Box<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithExprVar {
+    pub name: Name,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -708,6 +721,8 @@ pub enum BinaryOperator {
     NotBetween,
     In,
     NotIn,
+    IsDistinctFrom,
+    IsNotDistinctFrom,
     And,
     Or,
     ArrayIndex,

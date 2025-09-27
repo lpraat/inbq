@@ -27,7 +27,7 @@ use crate::ast::{
     TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
     UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
     WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -167,6 +167,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn match_identifier(&mut self) -> bool {
         self.match_token_types(&[
             TokenTypeVariant::Identifier,
@@ -2611,9 +2612,10 @@ impl<'a> Parser<'a> {
     /// comparison_expr ->
     /// bitwise_or_expr
     /// | bitwise_or_expr (("=" | ">" | "<" | ">=" | "<=", | "!=", | "<>") bitwise_or_expr)*
-    /// | bitwise_or_expr (["Not"] ("In" | "Between") bitwise_or_expr)*
-    /// | bitwise_or_expr (["Not"] "Like" ("ANY" | "SOME" | "ALL") bitwise_or_expr)*
-    /// | bitwise_or_expr (["Not"] "Like") biwtise_or_expr)*
+    /// | bitwise_or_expr (["NOT"] ("IN" | "BETWEEN") bitwise_or_expr)*
+    /// | bitwise_or_expr (["NOT"] "LIKE" ("ANY" | "SOME" | "ALL") bitwise_or_expr)*
+    /// | bitwise_or_expr (["NOT"] "LIKE") biwtise_or_expr)*
+    /// | bitwise_or_expr ("IS" ["NOT"] "DISTINCT" "FROM") bitwise_or_expr)*
     /// ```
     fn parse_comparison_expr(&mut self) -> anyhow::Result<Expr> {
         let mut output = self.parse_bitwise_or_expr()?;
@@ -2662,6 +2664,17 @@ impl<'a> Parser<'a> {
                 TokenType::Between => {
                     self.advance();
                     output = self.create_standard_binary_expr(output, BinaryOperator::Between)?;
+                }
+                TokenType::Is => {
+                    self.advance();
+                    let is_not = self.match_token_type(TokenTypeVariant::Not);
+                    self.consume(TokenTypeVariant::Distinct)?;
+                    self.consume(TokenTypeVariant::From)?;
+                    output = if is_not {
+                        self.create_standard_binary_expr(output, BinaryOperator::IsNotDistinctFrom)?
+                    } else {
+                        self.create_standard_binary_expr(output, BinaryOperator::IsDistinctFrom)?
+                    };
                 }
                 TokenType::Not => {
                     self.advance();
@@ -2776,31 +2789,36 @@ impl<'a> Parser<'a> {
         }
 
         let expr = self.parse_field_access_expr()?;
-        match &self.peek().kind {
-            TokenType::Is => {
-                self.advance();
-                let not = self.match_token_type(TokenTypeVariant::Not);
-                let literal = self.consume_one_of(&[
-                    TokenTypeVariant::Null,
-                    TokenTypeVariant::True,
-                    TokenTypeVariant::False,
-                ])?;
-                let operator = match (not, &literal.kind) {
-                    (true, TokenType::True) => UnaryOperator::IsNotTrue,
-                    (false, TokenType::True) => UnaryOperator::IsTrue,
-                    (true, TokenType::Null) => UnaryOperator::IsNotNull,
-                    (false, TokenType::Null) => UnaryOperator::IsNull,
-                    (true, TokenType::False) => UnaryOperator::IsNotFalse,
-                    (false, TokenType::False) => UnaryOperator::IsFalse,
-                    _ => unreachable!(),
-                };
 
-                Ok(Expr::Unary(UnaryExpr {
-                    operator,
-                    right: Box::new(expr),
-                }))
-            }
-            _ => Ok(expr),
+        // If this is not a "is [not] distinct from"
+        if self.peek().kind == TokenType::Is
+            && !(self.peek_next_i(1).kind == TokenType::Distinct
+                || (self.peek_next_i(1).kind == TokenType::Not
+                    && self.peek_next_i(2).kind == TokenType::Distinct))
+        {
+            self.advance();
+            let not = self.match_token_type(TokenTypeVariant::Not);
+            let literal = self.consume_one_of(&[
+                TokenTypeVariant::Null,
+                TokenTypeVariant::True,
+                TokenTypeVariant::False,
+            ])?;
+            let operator = match (not, &literal.kind) {
+                (true, TokenType::True) => UnaryOperator::IsNotTrue,
+                (false, TokenType::True) => UnaryOperator::IsTrue,
+                (true, TokenType::Null) => UnaryOperator::IsNotNull,
+                (false, TokenType::Null) => UnaryOperator::IsNull,
+                (true, TokenType::False) => UnaryOperator::IsNotFalse,
+                (false, TokenType::False) => UnaryOperator::IsFalse,
+                _ => unreachable!(),
+            };
+
+            Ok(Expr::Unary(UnaryExpr {
+                operator,
+                right: Box::new(expr),
+            }))
+        } else {
+            Ok(expr)
         }
     }
 
@@ -3993,6 +4011,36 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// with_primary_expr -> "WITH" "(" name "AS" expr ("," name "AS" expr)* "," result_expr ")"
+    /// ```
+    fn parse_with_primary_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::With)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut vars = vec![];
+
+        loop {
+            let name = self.consume_identifier_into_name()?;
+            self.consume(TokenTypeVariant::As)?;
+            let value = self.parse_expr()?;
+
+            vars.push(WithExprVar { name, value });
+
+            if self.match_token_type(TokenTypeVariant::Comma)
+                && self.peek_next_i(1).kind != TokenType::As
+            {
+                break;
+            }
+        }
+        let result = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::With(WithExpr {
+            vars,
+            result: Box::new(result),
+        }))
+    }
+
+    /// Rule:
+    /// ```text
     /// primary_expr ->
     /// "*" | "True" | "False" | "Null" | "Identifier" | "QuotedIdentifier"
     /// | "QueryNamedParameter" | "QueryPositionalParameter" | "SystemVariable"
@@ -4005,6 +4053,7 @@ impl<'a> Parser<'a> {
     /// | case_expr
     /// | function_expr
     /// | quantified_like_expr
+    /// | with_expr
     /// | "(" expression ")" | "(" query_expr ")"
     /// | "EXISTS" "(" query_expr ")"
     /// ```
@@ -4049,6 +4098,7 @@ impl<'a> Parser<'a> {
             TokenType::If => self.parse_if_fn_expr()?,
             TokenType::Right => self.parse_right_fn_expr()?,
             TokenType::Extract => self.parse_extract_fn_expr()?,
+            TokenType::With => self.parse_with_primary_expr()?,
             TokenType::Identifier(ident) => {
                 let lower_ident = ident.to_lowercase();
                 if self.peek_next_i(1).kind == TokenType::LeftParen
