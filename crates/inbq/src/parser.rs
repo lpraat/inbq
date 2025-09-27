@@ -49,6 +49,7 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_prev(&self) -> &Token {
+        debug_assert!(self.curr > 0);
         &self.source_tokens[self.curr - 1]
     }
 
@@ -112,7 +113,7 @@ impl<'a> Parser<'a> {
     fn check_non_reserved_keyword(&self, value: &str) -> bool {
         let peek = self.peek();
         match &peek.kind {
-            TokenType::Identifier(ident) => ident.to_lowercase() == value,
+            TokenType::Identifier(ident) => ident.eq_ignore_ascii_case(value),
             _ => false,
         }
     }
@@ -2213,19 +2214,8 @@ impl<'a> Parser<'a> {
     /// as_alias -> ["AS"] ("Identifier" | "QuotedIdentifier")
     /// ```
     fn parse_as_alias(&mut self) -> anyhow::Result<Option<Name>> {
-        if self.match_token_type(TokenTypeVariant::As) {
+        if self.match_token_type(TokenTypeVariant::As) || self.check_identifier() {
             return Ok(Some(self.consume_identifier_into_name()?));
-        }
-        if self.match_identifier() {
-            return Ok(Some(match &self.peek_prev().kind {
-                TokenType::Identifier(ident) => Name::Identifier(Identifier {
-                    name: ident.clone(),
-                }),
-                TokenType::QuotedIdentifier(qident) => Name::QuotedIdentifier(QuotedIdentifier {
-                    name: qident.clone(),
-                }),
-                _ => unreachable!(),
-            }));
         }
         Ok(None)
     }
@@ -3180,7 +3170,7 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_parameterized_range_type(&mut self) -> anyhow::Result<ParameterizedType> {
         self.consume(TokenTypeVariant::Less)?;
-        let range_type = self.parse_parameterized_range_type()?;
+        let range_type = self.parse_parameterized_bq_type()?;
         self.consume(TokenTypeVariant::Greater)?;
         Ok(ParameterizedType::Range {
             r#type: Box::new(range_type),
