@@ -2933,8 +2933,22 @@ impl LineageExtractor {
 
     fn statement_lin(&mut self, statement: &Statement) -> anyhow::Result<()> {
         match statement {
+            Statement::Labeled(labeled_statement) => {
+                self.statement_lin(&labeled_statement.statement)?
+            }
             Statement::Query(query_statement) => self.query_statement_lin(query_statement)?,
             Statement::Update(update_statement) => self.update_statement_lin(update_statement)?,
+            Statement::While(while_statement) => {
+                for statement in &while_statement.statements {
+                    self.statement_lin(statement)?
+                }
+            }
+            Statement::ForIn(_) => todo!(),
+            Statement::Repeat(repeat_statement) => {
+                for statement in &repeat_statement.statements {
+                    self.statement_lin(statement)?
+                }
+            }
             Statement::Insert(insert_statement) => self.insert_statement_lin(insert_statement)?,
             Statement::Merge(merge_statement) => self.merge_statement_lin(merge_statement)?,
             Statement::CreateTable(create_table_statement) => {
@@ -2947,6 +2961,11 @@ impl LineageExtractor {
                 self.set_var_statement_lin(set_var_statement)?
             }
             Statement::Block(statements_block) => self.statements_block_lin(statements_block)?,
+            Statement::Loop(loop_statement) => {
+                for statement in &loop_statement.statements {
+                    self.statement_lin(statement)?
+                }
+            }
             Statement::DropTableStatement(drop_table_statement) => {
                 self.drop_table_statement_lin(drop_table_statement)?
             }
@@ -2986,7 +3005,11 @@ impl LineageExtractor {
             | Statement::RollbackTransaction
             | Statement::Raise(_)
             | Statement::Call(_)
-            | Statement::Return => {}
+            | Statement::Return
+            | Statement::Break
+            | Statement::Leave
+            | Statement::Continue
+            | Statement::Iterate => {}
         }
         Ok(())
     }

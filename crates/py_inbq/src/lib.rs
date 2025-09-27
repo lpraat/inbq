@@ -18,26 +18,26 @@ use inbq::{
         CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
         CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
         DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-        FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-        FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
-        GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having,
-        Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
-        IntervalPart, JoinCondition, JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert,
-        MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow,
-        NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-        OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-        PivotColumn, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr,
-        QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-        RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-        SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-        SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-        StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-        StructParameterizedFieldType, SystemVariable, Token, TokenType, TruncateStatement, Type,
-        UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
-        UpdateStatement, WeekBegin, When, WhenMatched, WhenNotMatchedBySource,
-        WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame, WindowFrameKind,
-        WindowOrderByExpr, WindowSpec, With,
+        ForInStatement, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+        GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+        GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
+        InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
+        LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
+        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
+        NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn, Qualify,
+        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, Token,
+        TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+        UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+        WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
+        WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -3016,6 +3016,55 @@ impl RsToPyObject for CaseStatement {
     }
 }
 
+impl RsToPyObject for LoopStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "statements", self.statements)];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LoopStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for RepeatStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "statements", self.statements),
+            kwarg!(py_ctx, "until", self.until),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RepeatStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for WhileStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "condition", self.condition),
+            kwarg!(py_ctx, "statements", self.statements),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WhileStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ForInStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "var_name", self.var_name),
+            kwarg!(py_ctx, "table_expr", self.table_expr),
+            kwarg!(py_ctx, "statements", self.statements),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ForInStatement)?, kwargs)
+    }
+}
+
+impl RsToPyObject for LabeledStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "statement", self.statement),
+            kwarg!(py_ctx, "start_label", self.start_label),
+            kwarg!(py_ctx, "end_label", self.end_label),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LabeledStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -3108,6 +3157,38 @@ impl RsToPyObject for Statement {
             ),
             Statement::Return => {
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Return)?, &[])
+            }
+            Statement::Loop(loop_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, loop_statement)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Loop)?, kwargs)
+            }
+            Statement::Repeat(repeat_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, repeat_statement)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Repeat)?, kwargs)
+            }
+            Statement::While(while_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, while_statement)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::While)?, kwargs)
+            }
+            Statement::ForIn(for_in_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, for_in_statement)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::ForIn)?, kwargs)
+            }
+            Statement::Break => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Break)?, &[])
+            }
+            Statement::Continue => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Continue)?, &[])
+            }
+            Statement::Iterate => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Iterate)?, &[])
+            }
+            Statement::Leave => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Leave)?, &[])
+            }
+            Statement::Labeled(labeled_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, labeled_statement)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Labeled)?, kwargs)
             }
         }
     }

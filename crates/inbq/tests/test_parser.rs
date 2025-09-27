@@ -13,6 +13,14 @@ struct ParsingTestData {
     tests: Vec<ParsingTest>,
 }
 
+fn test_sql(sql: &str) {
+    let ast = parse_sql(sql);
+    if let Err(err) = &ast {
+        println!("{}", err)
+    }
+    assert!(ast.is_ok());
+}
+
 #[test]
 fn test_should_parse() {
     let parsing_test_file =
@@ -23,9 +31,9 @@ fn test_should_parse() {
     for test in test_parsing_data.tests {
         let sql = &test.sql;
         println!("Testing parsing for SQL: {}", sql);
-        assert!(parse_sql(sql).is_ok());
-        assert!(parse_sql(&sql.to_uppercase()).is_ok());
-        assert!(parse_sql(&sql.to_lowercase()).is_ok());
+        test_sql(sql);
+        test_sql(&sql.to_uppercase());
+        test_sql(&sql.to_lowercase());
     }
 }
 

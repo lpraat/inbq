@@ -8,25 +8,26 @@ use crate::ast::{
     CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
     CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
     DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
-    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-    JoinExpr, JoinKind, LikeQuantifier, Limit, Merge, MergeInsert, MergeSource, MergeStatement,
+    ForInStatement, FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
+    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
     MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
     OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
     PathPart, Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr,
     QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-    RangeExpr, RecursiveCte, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, SystemVariable, Token, TokenType, TokenTypeVariant,
     TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
     UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, Window, WindowFrame,
-    WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
 };
 use crate::scanner::Scanner;
 
@@ -272,60 +273,101 @@ impl<'a> Parser<'a> {
     ///  | query_statement
     /// ```
     fn parse_statement(&mut self) -> anyhow::Result<Statement> {
-        let peek = self.peek();
-
-        let statement = match &peek.kind {
-            TokenType::Create => self.parse_create_table_statement()?,
-            TokenType::Merge => self.parse_merge_statement()?,
-            TokenType::Set => self.parse_set_var_statement()?,
-            TokenType::If => self.parse_if_statement()?,
-            TokenType::Case => self.parse_case_statement()?,
-            TokenType::Identifier(non_reserved_keyword) => {
-                match non_reserved_keyword.to_lowercase().as_str() {
-                    "insert" => self.parse_insert_statement()?,
-                    "delete" => self.parse_delete_statement()?,
-                    "update" => self.parse_update_statement()?,
-                    "truncate" => self.parse_truncate_statement()?,
-                    "declare" => self.parse_declare_var_statement()?,
-                    "begin" => {
-                        self.advance();
-                        if self.match_non_reserved_keyword("transaction") {
-                            return Ok(Statement::BeginTransaction);
+        let is_labeled_statement = self.check_token_types(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ]) && self.peek_next_i(1).kind == TokenType::Colon;
+        if is_labeled_statement {
+            let peek = self.peek_next_i(2);
+            let statement = match &peek.kind {
+                TokenType::For => self.parse_for_in_statement()?,
+                TokenType::Identifier(non_reserved_keyword) => {
+                    match non_reserved_keyword.to_lowercase().as_str() {
+                        "begin" => self.parse_statements_block()?,
+                        "loop" => self.parse_loop_statement()?,
+                        "repeat" => self.parse_repeat_statement()?,
+                        "while" => self.parse_while_statement()?,
+                        "break" => self.parse_break_statement()?,
+                        "leave" => self.parse_leave_statement()?,
+                        "continue" => self.parse_continue_statement()?,
+                        "iterate" => self.parse_iterate_statement()?,
+                        _ => {
+                            return Err(anyhow!(self.error(
+                                peek,
+                                &format!(
+                                    "Found unexpected keyword `{}`. No valid labeled statement begins with `{}`.",
+                                    non_reserved_keyword,non_reserved_keyword
+                                ),
+                            )));
                         }
-                        self.curr -= 1;
-                        self.parse_statements_block()?
-                    }
-                    "commit" => {
-                        self.advance();
-                        self.consume_non_reserved_keyword("transaction")?;
-                        return Ok(Statement::CommitTransaction);
-                    }
-                    "rollback" => {
-                        self.advance();
-                        self.consume_non_reserved_keyword("transaction")?;
-                        return Ok(Statement::RollbackTransaction);
-                    }
-                    "raise" => self.parse_raise_statement()?,
-                    "drop" => self.parse_drop_statement()?,
-                    "call" => self.parse_call_statement()?,
-                    "return" => {
-                        self.advance();
-                        return Ok(Statement::Return);
-                    }
-                    _ => {
-                        return Err(anyhow!(self.error(
-                            peek,
-                            &format!(
-                                "Unexpected non reserved keyword to start a statement: `{}`.",
-                                non_reserved_keyword
-                            ),
-                        )));
                     }
                 }
-            }
-            _ => self.parse_query_statement()?,
-        };
-        Ok(statement)
+                _ => self.parse_query_statement()?,
+            };
+            Ok(statement)
+        } else {
+            let peek = self.peek();
+            let statement = match &peek.kind {
+                TokenType::Create => self.parse_create_table_statement()?,
+                TokenType::Merge => self.parse_merge_statement()?,
+                TokenType::Set => self.parse_set_var_statement()?,
+                TokenType::If => self.parse_if_statement()?,
+                TokenType::Case => self.parse_case_statement()?,
+                TokenType::For => self.parse_for_in_statement()?,
+                TokenType::Identifier(non_reserved_keyword) => {
+                    match non_reserved_keyword.to_lowercase().as_str() {
+                        "insert" => self.parse_insert_statement()?,
+                        "delete" => self.parse_delete_statement()?,
+                        "update" => self.parse_update_statement()?,
+                        "truncate" => self.parse_truncate_statement()?,
+                        "declare" => self.parse_declare_var_statement()?,
+                        "begin" => {
+                            self.advance();
+                            if self.match_non_reserved_keyword("transaction") {
+                                return Ok(Statement::BeginTransaction);
+                            }
+                            self.curr -= 1;
+                            self.parse_statements_block()?
+                        }
+                        "commit" => {
+                            self.advance();
+                            self.consume_non_reserved_keyword("transaction")?;
+                            return Ok(Statement::CommitTransaction);
+                        }
+                        "rollback" => {
+                            self.advance();
+                            self.consume_non_reserved_keyword("transaction")?;
+                            return Ok(Statement::RollbackTransaction);
+                        }
+                        "raise" => self.parse_raise_statement()?,
+                        "drop" => self.parse_drop_statement()?,
+                        "call" => self.parse_call_statement()?,
+                        "loop" => self.parse_loop_statement()?,
+                        "repeat" => self.parse_repeat_statement()?,
+                        "while" => self.parse_while_statement()?,
+                        "break" => self.parse_break_statement()?,
+                        "leave" => self.parse_leave_statement()?,
+                        "continue" => self.parse_continue_statement()?,
+                        "iterate" => self.parse_iterate_statement()?,
+                        "return" => {
+                            self.advance();
+                            return Ok(Statement::Return);
+                        }
+                        _ => {
+                            return Err(anyhow!(self.error(
+                                peek,
+                                &format!(
+                                    "Found unexpected keyword `{}`. No valid statement begins with `{}`.",
+                                    non_reserved_keyword,non_reserved_keyword
+                                ),
+                            )));
+                        }
+                    }
+                }
+                _ => self.parse_query_statement()?,
+            };
+            Ok(statement)
+        }
     }
 
     /// Rule:
@@ -387,6 +429,220 @@ impl<'a> Parser<'a> {
             when_thens,
             r#else,
         }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// loop_statement -> [label] "LOOP" statement (";" statement)* "END" "LOOP" [label]
+    /// ```
+    fn parse_loop_statement(&mut self) -> anyhow::Result<Statement> {
+        let start_label = self.parse_start_label()?;
+        self.consume_non_reserved_keyword("loop")?;
+        let mut statements = vec![];
+        loop {
+            statements.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+            if self.match_token_type(TokenTypeVariant::End) {
+                break;
+            }
+        }
+
+        self.consume_non_reserved_keyword("loop")?;
+
+        let end_label = self.parse_end_label(&start_label)?;
+        let loop_statement = Statement::Loop(LoopStatement { statements });
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(loop_statement),
+                start_label,
+                end_label,
+            }))
+        } else {
+            Ok(loop_statement)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// repeat_statement -> [label] "REPEAT" statement (";" statement)* "UNTIL" expr "END" "REPEAT" [label]
+    /// ```
+    fn parse_repeat_statement(&mut self) -> anyhow::Result<Statement> {
+        let start_label = self.parse_start_label()?;
+        self.consume_non_reserved_keyword("repeat")?;
+        let mut statements = vec![];
+        loop {
+            statements.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+            if self.match_non_reserved_keyword("until") {
+                break;
+            }
+        }
+        let until = self.parse_expr()?;
+        self.consume(TokenTypeVariant::End)?;
+        self.consume_non_reserved_keyword("repeat")?;
+        let end_label = self.parse_end_label(&start_label)?;
+
+        let repeat_statement = Statement::Repeat(RepeatStatement { statements, until });
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(repeat_statement),
+                start_label,
+                end_label,
+            }))
+        } else {
+            Ok(repeat_statement)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// while_statement -> [label] "WHILE" expr "DO" statement (";" statement)* "END" "WHILE" [label]
+    /// ```
+    fn parse_while_statement(&mut self) -> anyhow::Result<Statement> {
+        let start_label = self.parse_start_label()?;
+        self.consume_non_reserved_keyword("while")?;
+        let condition = self.parse_expr()?;
+        self.consume_non_reserved_keyword("do")?;
+
+        let mut statements = vec![];
+        loop {
+            statements.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+            if self.match_token_type(TokenTypeVariant::End) {
+                break;
+            }
+        }
+        self.consume_non_reserved_keyword("while")?;
+        let end_label = self.parse_end_label(&start_label)?;
+
+        let while_statement = Statement::While(WhileStatement {
+            condition,
+            statements,
+        });
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(while_statement),
+                start_label,
+                end_label,
+            }))
+        } else {
+            Ok(while_statement)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// for_in_statement -> [label] "FOR" var_name "IN" "(" query_expr ")" "DO" statement (";" statement)* "END" "FOR" [label]
+    /// ```
+    fn parse_for_in_statement(&mut self) -> anyhow::Result<Statement> {
+        let start_label = self.parse_start_label()?;
+        self.consume(TokenTypeVariant::For)?;
+        let var_name = self.consume_identifier_into_name()?;
+        self.consume(TokenTypeVariant::In)?;
+
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let table_expr = self.parse_query_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        self.consume_non_reserved_keyword("do")?;
+
+        let mut statements = vec![];
+        loop {
+            statements.push(self.parse_statement()?);
+            self.consume(TokenTypeVariant::Semicolon)?;
+            if self.match_token_type(TokenTypeVariant::End) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::For)?;
+        let end_label = self.parse_end_label(&start_label)?;
+
+        let for_in_statement = Statement::ForIn(ForInStatement {
+            var_name,
+            table_expr,
+            statements,
+        });
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(for_in_statement),
+                start_label,
+                end_label,
+            }))
+        } else {
+            Ok(for_in_statement)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// break_statement -> "BREAK" [label]
+    /// ```
+    fn parse_break_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("break")?;
+        let start_label = self.parse_label()?;
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(Statement::Break),
+                start_label,
+                end_label: None,
+            }))
+        } else {
+            Ok(Statement::Break)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// leave_statement -> "LEAVE" [label]
+    /// ```
+    fn parse_leave_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("leave")?;
+        let start_label = self.parse_label()?;
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(Statement::Leave),
+                start_label,
+                end_label: None,
+            }))
+        } else {
+            Ok(Statement::Leave)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// continue_statement -> "CONTINUE" [label]
+    /// ```
+    fn parse_continue_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("continue")?;
+        let start_label = self.parse_label()?;
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(Statement::Continue),
+                start_label,
+                end_label: None,
+            }))
+        } else {
+            Ok(Statement::Continue)
+        }
+    }
+
+    /// Rule:
+    /// ```text
+    /// iterate_statement -> "ITERATE" [label]
+    /// ```
+    fn parse_iterate_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("iterate")?;
+        let start_label = self.parse_label()?;
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(Statement::Iterate),
+                start_label,
+                end_label: None,
+            }))
+        } else {
+            Ok(Statement::Iterate)
+        }
     }
 
     /// Rule:
@@ -550,11 +806,55 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    fn parse_label(&mut self) -> anyhow::Result<Option<Name>> {
+        if self.check_token_types(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ]) {
+            return Ok(Some(self.consume_identifier_into_name()?));
+        }
+        Ok(None)
+    }
+
     /// Rule:
     /// ```text
-    /// statements_block -> "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END"
+    /// ("QuotedIdentifier" | "Identifier") ":"
+    /// ```
+    fn parse_start_label(&mut self) -> anyhow::Result<Option<Name>> {
+        if self.check_token_types(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ]) && self.peek_next_i(1).kind == TokenType::Colon
+        {
+            let name = self.consume_identifier_into_name()?;
+            self.consume(TokenTypeVariant::Colon)?;
+            return Ok(Some(name));
+        }
+        Ok(None)
+    }
+
+    /// Rule:
+    /// ```text
+    /// ("QuotedIdentifier" | "Identifier")
+    /// ```
+    fn parse_end_label(&mut self, start_label: &Option<Name>) -> anyhow::Result<Option<Name>> {
+        if start_label.is_some()
+            && self.check_token_types(&[
+                TokenTypeVariant::Identifier,
+                TokenTypeVariant::QuotedIdentifier,
+            ])
+        {
+            return Ok(Some(self.consume_identifier_into_name()?));
+        }
+        Ok(None)
+    }
+
+    /// Rule:
+    /// ```text
+    /// statements_block -> [label] "BEGIN" [statement (";" statement)*] ["EXCEPTION" "WHEN" "ERROR" "THEN"] [statement (";" statement)*] "END" [label]
     /// ```
     fn parse_statements_block(&mut self) -> anyhow::Result<Statement> {
+        let start_label = self.parse_start_label()?;
         self.consume_non_reserved_keyword("begin")?;
 
         let mut statements = vec![];
@@ -577,10 +877,21 @@ impl<'a> Parser<'a> {
             self.consume(TokenTypeVariant::Semicolon)?;
         }
 
-        Ok(Statement::Block(StatementsBlock {
+        let end_label = self.parse_end_label(&start_label)?;
+        let block_statement = Statement::Block(StatementsBlock {
             statements,
             exception_statements,
-        }))
+        });
+
+        if let Some(start_label) = start_label {
+            Ok(Statement::Labeled(LabeledStatement {
+                statement: Box::new(block_statement),
+                start_label,
+                end_label,
+            }))
+        } else {
+            Ok(block_statement)
+        }
     }
 
     /// Rule:
@@ -3517,7 +3828,7 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// exists_subquery_expr -> "EXISTS" "(" query_Expr ")"
+    /// exists_subquery_expr -> "EXISTS" "(" query_expr ")"
     /// ```
     fn parse_exists_subquery_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Exists)?;

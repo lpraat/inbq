@@ -27,6 +27,46 @@ pub enum Statement {
     Raise(RaiseStatement),
     Return,
     Call(CallStatement),
+    Loop(LoopStatement),
+    Repeat(RepeatStatement),
+    While(WhileStatement),
+    ForIn(ForInStatement),
+    Break,
+    Continue,
+    Iterate,
+    Leave,
+    Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForInStatement {
+    pub var_name: Name,
+    pub table_expr: QueryExpr,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WhileStatement {
+    pub condition: Expr,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepeatStatement {
+    pub statements: Vec<Statement>,
+    pub until: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoopStatement {
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabeledStatement {
+    pub statement: Box<Statement>,
+    pub start_label: Name,
+    pub end_label: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

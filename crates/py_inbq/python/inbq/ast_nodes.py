@@ -44,6 +44,15 @@ class AstNode:
             "Raise": "Statement_Raise",
             "Return": "Statement_Return",
             "Call": "Statement_Call",
+            "Loop": "Statement_Loop",
+            "Repeat": "Statement_Repeat",
+            "While": "Statement_While",
+            "ForIn": "Statement_ForIn",
+            "Break": "Statement_Break",
+            "Continue": "Statement_Continue",
+            "Iterate": "Statement_Iterate",
+            "Leave": "Statement_Leave",
+            "Labeled": "Statement_Labeled",
         },
         "Name": {
             "Identifier": "Name_Identifier",
@@ -563,6 +572,37 @@ class AstNode:
 @dataclass
 class Ast(AstNode):
     statements: "list[Statement]"
+
+
+@dataclass
+class ForInStatement(AstNode):
+    var_name: "Name"
+    table_expr: "QueryExpr"
+    statements: "list[Statement]"
+
+
+@dataclass
+class WhileStatement(AstNode):
+    condition: "Expr"
+    statements: "list[Statement]"
+
+
+@dataclass
+class RepeatStatement(AstNode):
+    statements: "list[Statement]"
+    until: "Expr"
+
+
+@dataclass
+class LoopStatement(AstNode):
+    statements: "list[Statement]"
+
+
+@dataclass
+class LabeledStatement(AstNode):
+    statement: "Statement"
+    start_label: "Name"
+    end_label: "Optional[Name]"
 
 
 @dataclass
@@ -1261,7 +1301,48 @@ class Statement_Call(AstNode):
     vty: "CallStatement"
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call"
+@dataclass
+class Statement_Loop(AstNode):
+    vty: "LoopStatement"
+
+
+@dataclass
+class Statement_Repeat(AstNode):
+    vty: "RepeatStatement"
+
+
+@dataclass
+class Statement_While(AstNode):
+    vty: "WhileStatement"
+
+
+@dataclass
+class Statement_ForIn(AstNode):
+    vty: "ForInStatement"
+
+
+@dataclass
+class Statement_Break(AstNode): ...
+
+
+@dataclass
+class Statement_Continue(AstNode): ...
+
+
+@dataclass
+class Statement_Iterate(AstNode): ...
+
+
+@dataclass
+class Statement_Leave(AstNode): ...
+
+
+@dataclass
+class Statement_Labeled(AstNode):
+    vty: "LabeledStatement"
+
+
+Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call | Statement_Loop | Statement_Repeat | Statement_While | Statement_ForIn | Statement_Break | Statement_Continue | Statement_Iterate | Statement_Leave | Statement_Labeled"
 
 
 @dataclass

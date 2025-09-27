@@ -762,8 +762,141 @@ end;
 
 [[tests]]
 sql = """
+l1: begin
+exception when error then
+end;
+"""
+
+[[tests]]
+sql = """
+l1: begin
+exception when error then
+end l1;
+"""
+
+[[tests]]
+sql = """
+`l1`: begin
+exception when error then
+end `l1`;
+"""
+
+[[tests]]
+sql = """
+`my.label`: begin
+exception when error then
+end `my.label`;
+"""
+
+[[tests]]
+sql = """
 begin
 end;
+"""
+
+[[tests]]
+sql="""
+DECLARE x INT64 DEFAULT 0;
+LOOP
+  SET x = x + 1;
+END LOOP;
+"""
+
+[[tests]]
+sql="""
+DECLARE x INT64 DEFAULT 0;
+l1: LOOP
+  SET x = x + 1;
+END LOOP l1;
+"""
+
+
+[[tests]]
+sql="""
+DECLARE x INT64 DEFAULT 0;
+
+REPEAT
+  SET x = x + 1;
+  SELECT x;
+  UNTIL x >= 3
+END REPEAT;
+"""
+
+
+[[tests]]
+sql="""
+DECLARE x INT64 DEFAULT 0;
+
+`foo`: REPEAT
+  SET x = x + 1;
+  SELECT x;
+  UNTIL x >= 3
+END REPEAT `foo`;
+"""
+
+[[tests]]
+sql="""
+WHILE TRUE DO
+  SELECT x;
+END WHILE;
+"""
+
+[[tests]]
+sql="""
+`foo.bar`: WHILE TRUE DO
+  SELECT x;
+END WHILE `foo.bar`;
+"""
+
+[[tests]]
+sql="""
+label_1: BEGIN
+  BREAK label_1;
+END label_1;
+"""
+
+[[tests]]
+sql="""
+label_1: BEGIN
+  LEAVE label_1;
+END label_1;
+"""
+
+[[tests]]
+sql="""
+label_1: LOOP
+  WHILE x < 1 DO
+    IF y < 1 THEN
+      CONTINUE label_1;
+    ELSE
+      BREAK label_1;
+    END IF;
+  END WHILE;
+END LOOP label_1
+"""
+
+[[tests]]
+sql="""
+label_1: LOOP
+  WHILE x < 1 DO
+    IF y < 1 THEN
+      ITERATE label_1;
+    ELSE
+      LEAVE label_1;
+    END IF;
+  END WHILE;
+END LOOP label_1
+"""
+
+[[tests]]
+sql="""
+FOR record IN
+  (SELECT word, word_count
+   FROM bigquery-public-data.samples.shakespeare
+   LIMIT 5)
+DO
+  SELECT record.word, record.word_count;
+END FOR;
 """
 
 [[tests]]
