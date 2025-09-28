@@ -8,24 +8,25 @@ use crate::ast::{
     CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
     CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
     DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    ForInStatement, FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
-    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
-    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
-    PathPart, Pivot, PivotAggregate, PivotColumn, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
+    FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate, FunctionAggregateHaving,
+    FunctionAggregateHavingKind, FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr,
+    GenericFunctionExpr, GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr,
+    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
+    LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
+    MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
+    NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
+    PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
+    RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, SystemVariable, Token, TokenType, TokenTypeVariant,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-    UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+    StructParameterizedFieldType, SystemVariable, TableConstraint, Token, TokenType,
+    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
     WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
     WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
 };
@@ -898,9 +899,102 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// foreign_key_constraint -> "FOREIGN" "KEY" "(" name ("," name)* ")" "REFERENCES" path_name "(" "(" name ("," name)* ")" ")" "NOT" "ENFORCED"
+    /// ```
+    fn parse_foreign_key_constraint(
+        &mut self,
+        name: Option<Name>,
+    ) -> anyhow::Result<TableConstraint> {
+        self.consume_non_reserved_keyword("foreign")?;
+        self.consume_non_reserved_keyword("key")?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut columns = vec![];
+        loop {
+            columns.push(self.consume_identifier_into_name()?);
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+        self.consume_non_reserved_keyword("references")?;
+        let reference_table = self.parse_path()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut reference_columns = vec![];
+        loop {
+            reference_columns.push(self.consume_identifier_into_name()?);
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+        self.consume(TokenTypeVariant::Not)?;
+        self.consume_non_reserved_keyword("enforced")?;
+        let reference = ForeignKeyReference {
+            table: reference_table,
+            columns: reference_columns,
+        };
+
+        Ok(TableConstraint::ForeignKeyNotEnforced(
+            ForeignKeyConstraintNotEnforced {
+                name,
+                columns,
+                reference,
+            },
+        ))
+    }
+
+    /// Rule:
+    /// ```text
+    /// table_constraint -> "PRIMARY" "KEY" "(" name ("," name)* ")" "NOT" "ENFORCED" | foreign_key_constraint
+    /// ```
+    fn parse_table_constraint(&mut self) -> anyhow::Result<TableConstraint> {
+        Ok(
+            match &self
+                .consume_one_of_non_reserved_keywords(&["primary", "foreign", "constraint"])?
+                .kind
+            {
+                TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
+                    match ident.to_lowercase().as_str() {
+                        "primary" => {
+                            self.consume_non_reserved_keyword("key")?;
+                            self.consume(TokenTypeVariant::LeftParen)?;
+                            let mut columns = vec![];
+                            loop {
+                                columns.push(self.consume_identifier_into_name()?);
+                                if !self.match_token_type(TokenTypeVariant::Comma) {
+                                    break;
+                                }
+                            }
+                            self.consume(TokenTypeVariant::RightParen)?;
+                            self.consume(TokenTypeVariant::Not)?;
+                            self.consume_non_reserved_keyword("enforced")?;
+                            TableConstraint::PrimaryKeyNotEnforced(
+                                PrimaryKeyConstraintNotEnforced { columns },
+                            )
+                        }
+                        "foreign" => {
+                            self.curr -= 1;
+                            self.parse_foreign_key_constraint(None)?
+                        }
+                        "constraint" => {
+                            let name = self.consume_identifier_into_name()?;
+                            self.parse_foreign_key_constraint(Some(name))?
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                _ => unreachable!(),
+            },
+        )
+    }
+
+    /// Rule:
+    /// ```text
     /// CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] TABLE [ IF NOT EXISTS ] table_name
-    /// ["(" column_name parameterized_bq_type ("," column_name parameterized_bq_Type)* ")"]
+    /// ["(" (column | table_constraint) ("," (column | table_constraint)*) ")"]
     /// ["AS" query_statement]
+    /// where:
+    /// column -> column_name parameterized_bq_type ("," column_name parameterized_bq_type)*
     /// ```
     fn parse_create_table_statement(&mut self) -> anyhow::Result<Statement> {
         // TODO: add collate, partition, etc...
@@ -922,15 +1016,24 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_path()?;
 
-        let schema = if self.match_token_type(TokenTypeVariant::LeftParen) {
+        let (schema, constraints) = if self.match_token_type(TokenTypeVariant::LeftParen) {
             let mut column_schema = vec![];
+            let mut constraints = vec![];
             loop {
-                let col_name = self.consume_identifier_into_name()?;
-                let col_type = self.parse_parameterized_bq_type()?;
-                column_schema.push(ColumnSchema {
-                    name: col_name,
-                    r#type: col_type,
-                });
+                let is_constraint = matches!(&self.peek_next_i(1).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("key"));
+                let is_constraint = is_constraint
+                    || matches!(&self.peek_next_i(3).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("key"));
+
+                if is_constraint {
+                    constraints.push(self.parse_table_constraint()?);
+                } else {
+                    let col_name = self.consume_identifier_into_name()?;
+                    let col_type = self.parse_parameterized_bq_type()?;
+                    column_schema.push(ColumnSchema {
+                        name: col_name,
+                        r#type: col_type,
+                    });
+                }
 
                 let match_comma = self.match_token_type(TokenTypeVariant::Comma);
 
@@ -943,9 +1046,19 @@ impl<'a> Parser<'a> {
                 }
             }
             self.consume(TokenTypeVariant::RightParen)?;
-            Some(column_schema)
+            let column_schema = if column_schema.is_empty() {
+                None
+            } else {
+                Some(column_schema)
+            };
+            let constraints = if constraints.is_empty() {
+                None
+            } else {
+                Some(constraints)
+            };
+            (column_schema, constraints)
         } else {
-            None
+            (None, None)
         };
 
         let query = if self.match_token_type(TokenTypeVariant::As) {
@@ -957,6 +1070,7 @@ impl<'a> Parser<'a> {
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
             schema,
+            constraints,
             replace,
             is_temporary,
             if_not_exists,

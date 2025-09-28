@@ -71,6 +71,10 @@ class AstNode:
             "UserVariable": "SetVariable_UserVariable",
             "SystemVariable": "SetVariable_SystemVariable",
         },
+        "TableConstraint": {
+            "PrimaryKeyNotEnforced": "TableConstraint_PrimaryKeyNotEnforced",
+            "ForeignKeyNotEnforced": "TableConstraint_ForeignKeyNotEnforced",
+        },
         "ParameterizedType": {
             "Array": "ParameterizedType_Array",
             "BigNumeric": "ParameterizedType_BigNumeric",
@@ -674,10 +678,29 @@ class SetVarStatement(AstNode):
 class CreateTableStatement(AstNode):
     name: "PathName"
     schema: "Optional[list[ColumnSchema]]"
+    constraints: "Optional[list[TableConstraint]]"
     replace: "bool"
     is_temporary: "bool"
     if_not_exists: "bool"
     query: "Optional[QueryExpr]"
+
+
+@dataclass
+class PrimaryKeyConstraintNotEnforced(AstNode):
+    columns: "list[Name]"
+
+
+@dataclass
+class ForeignKeyConstraintNotEnforced(AstNode):
+    name: "Optional[Name]"
+    columns: "list[Name]"
+    reference: "ForeignKeyReference"
+
+
+@dataclass
+class ForeignKeyReference(AstNode):
+    table: "PathName"
+    columns: "list[Name]"
 
 
 @dataclass
@@ -1418,6 +1441,21 @@ class SetVariable_SystemVariable(AstNode):
 
 
 SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"
+
+
+@dataclass
+class TableConstraint_PrimaryKeyNotEnforced(AstNode):
+    vty: "PrimaryKeyConstraintNotEnforced"
+
+
+@dataclass
+class TableConstraint_ForeignKeyNotEnforced(AstNode):
+    vty: "ForeignKeyConstraintNotEnforced"
+
+
+TableConstraint: TypeAlias = (
+    "TableConstraint_PrimaryKeyNotEnforced | TableConstraint_ForeignKeyNotEnforced"
+)
 
 
 @dataclass

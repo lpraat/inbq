@@ -201,10 +201,35 @@ pub enum SetVariable {
 pub struct CreateTableStatement {
     pub name: PathName,
     pub schema: Option<Vec<ColumnSchema>>,
+    pub constraints: Option<Vec<TableConstraint>>,
     pub replace: bool,
     pub is_temporary: bool,
     pub if_not_exists: bool,
     pub query: Option<QueryExpr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TableConstraint {
+    PrimaryKeyNotEnforced(PrimaryKeyConstraintNotEnforced),
+    ForeignKeyNotEnforced(ForeignKeyConstraintNotEnforced),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrimaryKeyConstraintNotEnforced {
+    pub columns: Vec<Name>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeyConstraintNotEnforced {
+    pub name: Option<Name>,
+    pub columns: Vec<Name>,
+    pub reference: ForeignKeyReference,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeyReference {
+    pub table: PathName,
+    pub columns: Vec<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

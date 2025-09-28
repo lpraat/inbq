@@ -18,22 +18,23 @@ use inbq::{
         CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
         CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
         DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-        ForInStatement, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-        GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-        GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-        InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-        LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-        NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn, Qualify,
-        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
-        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, Token,
+        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
+        FromGroupingQueryExpr, FromPathExpr, FunctionAggregate, FunctionAggregateHaving,
+        FunctionAggregateHavingKind, FunctionAggregateNulls, FunctionAggregateOrderBy,
+        FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy, GroupByExpr,
+        GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+        IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+        JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge,
+        MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
+        NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+        OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
+        PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+        QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+        RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+        SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
+        SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField,
+        StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint, Token,
         TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
         UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
         WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
@@ -2959,11 +2960,79 @@ impl RsToPyObject for ColumnSchema {
     }
 }
 
+impl RsToPyObject for PrimaryKeyConstraintNotEnforced {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "columns", self.columns)];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, PrimaryKeyConstraintNotEnforced)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for ForeignKeyReference {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "table", self.table),
+            kwarg!(py_ctx, "columns", self.columns),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ForeignKeyReference)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ForeignKeyConstraintNotEnforced {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "columns", self.columns),
+            kwarg!(py_ctx, "reference", self.reference),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, ForeignKeyConstraintNotEnforced)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for TableConstraint {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            TableConstraint::PrimaryKeyNotEnforced(primary_key_constraint_not_enforced) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    primary_key_constraint_not_enforced
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableConstraint::PrimaryKeyNotEnforced)?,
+                    kwargs,
+                )
+            }
+            TableConstraint::ForeignKeyNotEnforced(foreign_key_constraint_not_enforced) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    foreign_key_constraint_not_enforced
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableConstraint::ForeignKeyNotEnforced)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
 impl RsToPyObject for CreateTableStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "schema", self.schema),
+            kwarg!(py_ctx, "constraints", self.constraints),
             kwarg!(py_ctx, "replace", self.replace),
             kwarg!(py_ctx, "is_temporary", self.is_temporary),
             kwarg!(py_ctx, "if_not_exists", self.if_not_exists),

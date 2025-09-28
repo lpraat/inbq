@@ -729,6 +729,18 @@ CREATE OR REPLACE TABLE tmp (x decimal(3,4), y STRUCT <a ARRAY <STRING(255)>, b 
 
 [[tests]]
 sql = """
+create temp table bar(x int64,primary key(x) not enforced);
+create temp table foo(x int64,foreign key(x) references bar(x) not enforced,constraint `fk` foreign key(x) references bar(x) not enforced ,foreign key(x) references bar(x) not enforced);
+"""
+
+[[tests]]
+sql = """
+create temp table foo(primary key (x) not enforced, x int64);
+create temp table bar(foreign key(x) references foo(x) not enforced, x int64) as (select 1 as x);
+"""
+
+[[tests]]
+sql = """
 DROP TABLE some_temp_table
 """
 
