@@ -875,3 +875,62 @@ kind.table.columns = [
 [tests.ready_lineage."proj.dat.out_table"]
 ox = ["proj.dat.in_table->ix"]
 oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
+
+[[tests]]
+sql = """
+create temp table foo(a string, b string);
+
+insert into foo
+select a,b from proj.dat.in_table;
+
+insert into proj.dat.out_table
+select a, b from foo;
+
+drop table foo;
+create temp table foo(c string);
+
+insert into foo
+select c from proj.dat.in_table;
+
+insert into proj.dat.out_table
+select "fill", c from foo;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+
+
+[[tests]]
+sql = """
+for record in (select * from proj.dat.in_table)
+do
+    insert into proj.dat.out_table
+    select record.a, record.b;
+
+    insert into proj.dat.out_table
+    select record.a, record.c;
+end for;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]

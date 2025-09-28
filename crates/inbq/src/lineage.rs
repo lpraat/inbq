@@ -2,13 +2,13 @@ use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-        CreateTableStatement, Cte, DeclareVarStatement, DropTableStatement, Expr, FromExpr,
-        FromPathExpr, FunctionExpr, GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr,
-        JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
-        ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
-        StatementsBlock, StructExpr, Type, UpdateStatement, When, With,
+        CreateTableStatement, Cte, DeclareVarStatement, DropTableStatement, Expr, ForInStatement,
+        FromExpr, FromPathExpr, FunctionExpr, GroupingQueryExpr, Identifier, InsertStatement,
+        IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert, MergeSource, MergeStatement,
+        MergeUpdate, ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+        QuotedIdentifier, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable,
+        Statement, StatementsBlock, StructExpr, Type, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -198,7 +198,7 @@ struct ContextObject {
     kind: ContextObjectKind,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum ContextObjectKind {
     TempTable,
     Table,
@@ -358,10 +358,7 @@ impl Context {
                     let nested_node_idx = if !input_node_indices.is_empty() {
                         let mut input = vec![];
                         for input_node_idx in input_node_indices {
-                            let mut nested_input =
-                                self.nested_inputs(&field_access_path, *input_node_idx);
-                            nested_input.extend(field.input.clone());
-                            input.extend(nested_input);
+                            input.extend(self.nested_inputs(&field_access_path, *input_node_idx));
                         }
 
                         self.allocate_node_with_nested_input(
@@ -430,10 +427,7 @@ impl Context {
                 let nested_node_idx = if !input_node_indices.is_empty() {
                     let mut input = vec![];
                     for input_node_idx in input_node_indices {
-                        let mut nested_input =
-                            self.nested_inputs(&array_access_path, *input_node_idx);
-                        nested_input.extend(array_node_type.input.clone());
-                        input.extend(nested_input);
+                        input.extend(self.nested_inputs(&array_access_path, *input_node_idx));
                     }
 
                     self.allocate_node_with_nested_input(
@@ -2810,6 +2804,31 @@ impl LineageExtractor {
         Ok(())
     }
 
+    fn add_var_to_scope(
+        &mut self,
+        name: &str,
+        node_type: NodeType,
+        input_lineage_nodes: &[ArenaIndex],
+    ) -> ArenaIndex {
+        // Var names are case insensitive (like column names)
+        let var_ident = name.to_lowercase();
+        let obj_name = format!("!var_{}", var_ident);
+
+        let object_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::Var,
+            vec![(
+                NodeName::Defined(var_ident.clone()),
+                node_type,
+                input_lineage_nodes.into(),
+            )],
+        );
+        let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
+        self.context.vars.insert(var_ident, var_node_idx);
+        self.context.output.push(var_node_idx);
+        object_idx
+    }
+
     fn declare_var_statement_lin(
         &mut self,
         declare_var_statement: &DeclareVarStatement,
@@ -2825,26 +2844,14 @@ impl LineageExtractor {
         };
 
         for var in &declare_var_statement.vars {
-            // Var names are case insensitive (like column names)
-            let var_ident = var.as_str().to_lowercase();
-            let obj_name = format!("!var_{}", var_ident);
-
-            let object_idx = self.context.allocate_new_ctx_object(
-                &obj_name,
-                ContextObjectKind::Var,
-                vec![(
-                    NodeName::Defined(var_ident.clone()),
-                    declare_var_statement.r#type.as_ref().map_or_else(
-                        || NodeType::Unknown,
-                        node_type_from_parser_parameterized_type,
-                    ),
-                    input_lineage_nodes.clone(),
-                )],
+            self.add_var_to_scope(
+                var.as_str(),
+                declare_var_statement.r#type.as_ref().map_or_else(
+                    || NodeType::Unknown,
+                    node_type_from_parser_parameterized_type,
+                ),
+                &input_lineage_nodes,
             );
-            let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
-            self.context.vars.insert(var_ident, var_node_idx);
-            self.context.output.push(var_node_idx);
-            self.context.add_object(object_idx);
         }
 
         Ok(declared_vars)
@@ -2895,9 +2902,12 @@ impl LineageExtractor {
 
         if removed.is_none() {
             // Not a source object, it is a table created in this script
-            self.context
-                .objects_stack
-                .retain(|obj_idx| self.context.arena_objects[*obj_idx].name != *table_name);
+            self.context.objects_stack.retain(|obj_idx| {
+                let obj = &self.context.arena_objects[*obj_idx];
+                !(obj.name == *table_name
+                    && (obj.kind == ContextObjectKind::Table
+                        || obj.kind == ContextObjectKind::TempTable))
+            });
         }
         Ok(())
     }
@@ -2905,7 +2915,6 @@ impl LineageExtractor {
     /// Remove vars from current scope
     fn remove_scope_vars(&mut self, vars: &[ArenaIndex]) {
         vars.iter().for_each(|obj_idx| {
-            self.context.pop_object();
             let var_obj = &self.context.arena_objects[*obj_idx];
             let var_node = &self.context.arena_lineage_nodes[var_obj.lineage_nodes[0]];
             self.context.vars.swap_remove(var_node.name.string());
@@ -2936,6 +2945,57 @@ impl LineageExtractor {
         Ok(())
     }
 
+    fn for_in_statement_lin(&mut self, for_in_statement: &ForInStatement) -> anyhow::Result<()> {
+        let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
+            this.query_expr_lin(&for_in_statement.table_expr, false)
+        })?;
+
+        let mut struct_node_tyupes = vec![];
+        let mut input = vec![];
+        for node_idx in &consumed_nodes {
+            let node = &self.context.arena_lineage_nodes[*node_idx];
+            struct_node_tyupes.push(StructNodeFieldType {
+                name: node.name.string().to_owned(),
+                r#type: node.r#type.clone(),
+                input: vec![*node_idx],
+            });
+            input.extend(&node.input);
+        }
+        let struct_node = NodeType::Struct(StructNodeType {
+            fields: struct_node_tyupes,
+        });
+
+        let obj_name = self.get_anon_obj_name("anon_struct");
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousStruct,
+            vec![],
+        );
+
+        let node = LineageNode {
+            name: NodeName::Anonymous,
+            r#type: struct_node.clone(),
+            source_obj: obj_idx,
+            input: input.clone(),
+            nested_nodes: IndexMap::new(),
+        };
+
+        let node_idx = self.context.arena_lineage_nodes.allocate(node);
+        self.context.add_nested_nodes(node_idx);
+
+        self.context.output.push(node_idx);
+        let var_idx =
+            self.add_var_to_scope(for_in_statement.var_name.as_str(), struct_node, &[node_idx]);
+
+        for statement in &for_in_statement.statements {
+            self.statement_lin(statement)?
+        }
+
+        self.remove_scope_vars(&[var_idx]);
+
+        Ok(())
+    }
+
     fn statement_lin(&mut self, statement: &Statement) -> anyhow::Result<()> {
         match statement {
             Statement::Labeled(labeled_statement) => {
@@ -2948,7 +3008,7 @@ impl LineageExtractor {
                     self.statement_lin(statement)?
                 }
             }
-            Statement::ForIn(_) => todo!(),
+            Statement::ForIn(for_in_statement) => self.for_in_statement_lin(for_in_statement)?,
             Statement::Repeat(repeat_statement) => {
                 for statement in &repeat_statement.statements {
                     self.statement_lin(statement)?
