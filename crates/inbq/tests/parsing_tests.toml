@@ -534,6 +534,15 @@ select 1 + case x when x > 0 then 1 else 2 end;
 
 [[tests]]
 sql = """
+SELECT
+    case
+        when x > 0 THEN 'high'
+        WHEN x < 0 THEN 'low'
+    ELSE 'zero' END AS BAR
+"""
+
+[[tests]]
+sql = """
 select 1 + case when true then 1 else 2 end
 """
 

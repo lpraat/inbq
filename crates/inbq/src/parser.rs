@@ -3983,7 +3983,7 @@ impl<'a> Parser<'a> {
 
             when_thens.push(WhenThen { when, then });
 
-            if !self.match_token_type(TokenTypeVariant::When) {
+            if !self.check_token_type(TokenTypeVariant::When) {
                 break;
             }
         }
