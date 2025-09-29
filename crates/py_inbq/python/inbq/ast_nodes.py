@@ -3034,52 +3034,411 @@ class TokenType_With(AstNode): ...
 class TokenType_Within(AstNode): ...
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_CreateView | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call | Statement_Loop | Statement_Repeat | Statement_While | Statement_ForIn | Statement_Break | Statement_Continue | Statement_Iterate | Statement_Leave | Statement_Labeled"
-Name: TypeAlias = "Name_Identifier | Name_QuotedIdentifier"
-PathPart: TypeAlias = "PathPart_Identifier | PathPart_QuotedIdentifier | PathPart_Number | PathPart_DotSeparator | PathPart_SlashSeparator | PathPart_DashSeparator | PathPart_ColonSeparator"
-SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"
-TableConstraint: TypeAlias = (
-    "TableConstraint_PrimaryKeyNotEnforced | TableConstraint_ForeignKeyNotEnforced"
+Statement: TypeAlias = (
+    Statement_Query
+    | Statement_Insert
+    | Statement_Delete
+    | Statement_Update
+    | Statement_Truncate
+    | Statement_Merge
+    | Statement_DeclareVar
+    | Statement_SetVar
+    | Statement_Block
+    | Statement_CreateTable
+    | Statement_CreateView
+    | Statement_DropTableStatement
+    | Statement_If
+    | Statement_Case
+    | Statement_BeginTransaction
+    | Statement_CommitTransaction
+    | Statement_RollbackTransaction
+    | Statement_Raise
+    | Statement_Return
+    | Statement_Call
+    | Statement_Loop
+    | Statement_Repeat
+    | Statement_While
+    | Statement_ForIn
+    | Statement_Break
+    | Statement_Continue
+    | Statement_Iterate
+    | Statement_Leave
+    | Statement_Labeled
 )
-ParameterizedType: TypeAlias = "ParameterizedType_Array | ParameterizedType_BigNumeric | ParameterizedType_Bool | ParameterizedType_Bytes | ParameterizedType_Date | ParameterizedType_Datetime | ParameterizedType_Float64 | ParameterizedType_Geography | ParameterizedType_Int64 | ParameterizedType_Interval | ParameterizedType_Json | ParameterizedType_Numeric | ParameterizedType_Range | ParameterizedType_String | ParameterizedType_Struct | ParameterizedType_Time | ParameterizedType_Timestamp"
-Type: TypeAlias = "Type_Array | Type_BigNumeric | Type_Bool | Type_Bytes | Type_Date | Type_Datetime | Type_Float64 | Type_Geography | Type_Int64 | Type_Interval | Type_Json | Type_Numeric | Type_Range | Type_String | Type_Struct | Type_Time | Type_Timestamp"
-MergeSource: TypeAlias = "MergeSource_Table | MergeSource_Subquery"
-Merge: TypeAlias = "Merge_Update | Merge_Insert | Merge_InsertRow | Merge_Delete"
-When: TypeAlias = "When_Matched | When_NotMatchedByTarget | When_NotMatchedBySource"
-Expr: TypeAlias = "Expr_Binary | Expr_Unary | Expr_Grouping | Expr_Array | Expr_Struct | Expr_Identifier | Expr_QuotedIdentifier | Expr_QueryNamedParameter | Expr_QueryPositionalParameter | Expr_SystemVariable | Expr_String | Expr_RawString | Expr_StringConcat | Expr_Bytes | Expr_RawBytes | Expr_BytesConcat | Expr_Numeric | Expr_BigNumeric | Expr_Number | Expr_Bool | Expr_With | Expr_Date | Expr_Time | Expr_Datetime | Expr_Timestamp | Expr_Range | Expr_Interval | Expr_Json | Expr_Default | Expr_Null | Expr_Star | Expr_Query | Expr_Case | Expr_GenericFunction | Expr_Function | Expr_QuantifiedLike | Expr_Exists"
-IntervalExpr: TypeAlias = "IntervalExpr_Interval | IntervalExpr_IntervalRange"
-IntervalPart: TypeAlias = "IntervalPart_Year | IntervalPart_Quarter | IntervalPart_Month | IntervalPart_Week | IntervalPart_Day | IntervalPart_Hour | IntervalPart_Minute | IntervalPart_Second | IntervalPart_Millisecond | IntervalPart_Microsecond"
-FunctionExpr: TypeAlias = "FunctionExpr_Array | FunctionExpr_ArrayAgg | FunctionExpr_Concat | FunctionExpr_Cast | FunctionExpr_Extract | FunctionExpr_If | FunctionExpr_SafeCast | FunctionExpr_CurrentDate | FunctionExpr_CurrentTimestamp | FunctionExpr_Right"
-ExtractFunctionPart: TypeAlias = "ExtractFunctionPart_MicroSecond | ExtractFunctionPart_MilliSecond | ExtractFunctionPart_Second | ExtractFunctionPart_Minute | ExtractFunctionPart_Hour | ExtractFunctionPart_DayOfWeek | ExtractFunctionPart_Day | ExtractFunctionPart_DayOfYear | ExtractFunctionPart_Week | ExtractFunctionPart_WeekWithBegin | ExtractFunctionPart_IsoWeek | ExtractFunctionPart_Month | ExtractFunctionPart_Quarter | ExtractFunctionPart_Year | ExtractFunctionPart_IsoYear | ExtractFunctionPart_Date | ExtractFunctionPart_Time"
-WeekBegin: TypeAlias = "WeekBegin_Sunday | WeekBegin_Monday | WeekBegin_Tuesday | WeekBegin_Wednesday | WeekBegin_Thursday | WeekBegin_Friday | WeekBegin_Saturday"
+Name: TypeAlias = Name_Identifier | Name_QuotedIdentifier
+PathPart: TypeAlias = (
+    PathPart_Identifier
+    | PathPart_QuotedIdentifier
+    | PathPart_Number
+    | PathPart_DotSeparator
+    | PathPart_SlashSeparator
+    | PathPart_DashSeparator
+    | PathPart_ColonSeparator
+)
+SetVariable: TypeAlias = SetVariable_UserVariable | SetVariable_SystemVariable
+TableConstraint: TypeAlias = (
+    TableConstraint_PrimaryKeyNotEnforced | TableConstraint_ForeignKeyNotEnforced
+)
+ParameterizedType: TypeAlias = (
+    ParameterizedType_Array
+    | ParameterizedType_BigNumeric
+    | ParameterizedType_Bool
+    | ParameterizedType_Bytes
+    | ParameterizedType_Date
+    | ParameterizedType_Datetime
+    | ParameterizedType_Float64
+    | ParameterizedType_Geography
+    | ParameterizedType_Int64
+    | ParameterizedType_Interval
+    | ParameterizedType_Json
+    | ParameterizedType_Numeric
+    | ParameterizedType_Range
+    | ParameterizedType_String
+    | ParameterizedType_Struct
+    | ParameterizedType_Time
+    | ParameterizedType_Timestamp
+)
+Type: TypeAlias = (
+    Type_Array
+    | Type_BigNumeric
+    | Type_Bool
+    | Type_Bytes
+    | Type_Date
+    | Type_Datetime
+    | Type_Float64
+    | Type_Geography
+    | Type_Int64
+    | Type_Interval
+    | Type_Json
+    | Type_Numeric
+    | Type_Range
+    | Type_String
+    | Type_Struct
+    | Type_Time
+    | Type_Timestamp
+)
+MergeSource: TypeAlias = MergeSource_Table | MergeSource_Subquery
+Merge: TypeAlias = Merge_Update | Merge_Insert | Merge_InsertRow | Merge_Delete
+When: TypeAlias = When_Matched | When_NotMatchedByTarget | When_NotMatchedBySource
+Expr: TypeAlias = (
+    Expr_Binary
+    | Expr_Unary
+    | Expr_Grouping
+    | Expr_Array
+    | Expr_Struct
+    | Expr_Identifier
+    | Expr_QuotedIdentifier
+    | Expr_QueryNamedParameter
+    | Expr_QueryPositionalParameter
+    | Expr_SystemVariable
+    | Expr_String
+    | Expr_RawString
+    | Expr_StringConcat
+    | Expr_Bytes
+    | Expr_RawBytes
+    | Expr_BytesConcat
+    | Expr_Numeric
+    | Expr_BigNumeric
+    | Expr_Number
+    | Expr_Bool
+    | Expr_With
+    | Expr_Date
+    | Expr_Time
+    | Expr_Datetime
+    | Expr_Timestamp
+    | Expr_Range
+    | Expr_Interval
+    | Expr_Json
+    | Expr_Default
+    | Expr_Null
+    | Expr_Star
+    | Expr_Query
+    | Expr_Case
+    | Expr_GenericFunction
+    | Expr_Function
+    | Expr_QuantifiedLike
+    | Expr_Exists
+)
+IntervalExpr: TypeAlias = IntervalExpr_Interval | IntervalExpr_IntervalRange
+IntervalPart: TypeAlias = (
+    IntervalPart_Year
+    | IntervalPart_Quarter
+    | IntervalPart_Month
+    | IntervalPart_Week
+    | IntervalPart_Day
+    | IntervalPart_Hour
+    | IntervalPart_Minute
+    | IntervalPart_Second
+    | IntervalPart_Millisecond
+    | IntervalPart_Microsecond
+)
+FunctionExpr: TypeAlias = (
+    FunctionExpr_Array
+    | FunctionExpr_ArrayAgg
+    | FunctionExpr_Concat
+    | FunctionExpr_Cast
+    | FunctionExpr_Extract
+    | FunctionExpr_If
+    | FunctionExpr_SafeCast
+    | FunctionExpr_CurrentDate
+    | FunctionExpr_CurrentTimestamp
+    | FunctionExpr_Right
+)
+ExtractFunctionPart: TypeAlias = (
+    ExtractFunctionPart_MicroSecond
+    | ExtractFunctionPart_MilliSecond
+    | ExtractFunctionPart_Second
+    | ExtractFunctionPart_Minute
+    | ExtractFunctionPart_Hour
+    | ExtractFunctionPart_DayOfWeek
+    | ExtractFunctionPart_Day
+    | ExtractFunctionPart_DayOfYear
+    | ExtractFunctionPart_Week
+    | ExtractFunctionPart_WeekWithBegin
+    | ExtractFunctionPart_IsoWeek
+    | ExtractFunctionPart_Month
+    | ExtractFunctionPart_Quarter
+    | ExtractFunctionPart_Year
+    | ExtractFunctionPart_IsoYear
+    | ExtractFunctionPart_Date
+    | ExtractFunctionPart_Time
+)
+WeekBegin: TypeAlias = (
+    WeekBegin_Sunday
+    | WeekBegin_Monday
+    | WeekBegin_Tuesday
+    | WeekBegin_Wednesday
+    | WeekBegin_Thursday
+    | WeekBegin_Friday
+    | WeekBegin_Saturday
+)
 FunctionAggregateNulls: TypeAlias = (
-    "FunctionAggregateNulls_Ignore | FunctionAggregateNulls_Respect"
+    FunctionAggregateNulls_Ignore | FunctionAggregateNulls_Respect
 )
 FunctionAggregateHavingKind: TypeAlias = (
-    "FunctionAggregateHavingKind_Max | FunctionAggregateHavingKind_Min"
+    FunctionAggregateHavingKind_Max | FunctionAggregateHavingKind_Min
 )
-UnaryOperator: TypeAlias = "UnaryOperator_Plus | UnaryOperator_Minus | UnaryOperator_BitwiseNot | UnaryOperator_IsNull | UnaryOperator_IsNotNull | UnaryOperator_IsTrue | UnaryOperator_IsNotTrue | UnaryOperator_IsFalse | UnaryOperator_IsNotFalse | UnaryOperator_Not"
-BinaryOperator: TypeAlias = "BinaryOperator_BitwiseNot | BinaryOperator_Star | BinaryOperator_Slash | BinaryOperator_Concat | BinaryOperator_Plus | BinaryOperator_Minus | BinaryOperator_BitwiseLeftShift | BinaryOperator_BitwiseRightShift | BinaryOperator_BitwiseAnd | BinaryOperator_BitwiseXor | BinaryOperator_BitwiseOr | BinaryOperator_Equal | BinaryOperator_LessThan | BinaryOperator_GreaterThan | BinaryOperator_LessThanOrEqualTo | BinaryOperator_GreaterThanOrEqualTo | BinaryOperator_NotEqual | BinaryOperator_Like | BinaryOperator_NotLike | BinaryOperator_QuantifiedLike | BinaryOperator_QuantifiedNotLike | BinaryOperator_Between | BinaryOperator_NotBetween | BinaryOperator_In | BinaryOperator_NotIn | BinaryOperator_IsDistinctFrom | BinaryOperator_IsNotDistinctFrom | BinaryOperator_And | BinaryOperator_Or | BinaryOperator_ArrayIndex | BinaryOperator_FieldAccess"
+UnaryOperator: TypeAlias = (
+    UnaryOperator_Plus
+    | UnaryOperator_Minus
+    | UnaryOperator_BitwiseNot
+    | UnaryOperator_IsNull
+    | UnaryOperator_IsNotNull
+    | UnaryOperator_IsTrue
+    | UnaryOperator_IsNotTrue
+    | UnaryOperator_IsFalse
+    | UnaryOperator_IsNotFalse
+    | UnaryOperator_Not
+)
+BinaryOperator: TypeAlias = (
+    BinaryOperator_BitwiseNot
+    | BinaryOperator_Star
+    | BinaryOperator_Slash
+    | BinaryOperator_Concat
+    | BinaryOperator_Plus
+    | BinaryOperator_Minus
+    | BinaryOperator_BitwiseLeftShift
+    | BinaryOperator_BitwiseRightShift
+    | BinaryOperator_BitwiseAnd
+    | BinaryOperator_BitwiseXor
+    | BinaryOperator_BitwiseOr
+    | BinaryOperator_Equal
+    | BinaryOperator_LessThan
+    | BinaryOperator_GreaterThan
+    | BinaryOperator_LessThanOrEqualTo
+    | BinaryOperator_GreaterThanOrEqualTo
+    | BinaryOperator_NotEqual
+    | BinaryOperator_Like
+    | BinaryOperator_NotLike
+    | BinaryOperator_QuantifiedLike
+    | BinaryOperator_QuantifiedNotLike
+    | BinaryOperator_Between
+    | BinaryOperator_NotBetween
+    | BinaryOperator_In
+    | BinaryOperator_NotIn
+    | BinaryOperator_IsDistinctFrom
+    | BinaryOperator_IsNotDistinctFrom
+    | BinaryOperator_And
+    | BinaryOperator_Or
+    | BinaryOperator_ArrayIndex
+    | BinaryOperator_FieldAccess
+)
 LikeQuantifier: TypeAlias = (
-    "LikeQuantifier_Any | LikeQuantifier_Some | LikeQuantifier_All"
+    LikeQuantifier_Any | LikeQuantifier_Some | LikeQuantifier_All
 )
 QuantifiedLikeExprPattern: TypeAlias = (
-    "QuantifiedLikeExprPattern_ExprList | QuantifiedLikeExprPattern_ArrayUnnest"
+    QuantifiedLikeExprPattern_ExprList | QuantifiedLikeExprPattern_ArrayUnnest
 )
-QueryExpr: TypeAlias = "QueryExpr_Grouping | QueryExpr_Select | QueryExpr_SetSelect"
-SetQueryOperator: TypeAlias = "SetQueryOperator_Union | SetQueryOperator_UnionDistinct | SetQueryOperator_IntersectDistinct | SetQueryOperator_ExceptDistinct"
-OrderBySortDirection: TypeAlias = "OrderBySortDirection_Asc | OrderBySortDirection_Desc"
-OrderByNulls: TypeAlias = "OrderByNulls_First | OrderByNulls_Last"
-Cte: TypeAlias = "Cte_NonRecursive | Cte_Recursive"
-SelectTableValue: TypeAlias = "SelectTableValue_Struct | SelectTableValue_Value"
-SelectExpr: TypeAlias = "SelectExpr_Col | SelectExpr_ColAll | SelectExpr_All"
-UnpivotNulls: TypeAlias = "UnpivotNulls_Include | UnpivotNulls_Exclude"
-UnpivotKind: TypeAlias = "UnpivotKind_SingleColumn | UnpivotKind_MultiColumn"
-FromExpr: TypeAlias = "FromExpr_Join | FromExpr_FullJoin | FromExpr_LeftJoin | FromExpr_RightJoin | FromExpr_CrossJoin | FromExpr_Path | FromExpr_Unnest | FromExpr_GroupingQuery | FromExpr_GroupingFrom"
-JoinKind: TypeAlias = "JoinKind_Inner | JoinKind_Left | JoinKind_Right | JoinKind_Full"
-JoinCondition: TypeAlias = "JoinCondition_On | JoinCondition_Using"
-GroupByExpr: TypeAlias = "GroupByExpr_Items | GroupByExpr_All"
-NamedWindowExpr: TypeAlias = "NamedWindowExpr_Reference | NamedWindowExpr_WindowSpec"
-FrameBound: TypeAlias = "FrameBound_UnboundedPreceding | FrameBound_Preceding | FrameBound_UnboundedFollowing | FrameBound_Following | FrameBound_CurrentRow"
-WindowFrameKind: TypeAlias = "WindowFrameKind_Range | WindowFrameKind_Rows"
-TokenType: TypeAlias = "TokenType_LeftParen | TokenType_RightParen | TokenType_LeftSquare | TokenType_RightSquare | TokenType_Comma | TokenType_Dot | TokenType_Minus | TokenType_Plus | TokenType_BitwiseNot | TokenType_BitwiseOr | TokenType_BitwiseAnd | TokenType_BitwiseXor | TokenType_BitwiseRightShift | TokenType_BitwiseLeftShift | TokenType_Colon | TokenType_Semicolon | TokenType_Slash | TokenType_Star | TokenType_Tick | TokenType_ConcatOperator | TokenType_Bang | TokenType_BangEqual | TokenType_Equal | TokenType_NotEqual | TokenType_Greater | TokenType_GreaterEqual | TokenType_Less | TokenType_LessEqual | TokenType_QuotedIdentifier | TokenType_Identifier | TokenType_String | TokenType_RawString | TokenType_Bytes | TokenType_RawBytes | TokenType_Number | TokenType_QueryNamedParameter | TokenType_QueryPositionalParameter | TokenType_SystemVariable | TokenType_Eof | TokenType_All | TokenType_And | TokenType_Any | TokenType_Array | TokenType_As | TokenType_Asc | TokenType_AssertRowsModified | TokenType_At | TokenType_Between | TokenType_By | TokenType_Case | TokenType_Cast | TokenType_Collate | TokenType_Contains | TokenType_Create | TokenType_Cross | TokenType_Cube | TokenType_Current | TokenType_Default | TokenType_Define | TokenType_Desc | TokenType_Distinct | TokenType_Else | TokenType_End | TokenType_Enum | TokenType_Escape | TokenType_Except | TokenType_Exclude | TokenType_Exists | TokenType_Extract | TokenType_False | TokenType_Fetch | TokenType_Following | TokenType_For | TokenType_From | TokenType_Full | TokenType_Group | TokenType_Grouping | TokenType_Groups | TokenType_Hash | TokenType_Having | TokenType_If | TokenType_Ignore | TokenType_In | TokenType_Inner | TokenType_Intersect | TokenType_Interval | TokenType_Into | TokenType_Is | TokenType_Join | TokenType_Lateral | TokenType_Left | TokenType_Like | TokenType_Limit | TokenType_Lookup | TokenType_Merge | TokenType_Natural | TokenType_New | TokenType_No | TokenType_Not | TokenType_Null | TokenType_Nulls | TokenType_Of | TokenType_On | TokenType_Or | TokenType_Order | TokenType_Outer | TokenType_Over | TokenType_Partition | TokenType_Preceding | TokenType_Proto | TokenType_Qualify | TokenType_Range | TokenType_Recursive | TokenType_Respect | TokenType_Right | TokenType_Rollup | TokenType_Rows | TokenType_Select | TokenType_Set | TokenType_Some | TokenType_Struct | TokenType_Tablesample | TokenType_Then | TokenType_To | TokenType_Treat | TokenType_True | TokenType_Union | TokenType_Unnest | TokenType_Using | TokenType_When | TokenType_Where | TokenType_Window | TokenType_With | TokenType_Within"
+QueryExpr: TypeAlias = QueryExpr_Grouping | QueryExpr_Select | QueryExpr_SetSelect
+SetQueryOperator: TypeAlias = (
+    SetQueryOperator_Union
+    | SetQueryOperator_UnionDistinct
+    | SetQueryOperator_IntersectDistinct
+    | SetQueryOperator_ExceptDistinct
+)
+OrderBySortDirection: TypeAlias = OrderBySortDirection_Asc | OrderBySortDirection_Desc
+OrderByNulls: TypeAlias = OrderByNulls_First | OrderByNulls_Last
+Cte: TypeAlias = Cte_NonRecursive | Cte_Recursive
+SelectTableValue: TypeAlias = SelectTableValue_Struct | SelectTableValue_Value
+SelectExpr: TypeAlias = SelectExpr_Col | SelectExpr_ColAll | SelectExpr_All
+UnpivotNulls: TypeAlias = UnpivotNulls_Include | UnpivotNulls_Exclude
+UnpivotKind: TypeAlias = UnpivotKind_SingleColumn | UnpivotKind_MultiColumn
+FromExpr: TypeAlias = (
+    FromExpr_Join
+    | FromExpr_FullJoin
+    | FromExpr_LeftJoin
+    | FromExpr_RightJoin
+    | FromExpr_CrossJoin
+    | FromExpr_Path
+    | FromExpr_Unnest
+    | FromExpr_GroupingQuery
+    | FromExpr_GroupingFrom
+)
+JoinKind: TypeAlias = JoinKind_Inner | JoinKind_Left | JoinKind_Right | JoinKind_Full
+JoinCondition: TypeAlias = JoinCondition_On | JoinCondition_Using
+GroupByExpr: TypeAlias = GroupByExpr_Items | GroupByExpr_All
+NamedWindowExpr: TypeAlias = NamedWindowExpr_Reference | NamedWindowExpr_WindowSpec
+FrameBound: TypeAlias = (
+    FrameBound_UnboundedPreceding
+    | FrameBound_Preceding
+    | FrameBound_UnboundedFollowing
+    | FrameBound_Following
+    | FrameBound_CurrentRow
+)
+WindowFrameKind: TypeAlias = WindowFrameKind_Range | WindowFrameKind_Rows
+TokenType: TypeAlias = (
+    TokenType_LeftParen
+    | TokenType_RightParen
+    | TokenType_LeftSquare
+    | TokenType_RightSquare
+    | TokenType_Comma
+    | TokenType_Dot
+    | TokenType_Minus
+    | TokenType_Plus
+    | TokenType_BitwiseNot
+    | TokenType_BitwiseOr
+    | TokenType_BitwiseAnd
+    | TokenType_BitwiseXor
+    | TokenType_BitwiseRightShift
+    | TokenType_BitwiseLeftShift
+    | TokenType_Colon
+    | TokenType_Semicolon
+    | TokenType_Slash
+    | TokenType_Star
+    | TokenType_Tick
+    | TokenType_ConcatOperator
+    | TokenType_Bang
+    | TokenType_BangEqual
+    | TokenType_Equal
+    | TokenType_NotEqual
+    | TokenType_Greater
+    | TokenType_GreaterEqual
+    | TokenType_Less
+    | TokenType_LessEqual
+    | TokenType_QuotedIdentifier
+    | TokenType_Identifier
+    | TokenType_String
+    | TokenType_RawString
+    | TokenType_Bytes
+    | TokenType_RawBytes
+    | TokenType_Number
+    | TokenType_QueryNamedParameter
+    | TokenType_QueryPositionalParameter
+    | TokenType_SystemVariable
+    | TokenType_Eof
+    | TokenType_All
+    | TokenType_And
+    | TokenType_Any
+    | TokenType_Array
+    | TokenType_As
+    | TokenType_Asc
+    | TokenType_AssertRowsModified
+    | TokenType_At
+    | TokenType_Between
+    | TokenType_By
+    | TokenType_Case
+    | TokenType_Cast
+    | TokenType_Collate
+    | TokenType_Contains
+    | TokenType_Create
+    | TokenType_Cross
+    | TokenType_Cube
+    | TokenType_Current
+    | TokenType_Default
+    | TokenType_Define
+    | TokenType_Desc
+    | TokenType_Distinct
+    | TokenType_Else
+    | TokenType_End
+    | TokenType_Enum
+    | TokenType_Escape
+    | TokenType_Except
+    | TokenType_Exclude
+    | TokenType_Exists
+    | TokenType_Extract
+    | TokenType_False
+    | TokenType_Fetch
+    | TokenType_Following
+    | TokenType_For
+    | TokenType_From
+    | TokenType_Full
+    | TokenType_Group
+    | TokenType_Grouping
+    | TokenType_Groups
+    | TokenType_Hash
+    | TokenType_Having
+    | TokenType_If
+    | TokenType_Ignore
+    | TokenType_In
+    | TokenType_Inner
+    | TokenType_Intersect
+    | TokenType_Interval
+    | TokenType_Into
+    | TokenType_Is
+    | TokenType_Join
+    | TokenType_Lateral
+    | TokenType_Left
+    | TokenType_Like
+    | TokenType_Limit
+    | TokenType_Lookup
+    | TokenType_Merge
+    | TokenType_Natural
+    | TokenType_New
+    | TokenType_No
+    | TokenType_Not
+    | TokenType_Null
+    | TokenType_Nulls
+    | TokenType_Of
+    | TokenType_On
+    | TokenType_Or
+    | TokenType_Order
+    | TokenType_Outer
+    | TokenType_Over
+    | TokenType_Partition
+    | TokenType_Preceding
+    | TokenType_Proto
+    | TokenType_Qualify
+    | TokenType_Range
+    | TokenType_Recursive
+    | TokenType_Respect
+    | TokenType_Right
+    | TokenType_Rollup
+    | TokenType_Rows
+    | TokenType_Select
+    | TokenType_Set
+    | TokenType_Some
+    | TokenType_Struct
+    | TokenType_Tablesample
+    | TokenType_Then
+    | TokenType_To
+    | TokenType_Treat
+    | TokenType_True
+    | TokenType_Union
+    | TokenType_Unnest
+    | TokenType_Using
+    | TokenType_When
+    | TokenType_Where
+    | TokenType_Window
+    | TokenType_With
+    | TokenType_Within
+)

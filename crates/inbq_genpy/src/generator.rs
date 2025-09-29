@@ -338,7 +338,7 @@ class {}(AstNode):
 
         writeln!(
             enum_type_aliases,
-            "{}: TypeAlias = '{}'",
+            "{}: TypeAlias = {}",
             rs_enum.name,
             enum_py_variants_vec.join(" | ")
         )?;
