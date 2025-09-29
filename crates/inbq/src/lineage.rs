@@ -3019,6 +3019,7 @@ impl LineageExtractor {
             Statement::CreateTable(create_table_statement) => {
                 self.create_table_statement_lin(create_table_statement)?
             }
+            Statement::CreateView(_) => todo!(),
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(declare_var_statement)?;
             }

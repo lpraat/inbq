@@ -16,27 +16,28 @@ use inbq::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
         CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-        CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
-        DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
-        FromGroupingQueryExpr, FromPathExpr, FunctionAggregate, FunctionAggregateHaving,
-        FunctionAggregateHavingKind, FunctionAggregateNulls, FunctionAggregateOrderBy,
-        FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy, GroupByExpr,
-        GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
-        IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-        JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge,
-        MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
-        NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-        OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-        PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
-        QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-        RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable,
-        SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField,
-        StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint, Token,
-        TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-        UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
+        CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+        DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
+        ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
+        ForeignKeyReference, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+        GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+        GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
+        InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
+        LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
+        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
+        NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
+        PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+        QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
+        RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+        SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+        Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+        StructParameterizedFieldType, SystemVariable, TableConstraint, Token, TokenType,
+        TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+        UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
         WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
         WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
     },
@@ -3168,6 +3169,40 @@ impl RsToPyObject for LabeledStatement {
     }
 }
 
+impl RsToPyObject for DdlOption {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "value", self.value),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DdlOption)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ViewColumn {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "options", self.options),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ViewColumn)?, kwargs)
+    }
+}
+
+impl RsToPyObject for CreateViewStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "replace", self.replace),
+            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "columns", self.columns),
+            kwarg!(py_ctx, "options", self.options),
+            kwarg!(py_ctx, "query", self.query),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CreateViewStatement)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -3216,6 +3251,14 @@ impl RsToPyObject for Statement {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateTable)?,
+                    kwargs,
+                )
+            }
+            Statement::CreateView(create_view_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_view_statement)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::CreateView)?,
                     kwargs,
                 )
             }

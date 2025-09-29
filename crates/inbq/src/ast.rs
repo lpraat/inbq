@@ -18,6 +18,7 @@ pub enum Statement {
     SetVar(SetVarStatement),
     Block(StatementsBlock),
     CreateTable(CreateTableStatement),
+    CreateView(CreateViewStatement),
     DropTableStatement(DropTableStatement),
     If(IfStatement),
     Case(CaseStatement),
@@ -36,6 +37,28 @@ pub enum Statement {
     Iterate,
     Leave,
     Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateViewStatement {
+    pub replace: bool,
+    pub if_not_exists: bool,
+    pub name: PathName,
+    pub columns: Option<Vec<ViewColumn>>,
+    pub options: Option<Vec<DdlOption>>,
+    pub query: QueryExpr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewColumn {
+    pub name: Name,
+    pub options: Option<Vec<DdlOption>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DdlOption {
+    pub name: Name,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

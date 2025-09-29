@@ -36,6 +36,7 @@ class AstNode:
             "SetVar": "Statement_SetVar",
             "Block": "Statement_Block",
             "CreateTable": "Statement_CreateTable",
+            "CreateView": "Statement_CreateView",
             "DropTableStatement": "Statement_DropTableStatement",
             "If": "Statement_If",
             "Case": "Statement_Case",
@@ -608,6 +609,28 @@ class AstNode:
 @dataclass
 class Ast(AstNode):
     statements: "list[Statement]"
+
+
+@dataclass
+class CreateViewStatement(AstNode):
+    replace: "bool"
+    if_not_exists: "bool"
+    name: "PathName"
+    columns: "Optional[list[ViewColumn]]"
+    options: "Optional[list[DdlOption]]"
+    query: "QueryExpr"
+
+
+@dataclass
+class ViewColumn(AstNode):
+    name: "Name"
+    options: "Optional[list[DdlOption]]"
+
+
+@dataclass
+class DdlOption(AstNode):
+    name: "Name"
+    value: "Expr"
 
 
 @dataclass
@@ -1325,6 +1348,11 @@ class Statement_Block(AstNode):
 @dataclass
 class Statement_CreateTable(AstNode):
     vty: "CreateTableStatement"
+
+
+@dataclass
+class Statement_CreateView(AstNode):
+    vty: "CreateViewStatement"
 
 
 @dataclass
@@ -3006,7 +3034,7 @@ class TokenType_With(AstNode): ...
 class TokenType_Within(AstNode): ...
 
 
-Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call | Statement_Loop | Statement_Repeat | Statement_While | Statement_ForIn | Statement_Break | Statement_Continue | Statement_Iterate | Statement_Leave | Statement_Labeled"
+Statement: TypeAlias = "Statement_Query | Statement_Insert | Statement_Delete | Statement_Update | Statement_Truncate | Statement_Merge | Statement_DeclareVar | Statement_SetVar | Statement_Block | Statement_CreateTable | Statement_CreateView | Statement_DropTableStatement | Statement_If | Statement_Case | Statement_BeginTransaction | Statement_CommitTransaction | Statement_RollbackTransaction | Statement_Raise | Statement_Return | Statement_Call | Statement_Loop | Statement_Repeat | Statement_While | Statement_ForIn | Statement_Break | Statement_Continue | Statement_Iterate | Statement_Leave | Statement_Labeled"
 Name: TypeAlias = "Name_Identifier | Name_QuotedIdentifier"
 PathPart: TypeAlias = "PathPart_Identifier | PathPart_QuotedIdentifier | PathPart_Number | PathPart_DotSeparator | PathPart_SlashSeparator | PathPart_DashSeparator | PathPart_ColonSeparator"
 SetVariable: TypeAlias = "SetVariable_UserVariable | SetVariable_SystemVariable"

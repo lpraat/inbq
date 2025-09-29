@@ -749,6 +749,36 @@ create temp table bar(foreign key(x) references foo(x) not enforced, x int64) as
 """
 
 [[tests]]
+sql="""
+CREATE VIEW mydataset.age_groups(age, count) AS SELECT age, COUNT(*)
+FROM mydataset.people
+group by age;
+"""
+
+[[tests]]
+sql="""
+CREATE VIEW IF NOT EXISTS`myproject.mydataset.newview`
+OPTIONS(
+  expiration_timestamp=TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL 48 HOUR),
+  friendly_name="newview",
+  description="a view that expires in 2 days",
+  labels=[("org_unit", "development")]
+)
+AS SELECT column_1, column_2, column_3 FROM `myproject.mydataset.mytable`
+"""
+
+[[tests]]
+sql="""
+CREATE OR REPLACE VIEW `myproject.mydataset.newview` (
+  column_1_new_name OPTIONS (DESCRIPTION='Description of the column 1 contents'),
+  column_2_new_name OPTIONS (DESCRIPTION='Description of the column 2 contents'),
+  column_3_new_name OPTIONS (DESCRIPTION='Description of the column 3 contents')
+)
+AS SELECT column_1, column_2, column_3 FROM `myproject.mydataset.mytable`
+"""
+
+
+[[tests]]
 sql = """
 DROP TABLE some_temp_table
 """

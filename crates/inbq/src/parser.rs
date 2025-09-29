@@ -6,29 +6,30 @@ use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
     CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-    CreateTableStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, DeclareVarStatement,
-    DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
-    FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate, FunctionAggregateHaving,
-    FunctionAggregateHavingKind, FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr,
-    GenericFunctionExpr, GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr,
-    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-    LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-    MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-    NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
-    PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-    RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+    DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
+    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert,
+    MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
+    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, SystemVariable, TableConstraint, Token, TokenType,
     TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
+    WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -311,7 +312,15 @@ impl<'a> Parser<'a> {
         } else {
             let peek = self.peek();
             let statement = match &peek.kind {
-                TokenType::Create => self.parse_create_table_statement()?,
+                TokenType::Create => {
+                    if (matches!(&self.peek_next_i(1).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("view"))
+                        || matches!(&self.peek_next_i(3).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("view")))
+                    {
+                        self.parse_create_view_statement()?
+                    } else {
+                        self.parse_create_table_statement()?
+                    }
+                }
                 TokenType::Merge => self.parse_merge_statement()?,
                 TokenType::Set => self.parse_set_var_statement()?,
                 TokenType::If => self.parse_if_statement()?,
@@ -1074,6 +1083,80 @@ impl<'a> Parser<'a> {
             replace,
             is_temporary,
             if_not_exists,
+            query,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// ddl_options -> name "=" expr ("," name "=" expr)*
+    /// ```
+    fn parse_ddl_options(&mut self) -> anyhow::Result<Option<Vec<DdlOption>>> {
+        Ok(if self.match_non_reserved_keyword("options") {
+            self.consume(TokenTypeVariant::LeftParen)?;
+            let mut options = vec![];
+            loop {
+                let name = self.consume_identifier_into_name()?;
+                self.consume(TokenTypeVariant::Equal)?;
+                let value = self.parse_expr()?;
+                options.push(DdlOption { name, value });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            Some(options)
+        } else {
+            None
+        })
+    }
+
+    /// Rule:
+    /// ```text
+    /// "CREATE" ["OR" "REPLACE"] "VIEW" ["IF" "NOT" "EXISTS"] path_name [name ["OPTIONS" "(" ddl_options ")"] ("," [name ["OPTIONS" "(" ddl_options ")"])*
+    /// ["OPTIONS" "(" ddl_options ")"] "AS" query_expr
+    /// ```
+    fn parse_create_view_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::Create)?;
+        let replace = self.match_token_type(TokenTypeVariant::Or);
+        if replace {
+            self.consume_non_reserved_keyword("replace")?;
+        }
+
+        self.consume_non_reserved_keyword("view")?;
+        let if_not_exists = self.match_token_type(TokenTypeVariant::If);
+        if if_not_exists {
+            self.consume(TokenTypeVariant::Not)?;
+            self.consume(TokenTypeVariant::Exists)?;
+        }
+
+        let name = self.parse_path()?;
+
+        let columns = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let mut columns = vec![];
+            loop {
+                let name = self.consume_identifier_into_name()?;
+                let options = self.parse_ddl_options()?;
+                columns.push(ViewColumn { name, options });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightParen)?;
+            Some(columns)
+        } else {
+            None
+        };
+
+        let options = self.parse_ddl_options()?;
+        self.consume(TokenTypeVariant::As)?;
+        let query = self.parse_query_expr()?;
+        Ok(Statement::CreateView(CreateViewStatement {
+            replace,
+            if_not_exists,
+            name,
+            columns,
+            options,
             query,
         }))
     }
