@@ -799,7 +799,12 @@ impl LineageExtractor {
                 self.context
                     .update_output_lineage_with_object_nodes(cte_idx);
             }
-            Cte::Recursive(_) => todo!(),
+            Cte::Recursive(_) => {
+                // TODO
+                return Err(anyhow!(
+                    "Cannot extract lineage from recursive cte (still a todo)."
+                ));
+            }
         }
         Ok(())
     }
@@ -1206,7 +1211,11 @@ impl LineageExtractor {
                     }
 
                     _ => {
-                        unreachable!();
+                        return Err(anyhow!(
+                            "Found unexpected binary expr with left: {:?} and right {:?}.",
+                            left,
+                            right
+                        ));
                     }
                 }
             } else {
@@ -1617,7 +1626,7 @@ impl LineageExtractor {
                 .lineage_nodes
                 .iter()
                 .map(|&n_idx| (&self.context.arena_lineage_nodes[n_idx], n_idx))
-                .filter(|(n, _)| n.name.string() == col_name)
+                .filter(|(n, _)| n.name.string().eq_ignore_ascii_case(col_name))
                 .collect::<Vec<_>>()[0]
                 .1;
 
@@ -2075,16 +2084,9 @@ impl LineageExtractor {
                     .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
             );
 
-            let mut added_columns = HashSet::new();
-            for (node, _, _) in &lineage_nodes {
-                let is_new_column = added_columns.insert(node.string());
-                if !is_new_column {
-                    return Err(anyhow!(
-                        "Column `{}` is ambiguous. It is contained in more than one table.",
-                        node.string()
-                    ));
-                }
-            }
+            // At this point lineage nodes can contain duplicate columns which would be ambiguous if selected in the query
+            // (those not used in USING(...))
+            // TODO: we could check if this is the case and raise an error when getting the column
 
             let joined_table_name = format!(
                 // Create a new name for the using_table.
@@ -2387,6 +2389,7 @@ impl LineageExtractor {
 
     #[allow(clippy::wrong_self_convention)]
     fn from_lin(&mut self, from: &crate::ast::From) -> anyhow::Result<()> {
+        // TODO: handle pivot, unpivot
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
 
@@ -3019,7 +3022,12 @@ impl LineageExtractor {
             Statement::CreateTable(create_table_statement) => {
                 self.create_table_statement_lin(create_table_statement)?
             }
-            Statement::CreateView(_) => todo!(),
+            Statement::CreateView(_) => {
+                // TODO
+                return Err(anyhow!(
+                    "Cannot extract lineage from a create view statement (still a todo)."
+                ));
+            }
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(declare_var_statement)?;
             }
