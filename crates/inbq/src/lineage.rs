@@ -1493,7 +1493,7 @@ impl LineageExtractor {
             },
             Expr::Star => {
                 // Handled by select_expr_all_lin and select_expr_col_all_lin
-                unreachable!()
+                return Err(anyhow!("Reached unexpected Expr::Star"));
             }
             Expr::QuantifiedLike(quantified_like_expr) => match &quantified_like_expr.pattern {
                 QuantifiedLikeExprPattern::ExprList { exprs } => {
@@ -1939,7 +1939,9 @@ impl LineageExtractor {
 
                 debug_assert!(consumed_nodes.len() == 1);
 
-                let consumed_node = &self.context.arena_lineage_nodes[consumed_nodes[0]];
+                let consumed_node = &self.context.arena_lineage_nodes[*consumed_nodes
+                    .first()
+                    .ok_or(anyhow!("Could not find consumed node while unnesting"))?];
                 let nested_node_idx = consumed_node.access(&AccessPath {
                     path: vec![AccessOp::Index],
                 })?;
@@ -2869,8 +2871,8 @@ impl LineageExtractor {
             for (i, var) in set_var_statement.vars.iter().enumerate() {
                 match var {
                     SetVariable::UserVariable(var_name) => {
-                        let var_node_idx = self.context.vars.get(var_name.as_str()).unwrap();
-                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        let var_node_idx = self.get_var(var_name.as_str())?;
+                        let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
                         var_node.input = vec![consumed_nodes[i]];
                     }
                     SetVariable::SystemVariable(_) => {}
@@ -2884,8 +2886,8 @@ impl LineageExtractor {
                         let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                             this.select_expr_col_expr_lin(expr, false)
                         })?;
-                        let var_node_idx = self.context.vars.get(var_name.as_str()).unwrap();
-                        let var_node = &mut self.context.arena_lineage_nodes[*var_node_idx];
+                        let var_node_idx = self.get_var(var_name.as_str())?;
+                        let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
                         var_node.input = consumed_nodes;
                     }
                     SetVariable::SystemVariable(_) => {}
