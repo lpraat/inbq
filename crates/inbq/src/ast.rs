@@ -476,6 +476,12 @@ pub enum Expr {
     Function(Box<FunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
     Exists(Box<QueryExpr>),
+    Unnest(UnnestExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnnestExpr {
+    pub array: Box<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1037,7 +1043,7 @@ pub enum FromExpr {
     RightJoin(JoinExpr),
     CrossJoin(CrossJoinExpr),
     Path(FromPathExpr),
-    Unnest(UnnestExpr),
+    Unnest(FromUnnestExpr),
     GroupingQuery(FromGroupingQueryExpr),
     GroupingFrom(GroupingFromExpr),
 }
@@ -1071,7 +1077,7 @@ pub enum JoinCondition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnnestExpr {
+pub struct FromUnnestExpr {
     pub array: Box<Expr>,
     pub alias: Option<Name>,
     pub with_offset: bool,

@@ -21,6 +21,58 @@ b = ["proj.dat.in_table->b"]
 [[tests]]
 sql = """
 insert into proj.dat.out_table
+with inn as (
+    select b as x from proj.dat.in_table
+),
+
+neww as (
+    select (select x from inn) as z, "foo" as k
+)
+select *
+from neww
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->b"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+
+with foo as (
+    select a,b from proj.dat.in_table
+)
+select a,b
+from foo
+union all
+select c,c from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a","proj.dat.in_table->c"]
+b = ["proj.dat.in_table->b","proj.dat.in_table->c"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
 select a1,b1 from proj.dat.in1
 union all
 select a2,b2 from proj.dat.in2

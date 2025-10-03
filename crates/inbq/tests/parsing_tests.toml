@@ -146,6 +146,11 @@ SELECT "a"||"b"||"c"
 
 [[tests]]
 sql = """
+SELECT * FROM Words WHERE value IN UNNEST(['Secure', 'Clarity']);
+"""
+
+[[tests]]
+sql = """
 SELECT WITH(a AS '123',               -- a is '123'
             b AS CONCAT(a, '456'),    -- b is '123456'
             c AS '789',               -- c is '789'

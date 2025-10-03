@@ -20,7 +20,7 @@ use inbq::{
         DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
         ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
         ForeignKeyReference, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+        FromUnnestExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
         FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
         GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
         GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
@@ -1923,6 +1923,13 @@ impl RsToPyObject for WithExpr {
     }
 }
 
+impl RsToPyObject for UnnestExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "array", self.array)];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnnestExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2087,6 +2094,10 @@ impl RsToPyObject for Expr {
             Expr::With(with_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, with_expr)];
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::With)?, kwargs)
+            }
+            Expr::Unnest(unnest_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unnest_expr)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Unnest)?, kwargs)
             }
         }
     }
@@ -2321,7 +2332,7 @@ impl RsToPyObject for FromPathExpr {
     }
 }
 
-impl RsToPyObject for UnnestExpr {
+impl RsToPyObject for FromUnnestExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "array", self.array),
@@ -2329,7 +2340,7 @@ impl RsToPyObject for UnnestExpr {
             kwarg!(py_ctx, "with_offset", self.with_offset),
             kwarg!(py_ctx, "offset_alias", self.offset_alias),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnnestExpr)?, kwargs)
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromUnnestExpr)?, kwargs)
     }
 }
 

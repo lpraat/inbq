@@ -9,27 +9,27 @@ use crate::ast::{
     CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
     DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
     ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, GroupBy,
-    GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
-    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-    JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert,
-    MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, SystemVariable, TableConstraint, Token, TokenType,
-    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
-    WithExprVar,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
+    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
+    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
+    PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
+    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+    RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+    StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint,
+    Token, TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator,
+    UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn,
+    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+    WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+    WithExpr, WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -1447,8 +1447,10 @@ impl<'a> Parser<'a> {
         let target_table = self.parse_path()?;
         let target_alias = self.parse_as_alias()?;
         self.consume(TokenTypeVariant::Using)?;
-        let source = if self.check_token_type(TokenTypeVariant::LeftParen) {
-            MergeSource::Subquery(self.parse_query_expr()?)
+        let source = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let subquery = MergeSource::Subquery(self.parse_query_expr()?);
+            self.consume(TokenTypeVariant::RightParen)?;
+            subquery
         } else {
             MergeSource::Table(self.parse_path()?)
         };
@@ -2365,7 +2367,7 @@ impl<'a> Parser<'a> {
                 }
             }
         } else if self.check_token_type(TokenTypeVariant::Unnest) {
-            let unnest_expr = self.parse_unnest()?;
+            let unnest_expr = self.parse_from_unnest()?;
             Ok(FromExpr::Unnest(unnest_expr))
         } else {
             let path = self.parse_path()?;
@@ -2377,11 +2379,25 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// unnest -> ("UNNEST" "(" expr ")" [as_alias] | array_path [as alias]) ["WITH" "OFFSET" [as_alias]]
+    /// from_unnest -> "UNNEST" "(" expr ")"
+    /// ```
+    fn parse_unnest(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Unnest)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let array = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Unnest(UnnestExpr {
+            array: Box::new(array),
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// from_unnest -> ("UNNEST" "(" expr ")" [as_alias] | array_path [as alias]) ["WITH" "OFFSET" [as_alias]]
     /// where:
     /// array_path -> expr
     /// ```
-    fn parse_unnest(&mut self) -> anyhow::Result<UnnestExpr> {
+    fn parse_from_unnest(&mut self) -> anyhow::Result<FromUnnestExpr> {
         let array = if self.match_token_type(TokenTypeVariant::Unnest) {
             self.consume(TokenTypeVariant::LeftParen)?;
             let array = self.parse_expr()?;
@@ -2399,7 +2415,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(UnnestExpr {
+        Ok(FromUnnestExpr {
             array: Box::new(array),
             alias,
             with_offset: has_offset,
@@ -4503,6 +4519,7 @@ impl<'a> Parser<'a> {
                 Expr::Default
             }
             TokenType::Exists => self.parse_exists_subquery_expr()?,
+            TokenType::Unnest => self.parse_unnest()?,
             TokenType::LeftParen => {
                 self.advance();
                 let curr_position = self.curr;

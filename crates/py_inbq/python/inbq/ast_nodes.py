@@ -168,6 +168,7 @@ class AstNode:
             "Function": "Expr_Function",
             "QuantifiedLike": "Expr_QuantifiedLike",
             "Exists": "Expr_Exists",
+            "Unnest": "Expr_Unnest",
         },
         "IntervalExpr": {
             "Interval": "IntervalExpr_Interval",
@@ -859,6 +860,11 @@ class WhenNotMatchedBySource(AstNode):
 
 
 @dataclass
+class UnnestExpr(AstNode):
+    array: "Expr"
+
+
+@dataclass
 class WithExpr(AstNode):
     vars: "list[WithExprVar]"
     result: "Expr"
@@ -1216,7 +1222,7 @@ class JoinExpr(AstNode):
 
 
 @dataclass
-class UnnestExpr(AstNode):
+class FromUnnestExpr(AstNode):
     array: "Expr"
     alias: "Optional[Name]"
     with_offset: "bool"
@@ -1871,6 +1877,11 @@ class Expr_Exists(AstNode):
 
 
 @dataclass
+class Expr_Unnest(AstNode):
+    vty: "UnnestExpr"
+
+
+@dataclass
 class IntervalExpr_Interval(AstNode):
     value: "Expr"
     part: "IntervalPart"
@@ -2401,7 +2412,7 @@ class FromExpr_Path(AstNode):
 
 @dataclass
 class FromExpr_Unnest(AstNode):
-    vty: "UnnestExpr"
+    vty: "FromUnnestExpr"
 
 
 @dataclass
@@ -3158,6 +3169,7 @@ Expr: TypeAlias = (
     | Expr_Function
     | Expr_QuantifiedLike
     | Expr_Exists
+    | Expr_Unnest
 )
 IntervalExpr: TypeAlias = IntervalExpr_Interval | IntervalExpr_IntervalRange
 IntervalPart: TypeAlias = (

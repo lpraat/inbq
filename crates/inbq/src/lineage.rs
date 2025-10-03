@@ -1426,6 +1426,9 @@ impl LineageExtractor {
             Expr::Array(array_expr) => {
                 self.array_expr_lin(array_expr)?;
             }
+            Expr::Unnest(unnext_expr) => {
+                self.select_expr_col_expr_lin(&unnext_expr.array, expand_value_table)?;
+            }
             Expr::Struct(struct_expr) => {
                 self.struct_expr_lin(struct_expr)?;
             }
@@ -2263,6 +2266,17 @@ impl LineageExtractor {
         set_select_query_expr: &SetSelectQueryExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<()> {
+        let ctx_objects_start_size = self.context.objects_stack.len();
+
+        let pushed_empty_cte_ctx = if let Some(with) = set_select_query_expr.with.as_ref() {
+            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
+            self.context.push_new_ctx(IndexMap::new(), false);
+            self.with_lin(with)?;
+            true
+        } else {
+            false
+        };
+
         let left_consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
             this.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)
         })?;
@@ -2309,6 +2323,14 @@ impl LineageExtractor {
             .for_each(|node| self.context.lineage_stack.push(*node));
         self.context
             .update_output_lineage_with_object_nodes(set_obj_idx);
+
+        let ctx_objects_curr_size = self.context.objects_stack.len();
+        for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
+            self.context.pop_object();
+        }
+        if pushed_empty_cte_ctx {
+            self.context.pop_curr_ctx();
+        }
 
         Ok(())
     }
