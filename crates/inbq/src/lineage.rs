@@ -204,6 +204,7 @@ enum ContextObjectKind {
     Table,
     Cte,
     Query,
+    JoinTable,
     UsingTable,
     Anonymous, // TODO: anonymous_subquery?
     AnonymousStruct,
@@ -219,6 +220,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::Table => "table".to_owned(),
             ContextObjectKind::Cte => "cte".to_owned(),
             ContextObjectKind::Query => "query".to_owned(),
+            ContextObjectKind::JoinTable => "join_table".to_owned(),
             ContextObjectKind::UsingTable => "using_table".to_owned(),
             ContextObjectKind::Anonymous => "anonymous".to_owned(),
             ContextObjectKind::AnonymousStruct => "anonymous_struct".to_owned(),
@@ -2011,28 +2013,29 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
         self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
+
+        let mut joined_table_names: Vec<&str> = vec![];
+        let from_tables_len = from_tables.len();
+
+        let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
+        let left_join_table = if !joined_tables.is_empty() {
+            // We have already joined two tables
+            &self.context.arena_objects[*joined_tables.last().unwrap()]
+        } else {
+            // This is the first join, which corresponds to index -2 in the original from_tables
+            &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
+        };
+        joined_table_names.push(&left_join_table.name);
+
+        let right_join_table =
+            &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
+        joined_table_names.push(&right_join_table.name);
+
         if let JoinCondition::Using {
             columns: using_columns,
         } = &join_expr.cond
         {
-            let mut joined_table_names: Vec<&str> = vec![];
             let mut lineage_nodes = vec![];
-            let from_tables_len = from_tables.len();
-
-            let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
-            let left_join_table = if !joined_tables.is_empty() {
-                // We have already joined two tables
-                &self.context.arena_objects[*joined_tables.last().unwrap()]
-            } else {
-                // This is the first join, which corresponds to index -2 in the original from_tables
-                &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
-            };
-            joined_table_names.push(&left_join_table.name);
-
-            let right_join_table =
-                &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
-            joined_table_names.push(&right_join_table.name);
-
             let mut using_columns_added = HashSet::new();
             for col in using_columns {
                 let col_name = col.as_str().to_lowercase();
@@ -2107,6 +2110,43 @@ impl LineageExtractor {
             let table_like_idx = self.context.allocate_new_ctx_object(
                 &joined_table_name,
                 ContextObjectKind::UsingTable,
+                lineage_nodes,
+            );
+            self.context
+                .update_output_lineage_with_object_nodes(table_like_idx);
+            joined_tables.push(table_like_idx);
+        } else {
+            let mut lineage_nodes = vec![];
+            let mut joined_columns = HashSet::new();
+            let mut add_lineage_nodes = |table: &ContextObject| {
+                for node_idx in &table.lineage_nodes {
+                    let node = &self.context.arena_lineage_nodes[*node_idx];
+                    let newly_inserted = joined_columns.insert(node.name.string());
+                    if newly_inserted {
+                        lineage_nodes.push((
+                            node.name.clone(),
+                            node.r#type.clone(),
+                            vec![*node_idx],
+                        ))
+                    }
+                }
+            };
+            add_lineage_nodes(left_join_table);
+            add_lineage_nodes(right_join_table);
+            let joined_table_name = format!(
+                // Create a new name for the join_tavke.
+                // This name is not a valid bq table name (we use {})
+                "{{{}}}",
+                joined_table_names
+                    .into_iter()
+                    .fold(String::from("join"), |acc, name| {
+                        format!("{}_{}", acc, name)
+                    })
+            );
+
+            let table_like_idx = self.context.allocate_new_ctx_object(
+                &joined_table_name,
+                ContextObjectKind::JoinTable,
                 lineage_nodes,
             );
             self.context

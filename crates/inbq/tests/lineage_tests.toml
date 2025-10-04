@@ -986,3 +986,40 @@ kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "S
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with t1 as (
+    select a as c1, b as c2, c as c3
+    from proj.dat.in_table
+)
+
+, t2 as (
+    select 2 as c2
+)
+
+, d as (
+    select d as end_date
+    from proj.dat.in_table
+)
+
+select c2,if(true,d.end_date,end_date)
+from t1 as t
+left join d on (true)
+left join t2 using (c2)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" },
+    { name = "c", dtype = "int64" },
+    { name = "d", dtype = "DATE"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->b"]
+b = ["proj.dat.in_table->d"]
