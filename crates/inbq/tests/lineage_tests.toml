@@ -21,6 +21,54 @@ b = ["proj.dat.in_table->b"]
 [[tests]]
 sql = """
 insert into proj.dat.out_table
+with tmp as (
+    select a
+    from proj.dat.in_table
+)
+select a
+from TMP
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+    select a,b
+    from proj.dat.in_table
+)
+select
+    t.a+T.a, t.b+T.b
+from tmp t
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" }
+]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
 with inn as (
     select b as x from proj.dat.in_table
 ),

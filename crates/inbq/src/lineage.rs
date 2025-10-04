@@ -205,6 +205,7 @@ enum ContextObjectKind {
     Cte,
     Query,
     JoinTable,
+    TableAlias,
     UsingTable,
     Anonymous, // TODO: anonymous_subquery?
     AnonymousStruct,
@@ -220,6 +221,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::Table => "table".to_owned(),
             ContextObjectKind::Cte => "cte".to_owned(),
             ContextObjectKind::Query => "query".to_owned(),
+            ContextObjectKind::TableAlias => "table_alias".to_owned(),
             ContextObjectKind::JoinTable => "join_table".to_owned(),
             ContextObjectKind::UsingTable => "using_table".to_owned(),
             ContextObjectKind::Anonymous => "anonymous".to_owned(),
@@ -709,6 +711,11 @@ impl Context {
     fn get_object(&self, key: &str) -> Option<ArenaIndex> {
         for i in (0..self.objects_stack.len()).rev() {
             let obj = &self.arena_objects[self.objects_stack[i]];
+
+            if matches!(obj.kind, ContextObjectKind::Cte) && obj.name.eq_ignore_ascii_case(key) {
+                return Some(self.objects_stack[i]);
+            }
+
             if obj.name == *key {
                 return Some(self.objects_stack[i]);
             }
@@ -852,13 +859,34 @@ impl LineageExtractor {
     fn get_column(&self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
         // column names are case insensitive
         let column = column.to_lowercase();
+
         if let Some(table) = table {
-            if let Some(ctx_table_idx) = self
+            let curr_stack = self
                 .context
                 .curr_stack()
-                .ok_or(anyhow!("Table `{}` not found in context.", table))?
-                .get(&table.to_owned())
+                .ok_or(anyhow!("Table `{}` not found in context.", table))?;
+            let ctx_table_idx = if let Some(ctx_table_idx) = curr_stack.get(table) {
+                Some(ctx_table_idx)
+            } else if let Some(ctx_table_idx) = curr_stack
+                .get(&table.to_lowercase())
+                .map_or(curr_stack.get(&table.to_uppercase()), Some)
             {
+                // Ctes are case insensitive
+                let obj = &self.context.arena_objects[*ctx_table_idx];
+                if matches!(obj.kind, ContextObjectKind::TableAlias) {
+                    Some(ctx_table_idx)
+                } else {
+                    return Err(anyhow!(
+                        "Found matching table name {} for column {} by ignoring case but is not an alias.",
+                        table,
+                        column
+                    ));
+                }
+            } else {
+                None
+            };
+
+            if let Some(ctx_table_idx) = ctx_table_idx {
                 let ctx_table = &self.context.arena_objects[*ctx_table_idx];
                 let col_in_schema = ctx_table
                     .lineage_nodes
@@ -1874,7 +1902,7 @@ impl LineageExtractor {
 
             let new_table_like_idx = self.context.allocate_new_ctx_object(
                 &table_like_name,
-                table_like_obj.kind,
+                ContextObjectKind::TableAlias,
                 new_lineage_nodes,
             );
             self.context
