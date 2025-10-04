@@ -1127,3 +1127,55 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
 b = ["proj.dat.in_table->c"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with s as (
+    select
+        struct(a as x, b as y) s
+    from proj.dat.in_table
+)
+
+select
+    s.s.x+s.s.y,
+    s.s.x+s.s.y
+from s
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with tmp as (
+    select [struct(a as x, b as y), struct(3 as x, 4 as y)] as s
+    from proj.dat.in_table
+)
+
+select
+    * except (s) from
+tmp, unnest(tmp.s)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+b = ["proj.dat.in_table->b"]

@@ -856,58 +856,58 @@ impl LineageExtractor {
             .copied()
     }
 
+    /// Get the object index of a tble from the current index.
+    ///
+    /// If not found, an `Err` is returned
+    fn get_table(&self, name: &str) -> anyhow::Result<ArenaIndex> {
+        let curr_stack = self
+            .context
+            .curr_stack()
+            .ok_or(anyhow!("Table `{}` not found in context.", name))?;
+
+        if let Some(ctx_table_idx) = curr_stack.get(name) {
+            return Ok(*ctx_table_idx);
+        }
+
+        if let Some(ctx_table_idx) = curr_stack
+            .get(&name.to_lowercase())
+            .map_or(curr_stack.get(&name.to_uppercase()), Some)
+        {
+            // Ctes are case insensitive
+            let obj = &self.context.arena_objects[*ctx_table_idx];
+            if matches!(obj.kind, ContextObjectKind::TableAlias) {
+                return Ok(*ctx_table_idx);
+            } else {
+                return Err(anyhow!(
+                    "Found matching table name {} by ignoring case but it is not an alias.",
+                    name,
+                ));
+            }
+        }
+
+        Err(anyhow!("Table `{}` not found in contrext.", name))
+    }
+
     fn get_column(&self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
         // column names are case insensitive
         let column = column.to_lowercase();
 
         if let Some(table) = table {
-            let curr_stack = self
-                .context
-                .curr_stack()
-                .ok_or(anyhow!("Table `{}` not found in context.", table))?;
-            let ctx_table_idx = if let Some(ctx_table_idx) = curr_stack.get(table) {
-                Some(ctx_table_idx)
-            } else if let Some(ctx_table_idx) = curr_stack
-                .get(&table.to_lowercase())
-                .map_or(curr_stack.get(&table.to_uppercase()), Some)
-            {
-                // Ctes are case insensitive
-                let obj = &self.context.arena_objects[*ctx_table_idx];
-                if matches!(obj.kind, ContextObjectKind::TableAlias) {
-                    Some(ctx_table_idx)
-                } else {
-                    return Err(anyhow!(
-                        "Found matching table name {} for column {} by ignoring case but is not an alias.",
-                        table,
-                        column
-                    ));
-                }
-            } else {
-                None
-            };
-
-            if let Some(ctx_table_idx) = ctx_table_idx {
-                let ctx_table = &self.context.arena_objects[*ctx_table_idx];
-                let col_in_schema = ctx_table
-                    .lineage_nodes
-                    .iter()
-                    .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
-                    .find(|(n, _)| n.name.string() == column);
-                if let Some((_, col_idx)) = col_in_schema {
-                    return Ok(col_idx);
-                }
-                Err(anyhow!(
-                    "Column `{}` not found in the schema of table `{}`",
-                    column,
-                    table
-                ))
-            } else {
-                Err(anyhow!(
-                    "Table `{}` not found in context for column `{}`",
-                    table,
-                    column
-                ))
+            let ctx_table_idx = self.get_table(table)?;
+            let ctx_table = &self.context.arena_objects[ctx_table_idx];
+            let col_in_schema = ctx_table
+                .lineage_nodes
+                .iter()
+                .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
+                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column));
+            if let Some((_, col_idx)) = col_in_schema {
+                return Ok(col_idx);
             }
+            Err(anyhow!(
+                "Column `{}` not found in the schema of table `{}`",
+                column,
+                table
+            ))
         } else if let Some(target_tables) = self
             .context
             .curr_columns_stack()
@@ -997,31 +997,32 @@ impl LineageExtractor {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
 
                         if access_path.path.is_empty() {
-                            if let Ok(col_or_node_idx) = self.get_col_or_var(left_ident) {
-                                // col.struct (or var.struct)
-                                access_path.path.push(AccessOp::Field(right_ident.clone()));
-                                let node = &self.context.arena_lineage_nodes[col_or_node_idx];
-                                let nested_node_idx = node.access(&access_path)?;
-                                self.nested_node_lin(&access_path, nested_node_idx);
-                            } else {
+                            if self.get_table(left_ident).ok().is_some() {
                                 // table.col
                                 let col_source_idx =
                                     self.get_column(Some(left_ident), right_ident)?;
                                 self.context.lineage_stack.push(col_source_idx);
+                            } else {
+                                // col_struct.field (or var_struct.field)
+                                let col_or_node_idx = self.get_col_or_var(left_ident)?;
+                                access_path.path.push(AccessOp::Field(right_ident.clone()));
+                                let node = &self.context.arena_lineage_nodes[col_or_node_idx];
+                                let nested_node_idx = node.access(&access_path)?;
+                                self.nested_node_lin(&access_path, nested_node_idx);
                             }
                             break;
                         } else {
-                            let col_or_var_source_idx =
-                                if let Ok(col_or_node_idx) = self.get_col_or_var(left_ident) {
-                                    // col.struct (or var.struct)
-                                    access_path.path.push(AccessOp::Field(right_ident.clone()));
-                                    col_or_node_idx
-                                } else {
-                                    // table.col
-                                    let col_name = right_ident.clone();
-                                    self.get_column(Some(left_ident), &col_name)?
-                                };
-
+                            let col_or_var_source_idx = if self.get_table(left_ident).ok().is_some()
+                            {
+                                // table.col
+                                let col_name = right_ident.clone();
+                                self.get_column(Some(left_ident), &col_name)?
+                            } else {
+                                // col_struct.field (or var_struct.field)
+                                let col_or_node_idx = self.get_col_or_var(left_ident)?;
+                                access_path.path.push(AccessOp::Field(right_ident.clone()));
+                                col_or_node_idx
+                            };
                             access_path.path.reverse();
                             let node = &self.context.arena_lineage_nodes[col_or_var_source_idx];
                             let nested_node_idx = node.access(&access_path)?;
@@ -1109,8 +1110,14 @@ impl LineageExtractor {
                             }
                             _ => unreachable!(),
                         };
-                        if let Ok(col_or_var_idx) = self.get_col_or_var(ident) {
+
+                        if self.get_table(ident).ok().is_some() {
+                            // table.array_field
+                            let col_source_idx = self.get_column(Some(ident), &array_field)?;
+                            self.context.lineage_stack.push(col_source_idx);
+                        } else {
                             // struct_col.array_field (or struct_var.array_field)
+                            let col_or_var_idx = self.get_col_or_var(ident)?;
                             access_path.path.extend_from_slice(&[
                                 AccessOp::Index,
                                 AccessOp::Field(array_field),
@@ -1120,10 +1127,6 @@ impl LineageExtractor {
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let nested_node_idx = node.access(&access_path)?;
                             self.nested_node_lin(&access_path, nested_node_idx);
-                        } else {
-                            // table.array_field
-                            let col_source_idx = self.get_column(Some(ident), &array_field)?;
-                            self.context.lineage_stack.push(col_source_idx);
                         }
                         break;
                     }
@@ -1158,24 +1161,21 @@ impl LineageExtractor {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::Star,
                     ) => {
-                        if let Ok(col_or_var_idx) = self.get_col_or_var(ident) {
+                        if let Ok(source_obj_idx) = self.get_table(ident) {
+                            // table.*
+                            let source_obj = &self.context.arena_objects[source_obj_idx];
+                            self.context
+                                .lineage_stack
+                                .extend(source_obj.lineage_nodes.clone());
+                        } else {
+                            // col_struct.*
+                            let col_or_var_idx = self.get_col_or_var(ident)?;
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let access_path = AccessPath {
                                 path: vec![AccessOp::FieldStar],
                             };
                             let nested_node_idx = node.access(&access_path)?;
                             self.nested_node_lin(&access_path, nested_node_idx);
-                        } else {
-                            let source_obj_idx = *self
-                                .context
-                                .curr_stack()
-                                .unwrap()
-                                .get(ident)
-                                .ok_or(anyhow!("Cannot find table like obj {:?}", ident))?;
-                            let source_obj = &self.context.arena_objects[source_obj_idx];
-                            self.context
-                                .lineage_stack
-                                .extend(source_obj.lineage_nodes.clone());
                         }
                         break;
                     }
@@ -1859,10 +1859,28 @@ impl LineageExtractor {
                             NodeName::Defined(alias.as_str().to_owned())
                         });
 
+                    let unnest_nodes = match &nested_node.r#type {
+                        NodeType::Struct(struct_node_type) => {
+                            let mut nodes = vec![];
+                            for field in &struct_node_type.fields {
+                                let inner_node_idx = nested_node.access(&AccessPath {
+                                    path: vec![AccessOp::Field(field.name.clone())],
+                                })?;
+                                nodes.push((
+                                    NodeName::Defined(field.name.clone()),
+                                    field.r#type.clone(),
+                                    vec![inner_node_idx],
+                                ));
+                            }
+                            nodes
+                        }
+                        _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                    };
+
                     let unnest_idx = self.context.allocate_new_ctx_object(
                         &name,
                         ContextObjectKind::Unnest,
-                        vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                        unnest_nodes,
                     );
 
                     self.context.pop_curr_ctx();
@@ -1962,6 +1980,7 @@ impl LineageExtractor {
                     .map_or(self.get_anon_obj_name("unnest"), |alias| {
                         alias.as_str().to_owned()
                     });
+
                 let col_name = unnest_expr
                     .alias
                     .as_ref()
@@ -1979,10 +1998,28 @@ impl LineageExtractor {
                 })?;
                 let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
 
+                let unnest_nodes = match &nested_node.r#type {
+                    NodeType::Struct(struct_node_type) => {
+                        let mut nodes = vec![];
+                        for field in &struct_node_type.fields {
+                            let inner_node_idx = nested_node.access(&AccessPath {
+                                path: vec![AccessOp::Field(field.name.clone())],
+                            })?;
+                            nodes.push((
+                                NodeName::Defined(field.name.clone()),
+                                field.r#type.clone(),
+                                vec![inner_node_idx],
+                            ));
+                        }
+                        nodes
+                    }
+                    _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                };
+
                 let unnest_idx = self.context.allocate_new_ctx_object(
                     &name,
                     ContextObjectKind::Unnest,
-                    vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                    unnest_nodes,
                 );
 
                 self.context.pop_curr_ctx();
