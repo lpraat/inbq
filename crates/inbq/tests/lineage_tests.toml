@@ -1023,3 +1023,30 @@ kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DA
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->b"]
 b = ["proj.dat.in_table->d"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with t1 as (
+    select a,b,c
+    from proj.dat.in_table
+)
+
+select
+    count(*),
+    t.c
+from t1 as t
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" },
+    { name = "c", dtype = "int64" },
+    { name = "d", dtype = "DATE"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+[tests.ready_lineage."proj.dat.out_table"]
+b = ["proj.dat.in_table->c"]

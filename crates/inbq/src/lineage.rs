@@ -1497,8 +1497,7 @@ impl LineageExtractor {
                 }
             },
             Expr::Star => {
-                // Handled by select_expr_all_lin and select_expr_col_all_lin
-                return Err(anyhow!("Reached unexpected Expr::Star"));
+                // NOTE: we can enter here for a COUNT(*) – currently a no‑op placeholder
             }
             Expr::QuantifiedLike(quantified_like_expr) => match &quantified_like_expr.pattern {
                 QuantifiedLikeExprPattern::ExprList { exprs } => {
