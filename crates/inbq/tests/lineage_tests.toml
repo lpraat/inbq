@@ -930,6 +930,35 @@ oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
 
 [[tests]]
 sql = """
+begin
+
+declare X, y int64;
+set (x, Y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
+
+insert into proj.dat.out_table
+select
+    X, y;
+
+end;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "ix", dtype = "int64" },
+    { name = "iy", dtype = "int64"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "ox", dtype = "int64" },
+    { name = "oy", dtype = "int64"}
+]
+[tests.ready_lineage."proj.dat.out_table"]
+ox = ["proj.dat.in_table->ix"]
+oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
+
+[[tests]]
+sql = """
 create temp table foo(a string, b string);
 
 insert into foo
