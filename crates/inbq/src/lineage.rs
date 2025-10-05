@@ -248,16 +248,13 @@ struct Context {
 }
 
 impl Context {
-    fn reset(&mut self, n_objects: usize, n_nodes: usize) {
-        // Truncate to just keep source objects/nodes
-        self.arena_objects.truncate(n_objects);
-        self.arena_lineage_nodes.truncate(n_nodes);
-
-        // Clear the rest
+    fn reset(&mut self) {
+        // Keep the same arena and clear the rest
         self.objects_stack.clear();
         self.stack.clear();
         self.columns_stack.clear();
         self.vars.clear();
+        self.lineage_stack.clear();
         self.struct_node_field_types_stack.clear();
         self.output.clear();
     }
@@ -868,7 +865,6 @@ impl LineageExtractor {
         if let Some(ctx_table_idx) = curr_stack.get(name) {
             return Ok(*ctx_table_idx);
         }
-
         if let Some(ctx_table_idx) = curr_stack
             .get(&name.to_lowercase())
             .map_or(curr_stack.get(&name.to_uppercase()), Some)
@@ -2025,6 +2021,59 @@ impl LineageExtractor {
                     }
                     _ => self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?,
                 }
+
+                let mut joined_table_names: Vec<&str> = vec![];
+                let from_tables_len = from_tables.len();
+
+                let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
+                let left_join_table = if !joined_tables.is_empty() {
+                    // We have already joined two tables
+                    &self.context.arena_objects[*joined_tables.last().unwrap()]
+                } else {
+                    // This is the first join, which corresponds to index -2 in the original from_tables
+                    &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
+                };
+                joined_table_names.push(&left_join_table.name);
+
+                let right_join_table =
+                    &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
+                joined_table_names.push(&right_join_table.name);
+                let mut lineage_nodes = vec![];
+                let mut joined_columns = HashSet::new();
+                let mut add_lineage_nodes = |table: &ContextObject| {
+                    for node_idx in &table.lineage_nodes {
+                        let node = &self.context.arena_lineage_nodes[*node_idx];
+                        let newly_inserted = joined_columns.insert(node.name.string());
+                        if newly_inserted {
+                            lineage_nodes.push((
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                vec![*node_idx],
+                            ))
+                        }
+                    }
+                };
+                add_lineage_nodes(left_join_table);
+                add_lineage_nodes(right_join_table);
+                let joined_table_name = format!(
+                    // Create a new name for the join_tavke.
+                    // This name is not a valid bq table name (we use {})
+                    "{{{}}}",
+                    joined_table_names
+                        .into_iter()
+                        .fold(String::from("join"), |acc, name| {
+                            format!("{}_{}", acc, name)
+                        })
+                );
+
+                let table_like_idx = self.context.allocate_new_ctx_object(
+                    &joined_table_name,
+                    ContextObjectKind::JoinTable,
+                    lineage_nodes,
+                );
+                self.context
+                    .update_output_lineage_with_object_nodes(table_like_idx);
+                joined_tables.push(table_like_idx);
             }
             FromExpr::Unnest(unnest_expr) => {
                 // Push new context just for unnest expr
@@ -2050,7 +2099,6 @@ impl LineageExtractor {
                     .map_or(self.get_anon_obj_name("unnest"), |alias| {
                         alias.as_str().to_owned()
                     });
-
                 let col_name = unnest_expr
                     .alias
                     .as_ref()
@@ -2592,6 +2640,27 @@ impl LineageExtractor {
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
 
         self.from_expr_lin(&from.expr, &mut from_tables, &mut joined_tables)?;
+
+        let mut clean_joined_tables: Vec<ArenaIndex> = vec![];
+        let mut last_using_idx: Option<ArenaIndex> = None;
+        for jt in &joined_tables {
+            let jt_obj = &self.context.arena_objects[*jt];
+            match jt_obj.kind {
+                ContextObjectKind::UsingTable => {
+                    last_using_idx = Some(*jt);
+                }
+                ContextObjectKind::JoinTable => {
+                    // dont push
+                }
+                _ => clean_joined_tables.push(*jt),
+            }
+        }
+        if let Some(last_using_idx) = last_using_idx {
+            clean_joined_tables.push(last_using_idx);
+        }
+
+        joined_tables = clean_joined_tables;
+
         let mut ctx_objects = from_tables
             .into_iter()
             .map(|idx| (self.context.arena_objects[idx].name.clone(), idx))
@@ -3462,11 +3531,6 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
 fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
     let mut scanner = Scanner::new(&column.dtype);
     scanner.scan()?;
-    log::debug!("Data Type Tokens:");
-    scanner
-        .tokens()
-        .iter()
-        .for_each(|tok| log::debug!("{:?}", tok));
     let mut parser = Parser::new(scanner.tokens());
     let r#type = parser.parse_parameterized_bq_type()?;
     Ok(node_type_from_parser_parameterized_type(&r#type))
@@ -3571,9 +3635,6 @@ fn _extract_lineage(
     }
     ctx.source_objects = source_objects;
 
-    let n_objects = ctx.arena_objects.len();
-    let n_nodes = ctx.arena_lineage_nodes.len();
-
     let mut lineages = vec![];
     let mut lineage_extractor = LineageExtractor {
         anon_id: 0,
@@ -3582,7 +3643,7 @@ fn _extract_lineage(
 
     for (i, &ast) in asts.iter().enumerate() {
         if i > 0 {
-            lineage_extractor.context.reset(n_objects, n_nodes);
+            lineage_extractor.context.reset();
         }
         if let Err(err) = lineage_extractor.ast_lin(ast) {
             lineages.push(Err(err));
