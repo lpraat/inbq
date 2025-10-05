@@ -580,12 +580,102 @@ pub enum FunctionExpr {
     ArrayAgg(ArrayAggFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
+    SafeCast(SafeCastFunctionExpr),
     Extract(ExtractFunctionExpr),
     If(IfFunctionExpr),
-    SafeCast(SafeCastFunctionExpr),
+
+    /// Date
     CurrentDate(CurrentDateFunctionExpr),
+    DateDiff(DateDiffFunctionExpr),
+    DateTrunc(DateTruncFunctionExpr),
+
+    /// Datetime
+    DatetimeDiff(DatetimeDiffFunctionExpr),
+    DatetimeTrunc(DatetimeTruncFunctionExpr),
+
+    /// Timestamp
     CurrentTimestamp,
+    TimestampDiff(TimestampDiffFunctionExpr),
+    TimestampTrunc(TimestampTruncFunctionExpr),
+
+    /// Time
+    TimeDiff(TimeDiffFunctionExpr),
+    TimeTrunc(TimeTruncFunctionExpr),
+
     Right(RightFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DateTruncFunctionExpr {
+    pub date: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DateDiffFunctionExpr {
+    pub start_date: Expr,
+    pub end_date: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatetimeTruncFunctionExpr {
+    pub datetime: Expr,
+    pub granularity: Granularity,
+    pub timezone: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatetimeDiffFunctionExpr {
+    pub start_datetime: Expr,
+    pub end_datetime: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampTruncFunctionExpr {
+    pub timestamp: Expr,
+    pub granularity: Granularity,
+    pub timezone: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampDiffFunctionExpr {
+    pub start_timestamp: Expr,
+    pub end_timestamp: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeTruncFunctionExpr {
+    pub time: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimeDiffFunctionExpr {
+    pub start_time: Expr,
+    pub end_time: Expr,
+    pub granularity: Granularity,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Granularity {
+    MicroSecond,
+    MilliSecond,
+    Second,
+    Minute,
+    Hour,
+    Day,
+    Week,
+    WeekWithBegin(WeekBegin),
+    IsoWeek,
+    Month,
+    Quarter,
+    Year,
+    IsoYear,
+    Date,
+    Time,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

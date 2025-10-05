@@ -1523,6 +1523,76 @@ impl LineageExtractor {
                 FunctionExpr::Extract(extract_function_expr) => {
                     self.select_expr_col_expr_lin(&extract_function_expr.expr, expand_value_table)?
                 }
+                FunctionExpr::DateDiff(date_diff_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &date_diff_function_expr.start_date,
+                        expand_value_table,
+                    )?;
+                    self.select_expr_col_expr_lin(
+                        &date_diff_function_expr.end_date,
+                        expand_value_table,
+                    )?;
+                }
+                FunctionExpr::DatetimeDiff(datetime_diff_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &datetime_diff_function_expr.start_datetime,
+                        expand_value_table,
+                    )?;
+                    self.select_expr_col_expr_lin(
+                        &datetime_diff_function_expr.end_datetime,
+                        expand_value_table,
+                    )?;
+                }
+                FunctionExpr::TimestampDiff(timestamp_diff_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &timestamp_diff_function_expr.start_timestamp,
+                        expand_value_table,
+                    )?;
+                    self.select_expr_col_expr_lin(
+                        &timestamp_diff_function_expr.end_timestamp,
+                        expand_value_table,
+                    )?;
+                }
+                FunctionExpr::TimeDiff(time_diff_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &time_diff_function_expr.start_time,
+                        expand_value_table,
+                    )?;
+                    self.select_expr_col_expr_lin(
+                        &time_diff_function_expr.end_time,
+                        expand_value_table,
+                    )?;
+                }
+                FunctionExpr::DateTrunc(date_trunc_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &date_trunc_function_expr.date,
+                        expand_value_table,
+                    )?;
+                }
+                FunctionExpr::DatetimeTrunc(datetime_trunc_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &datetime_trunc_function_expr.datetime,
+                        expand_value_table,
+                    )?;
+                    if let Some(timezone) = &datetime_trunc_function_expr.timezone {
+                        self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                    }
+                }
+                FunctionExpr::TimestampTrunc(timestamp_trunc_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &timestamp_trunc_function_expr.timestamp,
+                        expand_value_table,
+                    )?;
+                    if let Some(timezone) = &timestamp_trunc_function_expr.timezone {
+                        self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                    }
+                }
+                FunctionExpr::TimeTrunc(time_trunc_function_expr) => {
+                    self.select_expr_col_expr_lin(
+                        &time_trunc_function_expr.time,
+                        expand_value_table,
+                    )?;
+                }
             },
             Expr::Star => {
                 // NOTE: we can enter here for a COUNT(*) – currently a no‑op placeholder

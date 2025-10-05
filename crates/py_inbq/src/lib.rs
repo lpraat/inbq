@@ -17,29 +17,32 @@ use inbq::{
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
         CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
         CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-        DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-        ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
-        ForeignKeyReference, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-        FromUnnestExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-        GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-        GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-        InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-        LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-        NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
-        PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-        QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-        RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-        SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-        Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-        StructParameterizedFieldType, SystemVariable, TableConstraint, Token, TokenType,
-        TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-        UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
-        WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-        WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+        DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+        DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
+        DropTableStatement, Expr, ExtractFunctionExpr, ExtractFunctionPart, ForInStatement,
+        ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
+        FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+        FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
+        Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr,
+        Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
+        IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit,
+        LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+        MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
+        OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart,
+        Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
+        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
+        TableConstraint, TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
+        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
+        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
+        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
+        WindowSpec, With, WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -1747,6 +1750,185 @@ impl RsToPyObject for RightFunctionExpr {
     }
 }
 
+impl RsToPyObject for Granularity {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            Granularity::MicroSecond => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::MicroSecond)?,
+                &[],
+            ),
+            Granularity::MilliSecond => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::MilliSecond)?,
+                &[],
+            ),
+            Granularity::Second => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Second)?, &[])
+            }
+            Granularity::Minute => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Minute)?, &[])
+            }
+            Granularity::Hour => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Hour)?, &[])
+            }
+            Granularity::Day => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Day)?, &[])
+            }
+            Granularity::Week => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Week)?, &[])
+            }
+            Granularity::WeekWithBegin(week_begin) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, week_begin)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Granularity::WeekWithBegin)?,
+                    kwargs,
+                )
+            }
+            Granularity::IsoWeek => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::IsoWeek)?, &[])
+            }
+            Granularity::Month => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Month)?, &[])
+            }
+            Granularity::Quarter => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Quarter)?, &[])
+            }
+            Granularity::Year => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Year)?, &[])
+            }
+            Granularity::IsoYear => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::IsoYear)?, &[])
+            }
+            Granularity::Date => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Date)?, &[])
+            }
+            Granularity::Time => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Time)?, &[])
+            }
+        }
+    }
+}
+
+impl RsToPyObject for DateDiffFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "start_date", self.start_date),
+            kwarg!(py_ctx, "end_date", self.end_date),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DateDiffFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for DatetimeDiffFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "start_datetime", self.start_datetime),
+            kwarg!(py_ctx, "end_datetime", self.end_datetime),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DatetimeDiffFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for TimeDiffFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "start_time", self.start_time),
+            kwarg!(py_ctx, "end_time", self.end_time),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, TimeDiffFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for TimestampDiffFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "start_timestamp", self.start_timestamp),
+            kwarg!(py_ctx, "end_timestamp", self.end_timestamp),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, TimestampDiffFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for DateTruncFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "date", self.date),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DateTruncFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for DatetimeTruncFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "datetime", self.datetime),
+            kwarg!(py_ctx, "granularity", self.granularity),
+            kwarg!(py_ctx, "timezone", self.timezone),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DatetimeTruncFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for TimestampTruncFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "timestamp", self.timestamp),
+            kwarg!(py_ctx, "granularity", self.granularity),
+            kwarg!(py_ctx, "timezone", self.timezone),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, TimestampTruncFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for TimeTruncFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "time", self.time),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, TimeTruncFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1815,6 +1997,86 @@ impl RsToPyObject for FunctionExpr {
                 get_ast_class!(py_ctx, FunctionExpr::CurrentTimestamp)?,
                 &[],
             ),
+            FunctionExpr::DateDiff(date_diff_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, date_diff_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::DateDiff)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::DatetimeDiff(datetime_diff_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    datetime_diff_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::DatetimeDiff)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::TimestampDiff(timestamp_diff_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    timestamp_diff_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::TimestampDiff)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::TimeDiff(time_diff_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, time_diff_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::TimeDiff)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::DateTrunc(date_trunc_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, date_trunc_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::DateTrunc)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::DatetimeTrunc(datetime_trunc_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    datetime_trunc_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::DatetimeTrunc)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::TimestampTrunc(timestamp_trunc_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    timestamp_trunc_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::TimestampTrunc)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::TimeTrunc(time_trunc_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, time_trunc_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::TimeTrunc)?,
+                    kwargs,
+                )
+            }
         }
     }
 }

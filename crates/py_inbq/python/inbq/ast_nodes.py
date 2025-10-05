@@ -191,12 +191,37 @@ class AstNode:
             "ArrayAgg": "FunctionExpr_ArrayAgg",
             "Concat": "FunctionExpr_Concat",
             "Cast": "FunctionExpr_Cast",
+            "SafeCast": "FunctionExpr_SafeCast",
             "Extract": "FunctionExpr_Extract",
             "If": "FunctionExpr_If",
-            "SafeCast": "FunctionExpr_SafeCast",
             "CurrentDate": "FunctionExpr_CurrentDate",
+            "DateDiff": "FunctionExpr_DateDiff",
+            "DateTrunc": "FunctionExpr_DateTrunc",
+            "DatetimeDiff": "FunctionExpr_DatetimeDiff",
+            "DatetimeTrunc": "FunctionExpr_DatetimeTrunc",
             "CurrentTimestamp": "FunctionExpr_CurrentTimestamp",
+            "TimestampDiff": "FunctionExpr_TimestampDiff",
+            "TimestampTrunc": "FunctionExpr_TimestampTrunc",
+            "TimeDiff": "FunctionExpr_TimeDiff",
+            "TimeTrunc": "FunctionExpr_TimeTrunc",
             "Right": "FunctionExpr_Right",
+        },
+        "Granularity": {
+            "MicroSecond": "Granularity_MicroSecond",
+            "MilliSecond": "Granularity_MilliSecond",
+            "Second": "Granularity_Second",
+            "Minute": "Granularity_Minute",
+            "Hour": "Granularity_Hour",
+            "Day": "Granularity_Day",
+            "Week": "Granularity_Week",
+            "WeekWithBegin": "Granularity_WeekWithBegin",
+            "IsoWeek": "Granularity_IsoWeek",
+            "Month": "Granularity_Month",
+            "Quarter": "Granularity_Quarter",
+            "Year": "Granularity_Year",
+            "IsoYear": "Granularity_IsoYear",
+            "Date": "Granularity_Date",
+            "Time": "Granularity_Time",
         },
         "ExtractFunctionPart": {
             "MicroSecond": "ExtractFunctionPart_MicroSecond",
@@ -923,6 +948,60 @@ class WhenThen(AstNode):
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
+
+
+@dataclass
+class DateTruncFunctionExpr(AstNode):
+    date: "Expr"
+    granularity: "Granularity"
+
+
+@dataclass
+class DateDiffFunctionExpr(AstNode):
+    start_date: "Expr"
+    end_date: "Expr"
+    granularity: "Granularity"
+
+
+@dataclass
+class DatetimeTruncFunctionExpr(AstNode):
+    datetime: "Expr"
+    granularity: "Granularity"
+    timezone: "Optional[Expr]"
+
+
+@dataclass
+class DatetimeDiffFunctionExpr(AstNode):
+    start_datetime: "Expr"
+    end_datetime: "Expr"
+    granularity: "Granularity"
+
+
+@dataclass
+class TimestampTruncFunctionExpr(AstNode):
+    timestamp: "Expr"
+    granularity: "Granularity"
+    timezone: "Optional[Expr]"
+
+
+@dataclass
+class TimestampDiffFunctionExpr(AstNode):
+    start_timestamp: "Expr"
+    end_timestamp: "Expr"
+    granularity: "Granularity"
+
+
+@dataclass
+class TimeTruncFunctionExpr(AstNode):
+    time: "Expr"
+    granularity: "Granularity"
+
+
+@dataclass
+class TimeDiffFunctionExpr(AstNode):
+    start_time: "Expr"
+    end_time: "Expr"
+    granularity: "Granularity"
 
 
 @dataclass
@@ -1955,6 +2034,11 @@ class FunctionExpr_Cast(AstNode):
 
 
 @dataclass
+class FunctionExpr_SafeCast(AstNode):
+    vty: "SafeCastFunctionExpr"
+
+
+@dataclass
 class FunctionExpr_Extract(AstNode):
     vty: "ExtractFunctionExpr"
 
@@ -1965,13 +2049,28 @@ class FunctionExpr_If(AstNode):
 
 
 @dataclass
-class FunctionExpr_SafeCast(AstNode):
-    vty: "SafeCastFunctionExpr"
+class FunctionExpr_CurrentDate(AstNode):
+    vty: "CurrentDateFunctionExpr"
 
 
 @dataclass
-class FunctionExpr_CurrentDate(AstNode):
-    vty: "CurrentDateFunctionExpr"
+class FunctionExpr_DateDiff(AstNode):
+    vty: "DateDiffFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_DateTrunc(AstNode):
+    vty: "DateTruncFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_DatetimeDiff(AstNode):
+    vty: "DatetimeDiffFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_DatetimeTrunc(AstNode):
+    vty: "DatetimeTruncFunctionExpr"
 
 
 @dataclass
@@ -1979,8 +2078,89 @@ class FunctionExpr_CurrentTimestamp(AstNode): ...
 
 
 @dataclass
+class FunctionExpr_TimestampDiff(AstNode):
+    vty: "TimestampDiffFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_TimestampTrunc(AstNode):
+    vty: "TimestampTruncFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_TimeDiff(AstNode):
+    vty: "TimeDiffFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_TimeTrunc(AstNode):
+    vty: "TimeTruncFunctionExpr"
+
+
+@dataclass
 class FunctionExpr_Right(AstNode):
     vty: "RightFunctionExpr"
+
+
+@dataclass
+class Granularity_MicroSecond(AstNode): ...
+
+
+@dataclass
+class Granularity_MilliSecond(AstNode): ...
+
+
+@dataclass
+class Granularity_Second(AstNode): ...
+
+
+@dataclass
+class Granularity_Minute(AstNode): ...
+
+
+@dataclass
+class Granularity_Hour(AstNode): ...
+
+
+@dataclass
+class Granularity_Day(AstNode): ...
+
+
+@dataclass
+class Granularity_Week(AstNode): ...
+
+
+@dataclass
+class Granularity_WeekWithBegin(AstNode):
+    vty: "WeekBegin"
+
+
+@dataclass
+class Granularity_IsoWeek(AstNode): ...
+
+
+@dataclass
+class Granularity_Month(AstNode): ...
+
+
+@dataclass
+class Granularity_Quarter(AstNode): ...
+
+
+@dataclass
+class Granularity_Year(AstNode): ...
+
+
+@dataclass
+class Granularity_IsoYear(AstNode): ...
+
+
+@dataclass
+class Granularity_Date(AstNode): ...
+
+
+@dataclass
+class Granularity_Time(AstNode): ...
 
 
 @dataclass
@@ -3189,12 +3369,37 @@ FunctionExpr: TypeAlias = (
     | FunctionExpr_ArrayAgg
     | FunctionExpr_Concat
     | FunctionExpr_Cast
+    | FunctionExpr_SafeCast
     | FunctionExpr_Extract
     | FunctionExpr_If
-    | FunctionExpr_SafeCast
     | FunctionExpr_CurrentDate
+    | FunctionExpr_DateDiff
+    | FunctionExpr_DateTrunc
+    | FunctionExpr_DatetimeDiff
+    | FunctionExpr_DatetimeTrunc
     | FunctionExpr_CurrentTimestamp
+    | FunctionExpr_TimestampDiff
+    | FunctionExpr_TimestampTrunc
+    | FunctionExpr_TimeDiff
+    | FunctionExpr_TimeTrunc
     | FunctionExpr_Right
+)
+Granularity: TypeAlias = (
+    Granularity_MicroSecond
+    | Granularity_MilliSecond
+    | Granularity_Second
+    | Granularity_Minute
+    | Granularity_Hour
+    | Granularity_Day
+    | Granularity_Week
+    | Granularity_WeekWithBegin
+    | Granularity_IsoWeek
+    | Granularity_Month
+    | Granularity_Quarter
+    | Granularity_Year
+    | Granularity_IsoYear
+    | Granularity_Date
+    | Granularity_Time
 )
 ExtractFunctionPart: TypeAlias = (
     ExtractFunctionPart_MicroSecond

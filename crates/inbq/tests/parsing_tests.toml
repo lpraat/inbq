@@ -425,6 +425,46 @@ SELECT `COUNT`(*)
 
 [[tests]]
 sql = """
+SELECT DATE_TRUNC(DATE '2008-12-25', MONTH) AS month;
+"""
+
+[[tests]]
+sql = """
+SELECT DATE_DIFF(DATE '2010-07-07', DATE '2008-12-25', DAY) AS days_diff;
+"""
+
+[[tests]]
+sql = """
+select DATETIME_TRUNC(DATETIME "2008-12-25 15:30:00", DAY) as truncated
+"""
+
+[[tests]]
+sql = """
+select DATETIME_DIFF(DATETIME "2010-07-07 10:20:00", DATETIME "2008-12-25 15:30:00", DAY) as difference
+"""
+
+[[tests]]
+sql = """
+select TIMESTAMP_TRUNC(TIMESTAMP "2008-12-25 15:30:00+00", DAY, "UTC") AS utc
+"""
+
+[[tests]]
+sql = """
+select TIMESTAMP_DIFF(TIMESTAMP "2010-07-07 10:20:00+00", TIMESTAMP "2008-12-25 15:30:00+00", HOUR) AS hours;
+"""
+
+[[tests]]
+sql = """
+select TIME_TRUNC(TIME "15:30:00", HOUR) as truncated;
+"""
+
+[[tets]]
+sql = """
+select TIME_DIFF(TIME "15:30:00", TIME "14:35:00", MINUTE) as difference;
+"""
+
+[[tests]]
+sql = """
 SELECT ARRAY_AGG(x) AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x;
 """
 

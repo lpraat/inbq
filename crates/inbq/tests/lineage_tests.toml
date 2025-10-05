@@ -1179,3 +1179,40 @@ kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DA
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+select
+    date_diff(d1, d2, day)
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "d1", dtype = "date" },
+    { name = "d2", dtype = "date" }
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "diff", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+diff = ["proj.dat.in_table->d1", "proj.dat.in_table->d2"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+select
+    date_trunc(d1, month)
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "d1", dtype = "date" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "trunc", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+trunc = ["proj.dat.in_table->d1"]

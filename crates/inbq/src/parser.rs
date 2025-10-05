@@ -7,29 +7,32 @@ use crate::ast::{
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
     CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
     CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-    DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
-    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
-    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
-    PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
-    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-    RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-    StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint,
-    Token, TokenType, TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator,
-    UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn,
-    WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
-    WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
-    WithExpr, WithExprVar,
+    DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
+    Expr, ExtractFunctionExpr, ExtractFunctionPart, ForInStatement,
+    ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From, FromExpr,
+    FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
+    Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having,
+    Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
+    JoinCondition, JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement,
+    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
+    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
+    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, SystemVariable, TableConstraint, TimeDiffFunctionExpr,
+    TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType,
+    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
+    WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -3893,6 +3896,227 @@ impl<'a> Parser<'a> {
         ))))
     }
 
+    /// Rule:
+    /// ```text
+    /// granularity -> "MICROSECOND" | "MILLISECOND" | "SECOND" | "MINUTE" | "HOUR"
+    ///  | "DAY" | "WEEK" | "WEEK" "(" ("SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY"
+    ///  | "THURSDAY" | "FRIDAY" | "SATURDAY") ")" | "ISOWEEK" | "MONTH" | "QUARTER" | "YEAR" | "ISOYEAR"
+    /// ```
+    fn parse_granularity(&mut self) -> anyhow::Result<Granularity> {
+        let diff_granularity = self.consume_and_get_identifier()?.to_lowercase();
+        Ok(match diff_granularity.as_str() {
+            "microsecond" => Granularity::MicroSecond,
+            "millisecond" => Granularity::MilliSecond,
+            "second" => Granularity::Second,
+            "minute" => Granularity::Minute,
+            "hour" => Granularity::Hour,
+            "day" => Granularity::Day,
+            "week" => {
+                if self.match_token_type(TokenTypeVariant::LeftParen) {
+                    let week_begin_keyword = self.consume_and_get_identifier()?.to_lowercase();
+                    let week_begin = match week_begin_keyword.as_str() {
+                        "sunday" => WeekBegin::Sunday,
+                        "monday" => WeekBegin::Monday,
+                        "tuesday" => WeekBegin::Tuesday,
+                        "wednesday" => WeekBegin::Wednesday,
+                        "thursday" => WeekBegin::Thursday,
+                        "friday" => WeekBegin::Friday,
+                        "saturday" => WeekBegin::Saturday,
+                        _ => Err(anyhow!(
+                            "Found unexpected day of week: `{}`",
+                            week_begin_keyword
+                        ))?,
+                    };
+                    self.consume(TokenTypeVariant::RightParen)?;
+                    Granularity::WeekWithBegin(week_begin)
+                } else {
+                    Granularity::Week
+                }
+            }
+            "isoweek" => Granularity::IsoWeek,
+            "month" => Granularity::Month,
+            "quarter" => Granularity::Quarter,
+            "year" => Granularity::Year,
+            "isoyear" => Granularity::IsoYear,
+            "date" => Granularity::Date,
+            "time" => Granularity::Time,
+            _ => Err(anyhow!(
+                "Found unexpected difference granularity: `{}`.",
+                diff_granularity
+            ))?,
+        })
+    }
+
+    /// Rule:
+    /// ```text
+    /// date_diff -> "DATE_DIFF" "(" expr "," expr "," granularity ")"
+    /// ```
+    fn parse_date_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let start_date = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let end_date = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::DateDiff(
+            DateDiffFunctionExpr {
+                start_date,
+                end_date,
+                granularity,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// datetime_diff -> "DATETIME_DIFF" "(" expr "," expr "," granularity ")"
+    /// ```
+    fn parse_datetime_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let start_datetime = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let end_datetime = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::DatetimeDiff(
+            DatetimeDiffFunctionExpr {
+                start_datetime,
+                end_datetime,
+                granularity,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// timestamp_diff -> "TIMESTAMP_DIFF" "(" expr "," expr "," granularity ")"
+    /// ```
+    fn parse_timestamp_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let start_timestamp = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let end_timestamp = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::TimestampDiff(
+            TimestampDiffFunctionExpr {
+                start_timestamp,
+                end_timestamp,
+                granularity,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// time_diff -> "TIME_DIFF" "(" expr "," expr "," granularity ")"
+    /// ```
+    fn parse_time_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let start_time = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let end_time = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::TimeDiff(
+            TimeDiffFunctionExpr {
+                start_time,
+                end_time,
+                granularity,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// date_trunc -> "DATE_TRUNC" "(" expr "," granularity ")"
+    /// ```
+    fn parse_date_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let date = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::DateTrunc(
+            DateTruncFunctionExpr { date, granularity },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// datetime_trunc -> "DATETIME_TRUNC" "(" expr "," granularity ("," expr) ")"
+    /// ```
+    fn parse_datetime_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let datetime = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        let timezone = if self.match_token_type(TokenTypeVariant::Comma) {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::DatetimeTrunc(
+            DatetimeTruncFunctionExpr {
+                datetime,
+                granularity,
+                timezone,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// timestamp_trunc -> "TIMESTAMP_TRUNC" "(" expr "," granularity ("," expr) ")"
+    /// ```
+    fn parse_timestamp_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let timestamp = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        let timezone = if self.match_token_type(TokenTypeVariant::Comma) {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::TimestampTrunc(
+            TimestampTruncFunctionExpr {
+                timestamp,
+                granularity,
+                timezone,
+            },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// time_trunc -> "TIME_TRUNC" "(" expr "," granularity ")"
+    /// ```
+    fn parse_time_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let time = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let granularity = self.parse_granularity()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::TimeTrunc(
+            TimeTruncFunctionExpr { time, granularity },
+        ))))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         match &self.peek().kind {
             TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
@@ -3901,7 +4125,15 @@ impl<'a> Parser<'a> {
                     "safe_cast" => self.parse_safe_cast_fn_expr(),
                     "array_agg" => self.parse_array_agg_fn_expr(),
                     "current_date" => self.parse_current_date_fn_expr(),
+                    "date_diff" => self.parse_date_diff_fn_expr(),
+                    "date_trunc" => self.parse_date_trunc_fn_expr(),
+                    "datetime_diff" => self.parse_datetime_diff_fn_expr(),
+                    "datetime_trunc" => self.parse_datetime_trunc_fn_expr(),
                     "current_timestamp" => self.parse_current_timestamp_fn_expr(),
+                    "timestamp_trunc" => self.parse_timestamp_trunc_fn_expr(),
+                    "timestamp_diff" => self.parse_timestamp_diff_fn_expr(),
+                    "time_diff" => self.parse_time_diff_fn_expr(),
+                    "time_trunc" => self.parse_time_trunc_fn_expr(),
                     _ => self.parse_generic_function(),
                 }
             }
