@@ -43,6 +43,141 @@ a = ["proj.dat.in_table->a"]
 sql = """
 insert into proj.dat.out_table
 with tmp as (
+    select a
+    from proj.dat.in_table
+)
+select concat(tmp.a,TMP.a)
+from TMP
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "string" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "string" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+    select a
+    from proj.dat.in_table
+)
+, tmp2 as (
+    select 1 as a
+)
+select
+    (select a from tmp) a
+from tmp2
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a = ["proj.dat.in_table->a"]
+
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+    select [struct(x as x, y as y)] as in_arr
+    from proj.dat.in_table
+)
+
+, foo as (
+SELECT
+    in_arr
+FROM tmp, UNNEST(in_arr) as in_arr
+)
+
+select
+    in_arr, in_arr.x
+from foo
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name = "x", dtype = "int64"}]
+[tests.ready_lineage."proj.dat.out_table"]
+s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+x = ["proj.dat.in_table->x"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+    select [struct(x as x, y as y)] as in_arr
+    from proj.dat.in_table
+)
+
+, foo as (
+SELECT
+    in_arr as alias_in_arr
+FROM tmp, UNNEST(in_arr) as in_arr
+)
+
+select
+    alias_in_arr, alias_in_arr.x
+from foo
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name = "x", dtype = "int64"}]
+[tests.ready_lineage."proj.dat.out_table"]
+s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+x = ["proj.dat.in_table->x"]
+
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+    select [x,y] as in_arr
+    from proj.dat.in_table
+)
+
+SELECT
+    in_arr
+FROM tmp, UNNEST(in_arr) as in_arr
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{name = "x", dtype = "int64"}]
+[tests.ready_lineage."proj.dat.out_table"]
+x = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
     select a,b
     from proj.dat.in_table
 )

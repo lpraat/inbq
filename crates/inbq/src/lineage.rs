@@ -239,12 +239,19 @@ struct Context {
     arena_lineage_nodes: Arena<LineageNode>,
     source_objects: IndexMap<String, ArenaIndex>,
     objects_stack: Vec<ArenaIndex>,
-    stack: Vec<IndexMap<String, ArenaIndex>>,
-    columns_stack: Vec<IndexMap<String, Vec<ArenaIndex>>>,
+    stack: Vec<IndexMap<String, IndexDepth>>,
+    columns_stack: Vec<IndexMap<String, Vec<IndexDepth>>>,
+    stack_depth: u16,
     vars: IndexMap<String, ArenaIndex>,
     lineage_stack: Vec<ArenaIndex>,
     struct_node_field_types_stack: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IndexDepth {
+    arena_index: ArenaIndex,
+    depth: u16,
 }
 
 impl Context {
@@ -257,6 +264,7 @@ impl Context {
         self.lineage_stack.clear();
         self.struct_node_field_types_stack.clear();
         self.output.clear();
+        self.stack_depth = 0;
     }
 
     fn allocate_new_ctx_object(
@@ -652,11 +660,11 @@ impl Context {
         })
     }
 
-    fn curr_stack(&self) -> Option<&IndexMap<String, ArenaIndex>> {
+    fn curr_stack(&self) -> Option<&IndexMap<String, IndexDepth>> {
         self.stack.last()
     }
 
-    fn curr_columns_stack(&self) -> Option<&IndexMap<String, Vec<ArenaIndex>>> {
+    fn curr_columns_stack(&self) -> Option<&IndexMap<String, Vec<IndexDepth>>> {
         self.columns_stack.last()
     }
 
@@ -665,17 +673,32 @@ impl Context {
         ctx_objects: IndexMap<String, ArenaIndex>,
         include_outer_context: bool,
     ) {
-        let mut new_ctx: IndexMap<String, ArenaIndex> = ctx_objects;
-        let mut new_columns: IndexMap<String, Vec<ArenaIndex>> = IndexMap::new();
+        self.stack_depth += 1;
+        let mut new_ctx: IndexMap<String, IndexDepth> = ctx_objects
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    IndexDepth {
+                        arena_index: v,
+                        depth: self.stack_depth,
+                    },
+                )
+            })
+            .collect();
+        let mut new_columns: IndexMap<String, Vec<IndexDepth>> = IndexMap::new();
 
         for key in new_ctx.keys() {
-            let ctx_obj = &self.arena_objects[new_ctx[key]];
+            let ctx_obj = &self.arena_objects[new_ctx[key].arena_index];
             for node_idx in &ctx_obj.lineage_nodes {
                 let node = &self.arena_lineage_nodes[*node_idx];
                 new_columns
                     .entry(node.name.string().to_lowercase())
                     .or_default()
-                    .push(new_ctx[key]);
+                    .push(IndexDepth {
+                        arena_index: new_ctx[key].arena_index,
+                        depth: self.stack_depth,
+                    });
             }
         }
 
@@ -684,7 +707,7 @@ impl Context {
             for key in prev_ctx.keys() {
                 if !new_ctx.contains_key(key) {
                     new_ctx.insert(key.clone(), prev_ctx[key]);
-                    let ctx_obj = &self.arena_objects[prev_ctx[key]];
+                    let ctx_obj = &self.arena_objects[prev_ctx[key].arena_index];
                     for node_idx in &ctx_obj.lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
                         new_columns
@@ -703,6 +726,7 @@ impl Context {
     fn pop_curr_ctx(&mut self) {
         self.stack.pop();
         self.columns_stack.pop();
+        self.stack_depth -= 1;
     }
 
     fn get_object(&self, key: &str) -> Option<ArenaIndex> {
@@ -791,7 +815,7 @@ impl LineageExtractor {
                 })?;
 
                 let cte_idx = self.context.allocate_new_ctx_object(
-                    cte_name.as_str(),
+                    &cte_name.as_str().to_lowercase(),
                     ContextObjectKind::Cte,
                     consumed_lineage_nodes
                         .into_iter()
@@ -839,7 +863,14 @@ impl LineageExtractor {
     ///
     /// If not found, an `Err` is returned.
     fn get_col_or_var(&self, name: &str) -> anyhow::Result<ArenaIndex> {
-        self.get_column(None, name).or_else(|_| self.get_var(name))
+        self.get_column(None, name).or_else(|_| {
+            self.get_var(name).map_err(|_| {
+                anyhow!(
+                    "Could not find column with name `{name:?}` in context\
+                    and could not find a variable with that name either."
+                )
+            })
+        })
     }
 
     /// Get the node index of a variable from the current context.
@@ -863,16 +894,16 @@ impl LineageExtractor {
             .ok_or(anyhow!("Table `{}` not found in context.", name))?;
 
         if let Some(ctx_table_idx) = curr_stack.get(name) {
-            return Ok(*ctx_table_idx);
+            return Ok(ctx_table_idx.arena_index);
         }
-        if let Some(ctx_table_idx) = curr_stack
-            .get(&name.to_lowercase())
-            .map_or(curr_stack.get(&name.to_uppercase()), Some)
-        {
-            // Ctes are case insensitive
-            let obj = &self.context.arena_objects[*ctx_table_idx];
-            if matches!(obj.kind, ContextObjectKind::TableAlias) {
-                return Ok(*ctx_table_idx);
+        if let Some(ctx_table_idx) = curr_stack.get(&name.to_lowercase()) {
+            // Ctes and table aliases are case insensitive
+            let obj = &self.context.arena_objects[ctx_table_idx.arena_index];
+            if matches!(
+                obj.kind,
+                ContextObjectKind::TableAlias | ContextObjectKind::Cte
+            ) {
+                return Ok(ctx_table_idx.arena_index);
             } else {
                 return Err(anyhow!(
                     "Found matching table name {} by ignoring case but it is not an alias.",
@@ -881,7 +912,7 @@ impl LineageExtractor {
             }
         }
 
-        Err(anyhow!("Table `{}` not found in contrext.", name))
+        Err(anyhow!("Table `{}` not found in context.", name))
     }
 
     fn get_column(&self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
@@ -909,44 +940,58 @@ impl LineageExtractor {
             .curr_columns_stack()
             .and_then(|map| map.get(&column))
         {
-            let unnest_idx = target_tables.iter().find(|&idx| {
-                matches!(
-                    &self.context.arena_objects[*idx].kind,
-                    ContextObjectKind::Unnest
-                )
-            });
-            let last_using_idx = target_tables
+            // if there are two table with the same name at the same depth -> ambiguous
+            let is_ambiguous = target_tables
                 .iter()
                 .filter(|&idx| {
                     matches!(
-                        &self.context.arena_objects[*idx].kind,
+                        &self.context.arena_objects[idx.arena_index].kind,
                         ContextObjectKind::UsingTable
                     )
                 })
-                .next_back();
+                .map(|idx| (&self.context.arena_objects[idx.arena_index].name, idx.depth))
+                .try_fold(HashSet::new(), |mut acc, (name, depth)| {
+                    acc.insert((name, depth)).then_some(acc)
+                })
+                .is_none();
 
-            if target_tables.len() > 1 && unnest_idx.is_none() && last_using_idx.is_none() {
+            if is_ambiguous {
                 return Err(anyhow!(
                     "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
                     column,
                     target_tables
                         .iter()
-                        .map(|source_idx| self.context.arena_objects[*source_idx].name.clone())
+                        .map(
+                            |source_idx| self.context.arena_objects[source_idx.arena_index]
+                                .name
+                                .clone()
+                        )
                         .collect::<Vec<String>>()
                 ));
             }
+
             let target_table_idx = if target_tables.len() > 1 {
-                *unnest_idx.or(last_using_idx).unwrap()
+                if let Some(using_idx) = target_tables.iter().find(|&idx| {
+                    matches!(
+                        &self.context.arena_objects[idx.arena_index].kind,
+                        ContextObjectKind::UsingTable
+                    )
+                }) {
+                    *using_idx
+                } else {
+                    target_tables[0]
+                }
             } else {
                 target_tables[0]
             };
-            let target_table_name = &self.context.arena_objects[target_table_idx].name;
+
+            let target_table_name = &self.context.arena_objects[target_table_idx.arena_index].name;
             let ctx_table = self
                 .context
                 .curr_stack()
                 .unwrap()
                 .get(target_table_name)
-                .map(|idx| &self.context.arena_objects[*idx])
+                .map(|idx| &self.context.arena_objects[idx.arena_index])
                 .unwrap();
 
             return Ok(ctx_table
@@ -1404,6 +1449,43 @@ impl LineageExtractor {
         Ok(node_idx)
     }
 
+    fn create_anon_struct_from_table_nodes(&mut self, name: &str, nodes: &[ArenaIndex]) {
+        let mut fields = vec![];
+        let mut input = vec![];
+        for node_idx in nodes {
+            let node = &self.context.arena_lineage_nodes[*node_idx];
+            fields.push(StructNodeFieldType {
+                name: node.name.string().to_owned(),
+                r#type: node.r#type.clone(),
+                input: node.input.clone(),
+            });
+            input.extend(&node.input);
+        }
+        let node_type = NodeType::Struct(StructNodeType { fields });
+
+        let obj_name = self.get_anon_obj_name("anon_struct");
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousStruct,
+            vec![],
+        );
+
+        let node = LineageNode {
+            name: NodeName::Defined(name.to_owned()),
+            r#type: node_type.clone(),
+            source_obj: obj_idx,
+            input,
+            nested_nodes: IndexMap::new(),
+        };
+
+        let node_idx = self.context.arena_lineage_nodes.allocate(node);
+        self.context.add_nested_nodes(node_idx);
+        let obj = &mut self.context.arena_objects[obj_idx];
+        obj.lineage_nodes.push(node_idx);
+        self.context.lineage_stack.push(node_idx);
+        self.context.output.push(node_idx);
+    }
+
     fn select_expr_col_expr_lin(
         &mut self,
         expr: &Expr,
@@ -1440,8 +1522,29 @@ impl LineageExtractor {
             }
             Expr::Identifier(Identifier { name: ident })
             | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
-                let col_or_var_idx = self.get_col_or_var(ident)?;
-                self.context.lineage_stack.push(col_or_var_idx);
+                if let Ok(source_obj_idx) = self.get_table(ident) {
+                    // table
+                    let source_obj = &self.context.arena_objects[source_obj_idx];
+                    if source_obj.kind == ContextObjectKind::Unnest {
+                        if source_obj.lineage_nodes.len() > 1 {
+                            self.create_anon_struct_from_table_nodes(
+                                ident,
+                                &source_obj.lineage_nodes.clone(),
+                            )
+                        } else {
+                            self.context.lineage_stack.extend(&source_obj.lineage_nodes)
+                        }
+                    } else {
+                        self.create_anon_struct_from_table_nodes(
+                            ident,
+                            &source_obj.lineage_nodes.clone(),
+                        );
+                    }
+                } else {
+                    // col
+                    let col_or_var_idx = self.get_col_or_var(ident)?;
+                    self.context.lineage_stack.push(col_or_var_idx);
+                }
             }
             Expr::Interval(interval_expr) => match interval_expr {
                 IntervalExpr::Interval { value, .. } => {
@@ -1692,8 +1795,8 @@ impl LineageExtractor {
                     self.context
                         .curr_stack()
                         .unwrap()
-                        .get(&self.context.arena_objects[*el].name)
-                        .map(|el| &self.context.arena_objects[*el])
+                        .get(&self.context.arena_objects[el.arena_index].name)
+                        .map(|el| &self.context.arena_objects[el.arena_index])
                         .is_some_and(|x| matches!(x.kind, ContextObjectKind::UsingTable))
                 })
             {
@@ -1702,7 +1805,11 @@ impl LineageExtractor {
                     col_name,
                     sources
                         .iter()
-                        .map(|source_idx| self.context.arena_objects[*source_idx].name.clone())
+                        .map(
+                            |source_idx| self.context.arena_objects[source_idx.arena_index]
+                                .name
+                                .clone()
+                        )
                         .collect::<Vec<String>>()
                 ));
             }
@@ -1716,8 +1823,8 @@ impl LineageExtractor {
                 .context
                 .curr_stack()
                 .unwrap()
-                .get(&self.context.arena_objects[col_source_idx].name)
-                .map(|idx| &self.context.arena_objects[*idx])
+                .get(&self.context.arena_objects[col_source_idx.arena_index].name)
+                .map(|idx| &self.context.arena_objects[idx.arena_index])
                 .unwrap();
 
             let col_in_table_idx = table
@@ -1985,7 +2092,7 @@ impl LineageExtractor {
             }
 
             let new_table_like_idx = self.context.allocate_new_ctx_object(
-                &table_like_name,
+                &table_like_name.to_lowercase(),
                 ContextObjectKind::TableAlias,
                 new_lineage_nodes,
             );
@@ -2346,14 +2453,12 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
-        let pushed_empty_cte_ctx = if let Some(with) = select_query_expr.with.as_ref() {
+        if let Some(with) = select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
             self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
-            true
-        } else {
-            false
-        };
+            self.context.pop_curr_ctx();
+        }
 
         let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
             self.from_lin(from)?;
@@ -2457,9 +2562,6 @@ impl LineageExtractor {
         if pushed_context {
             self.context.pop_curr_ctx();
         }
-        if pushed_empty_cte_ctx {
-            self.context.pop_curr_ctx();
-        }
         Ok(())
     }
 
@@ -2468,17 +2570,17 @@ impl LineageExtractor {
         grouping_query_expr: &GroupingQueryExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<()> {
-        let pushed_empty_cte_ctx = if let Some(with) = grouping_query_expr.with.as_ref() {
+        let ctx_objects_start_size = self.context.objects_stack.len();
+        if let Some(with) = grouping_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
             self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
-            true
-        } else {
-            false
-        };
-        self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
-        if pushed_empty_cte_ctx {
             self.context.pop_curr_ctx();
+        }
+        self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
+        let ctx_objects_curr_size = self.context.objects_stack.len();
+        for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
+            self.context.pop_object();
         }
         Ok(())
     }
@@ -2490,14 +2592,12 @@ impl LineageExtractor {
     ) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
 
-        let pushed_empty_cte_ctx = if let Some(with) = set_select_query_expr.with.as_ref() {
+        if let Some(with) = set_select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
             self.context.push_new_ctx(IndexMap::new(), false);
             self.with_lin(with)?;
-            true
-        } else {
-            false
-        };
+            self.context.pop_curr_ctx();
+        }
 
         let left_consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
             this.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)
@@ -2549,9 +2649,6 @@ impl LineageExtractor {
         let ctx_objects_curr_size = self.context.objects_stack.len();
         for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
             self.context.pop_object();
-        }
-        if pushed_empty_cte_ctx {
-            self.context.pop_curr_ctx();
         }
 
         Ok(())
