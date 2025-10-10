@@ -1,73 +1,75 @@
 use inbq::{
-    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind},
+    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, extract_lineage},
     parser::Parser,
     scanner::Scanner,
 };
 
 fn main() -> anyhow::Result<()> {
     let sql = r#"
-        select (select 1);
-        select null;
-        declare x bignumeric(3,2);
-        select *;
-        select 1-1;
+        insert into proj.dat.out_table
+        select
+            a,
+            s.f1,
+            s.f2,
+        from proj.dat.in_table
     "#;
-    env_logger::init();
-
     let mut scanner = Scanner::new(sql);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
     let ast = parser.parse()?;
+    println!("Syntax Tree: {:?}", ast);
 
-    let s = serde_json::to_string_pretty(&ast)?;
-    println!("{}", s);
+    let data_catalog = Catalog {
+        schema_objects: vec![
+            SchemaObject {
+                name: "proj.dat.in_table".to_owned(),
+                kind: SchemaObjectKind::Table {
+                    columns: vec![
+                        // dtype is case insensitive and can be retrieved, for example, using
+                        // the INFORMATION_SCHEMA.COLUMNS view (https://cloud.google.com/bigquery/docs/information-schema-columns)
+                        Column {
+                            name: "a".to_owned(),
+                            dtype: "STRING".to_owned(),
+                        },
+                        Column {
+                            name: "s".to_owned(),
+                            dtype: "STRUCT<f1 INT64, f2 INT64>".to_owned(),
+                        },
+                    ],
+                },
+            },
+            SchemaObject {
+                name: "proj.dat.out_table".to_owned(),
+                kind: SchemaObjectKind::Table {
+                    columns: vec![
+                        Column {
+                            name: "a".to_owned(),
+                            dtype: "STRING".to_owned(),
+                        },
+                        Column {
+                            name: "f1".to_owned(),
+                            dtype: "INT64".to_owned(),
+                        },
+                        Column {
+                            name: "f2".to_owned(),
+                            dtype: "INT64".to_owned(),
+                        },
+                    ],
+                },
+            },
+        ],
+    };
 
-    // println!("Syntax Tree: {:?}", ast);
+    let output_lineage = extract_lineage(&[&ast], &data_catalog, false, true)
+        .pop()
+        .unwrap()?;
 
-    // let data_catalog = Catalog {
-    //     schema_objects: vec![
-    //         SchemaObject {
-    //             name: "proj.dat.in_table".to_owned(),
-    //             kind: SchemaObjectKind::Table,
-    //             columns: vec![
-    //                 // dtype is case insensitive and can be retrieved, for example, using
-    //                 // the INFORMATION_SCHEMA.COLUMNS view (https://cloud.google.com/bigquery/docs/information-schema-columns)
-    //                 Column {
-    //                     name: "ix".to_owned(),
-    //                     dtype: "int64".to_owned(),
-    //                 },
-    //                 Column {
-    //                     name: "iy".to_owned(),
-    //                     dtype: "int64".to_owned(),
-    //                 },
-    //             ],
-    //         },
-    //         SchemaObject {
-    //             name: "proj.dat.out_table".to_owned(),
-    //             kind: SchemaObjectKind::Table,
-    //             columns: vec![
-    //                 Column {
-    //                     name: "ox".to_owned(),
-    //                     dtype: "int64".to_owned(),
-    //                 },
-    //                 Column {
-    //                     name: "oy".to_owned(),
-    //                     dtype: "int64".to_owned(),
-    //                 },
-    //             ],
-    //         },
-    //     ],
-    // };
-
-    // let output_lineage = lineage(&ast, &data_catalog)?;
-
-    // println!();
-    // println!("Raw lineage: {:?}\n", output_lineage.raw);
-    // println!();
-    // println!("Ready (human-friendly) lineage: {:?}", output_lineage.ready);
-    // -> Ready (human-friendly) lineage: ReadyLineage { objects: [ReadyLineageObject { name: "proj.dat.out_table", kind: "table", nodes: [
-    // ReadyLineageNode { name: "a", input: [ReadyLineageNodeInput { obj_name: "proj.dat.in_table", node_name: "a" }] },
-    // ReadyLineageNode { name: "f1", input: [ReadyLineageNodeInput { obj_name: "proj.dat.in_table", node_name: "s.f1" }]},
-    // ReadyLineageNode { name: "f2", input: [ReadyLineageNodeInput { obj_name: "proj.dat.in_table", node_name: "s.f2" }] }] }] }
+    println!();
+    println!("Raw lineage: {:?}\n", output_lineage.raw_lineage);
+    println!();
+    println!(
+        "Ready (human-friendly) lineage: {:?}",
+        output_lineage.lineage
+    );
     Ok(())
 }
