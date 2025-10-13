@@ -1906,9 +1906,12 @@ impl<'a> Parser<'a> {
                 return Err(anyhow!(self.error(self.peek(), "Expected `;`.")));
             }
 
+            let curr = self.curr;
+
             match self.parse_select_expr() {
                 Ok(col_expr) => {
                     if self.source_tokens[last_position].kind != TokenType::Comma {
+                        self.curr = curr + 1;
                         return Err(anyhow!(self.error(self.peek_prev(), "Expected `,`.")));
                     }
                     select_exprs.push(col_expr);
