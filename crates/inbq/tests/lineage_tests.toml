@@ -637,6 +637,38 @@ quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
 
 [[tests]]
 sql = """
+MERGE dataset.DetailedInventory T
+USING dataset.Inventory S
+ON T.product = S.product
+WHEN NOT MATCHED AND quantity < 20 THEN
+  INSERT(product, quantity, supply_constrained, comments)
+  VALUES(product, quantity, true, ARRAY<STRUCT<created DATE, comment STRING>>[(DATE('2016-01-01'), 'comment1')])
+WHEN NOT MATCHED THEN
+  INSERT(product, quantity, supply_constrained)
+  VALUES(product, quantity, false)
+"""
+[[tests.schema_objects]]
+name = "dataset.Inventory"
+kind.table.columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+]
+[[tests.schema_objects]]
+name = "dataset.DetailedInventory"
+kind.table.columns = [
+    { name = "product", dtype = "STRING" },
+    { name = "quantity", dtype = "INT64" },
+    { name = "supply_constrained", dtype = "BOOLEAN" },
+    { name = "comments", dtype = "ARRAY<STRING>"},
+    { name = "specifications", dtype = "STRING"}
+]
+[tests.ready_lineage."dataset.DetailedInventory"]
+product = ["dataset.Inventory->product"]
+quantity = ["dataset.Inventory->quantity"]
+
+
+[[tests]]
+sql = """
 merge proj.dataset.out_table
 using (
 select

@@ -863,11 +863,12 @@ impl LineageExtractor {
     ///
     /// If not found, an `Err` is returned.
     fn get_col_or_var(&self, name: &str) -> anyhow::Result<ArenaIndex> {
-        self.get_column(None, name).or_else(|_| {
+        // TODO: improve output error (especially when a column is ambiguous)
+        self.get_column(None, name).or_else(|err| {
             self.get_var(name).map_err(|_| {
                 anyhow!(
-                    "Could not find column with name `{name:?}` in context\
-                    and could not find a variable with that name either."
+                    "Could not get column `{name:?}` \
+                    and could not find a variable with that name either. {err}."
                 )
             })
         })
@@ -884,7 +885,7 @@ impl LineageExtractor {
             .copied()
     }
 
-    /// Get the object index of a tble from the current index.
+    /// Get the object index of a table from the current index.
     ///
     /// If not found, an `Err` is returned
     fn get_table(&self, name: &str) -> anyhow::Result<ArenaIndex> {
@@ -940,36 +941,6 @@ impl LineageExtractor {
             .curr_columns_stack()
             .and_then(|map| map.get(&column))
         {
-            // if there are two table with the same name at the same depth -> ambiguous
-            let is_ambiguous = target_tables
-                .iter()
-                .filter(|&idx| {
-                    matches!(
-                        &self.context.arena_objects[idx.arena_index].kind,
-                        ContextObjectKind::UsingTable
-                    )
-                })
-                .map(|idx| (&self.context.arena_objects[idx.arena_index].name, idx.depth))
-                .try_fold(HashSet::new(), |mut acc, (name, depth)| {
-                    acc.insert((name, depth)).then_some(acc)
-                })
-                .is_none();
-
-            if is_ambiguous {
-                return Err(anyhow!(
-                    "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
-                    column,
-                    target_tables
-                        .iter()
-                        .map(
-                            |source_idx| self.context.arena_objects[source_idx.arena_index]
-                                .name
-                                .clone()
-                        )
-                        .collect::<Vec<String>>()
-                ));
-            }
-
             let target_table_idx = if target_tables.len() > 1 {
                 if let Some(using_idx) = target_tables.iter().find(|&idx| {
                     matches!(
@@ -979,6 +950,35 @@ impl LineageExtractor {
                 }) {
                     *using_idx
                 } else {
+                    // if there are two table (not joined with using) at the same depth -> ambiguous
+                    let is_ambiguous = target_tables
+                        .iter()
+                        .filter(|&idx| {
+                            !matches!(
+                                &self.context.arena_objects[idx.arena_index].kind,
+                                ContextObjectKind::UsingTable
+                            )
+                        })
+                        .map(|idx| (&self.context.arena_objects[idx.arena_index].name, idx.depth))
+                        .try_fold(HashSet::new(), |mut acc, (_, depth)| {
+                            if acc.insert(depth) { Some(acc) } else { None }
+                        })
+                        .is_none();
+
+                    if is_ambiguous {
+                        return Err(anyhow!(
+                            "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
+                            column,
+                            target_tables
+                                .iter()
+                                .map(|source_idx| self.context.arena_objects
+                                    [source_idx.arena_index]
+                                    .name
+                                    .clone())
+                                .collect::<Vec<String>>()
+                        ));
+                    }
+
                     target_tables[0]
                 }
             } else {
@@ -2083,26 +2083,32 @@ impl LineageExtractor {
 
         if contains_alias {
             // If aliased, we create a new object
-            let table_like_obj = &self.context.arena_objects[table_like_obj_id].clone();
-
-            let mut new_lineage_nodes = vec![];
-            for el in &table_like_obj.lineage_nodes {
-                let ln = &self.context.arena_lineage_nodes[*el];
-                new_lineage_nodes.push((ln.name.clone(), ln.r#type.clone(), vec![*el]))
-            }
-
-            let new_table_like_idx = self.context.allocate_new_ctx_object(
-                &table_like_name.to_lowercase(),
-                ContextObjectKind::TableAlias,
-                new_lineage_nodes,
-            );
+            let table_alias_idx =
+                self.create_table_alias_from_table(&table_like_name, table_like_obj_id);
             self.context
-                .update_output_lineage_with_object_nodes(new_table_like_idx);
-            self.add_new_from_table(from_tables, new_table_like_idx)?;
+                .update_output_lineage_with_object_nodes(table_alias_idx);
+            self.add_new_from_table(from_tables, table_alias_idx)?;
         } else {
             self.add_new_from_table(from_tables, table_like_obj_id)?;
         }
         Ok(())
+    }
+
+    fn create_table_alias_from_table(&mut self, alias: &str, obj_idx: ArenaIndex) -> ArenaIndex {
+        // If aliased, we create a new object
+        let table_like_obj = &self.context.arena_objects[obj_idx];
+
+        let mut new_lineage_nodes = vec![];
+        for el in &table_like_obj.lineage_nodes {
+            let ln = &self.context.arena_lineage_nodes[*el];
+            new_lineage_nodes.push((ln.name.clone(), ln.r#type.clone(), vec![*el]))
+        }
+
+        self.context.allocate_new_ctx_object(
+            &alias.to_lowercase(),
+            ContextObjectKind::TableAlias,
+            new_lineage_nodes,
+        )
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -2946,9 +2952,12 @@ impl LineageExtractor {
 
     fn merge_insert(
         &mut self,
+        ctx: &IndexMap<String, ArenaIndex>,
         target_table_id: ArenaIndex,
         merge_insert: &MergeInsert,
     ) -> anyhow::Result<()> {
+        self.context.push_new_ctx(ctx.clone(), true);
+
         let target_table_obj = &self.context.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
@@ -2976,6 +2985,7 @@ impl LineageExtractor {
             target_lineage_node.input.extend(consumed_nodes);
             self.context.output.push(*target_col);
         }
+        self.context.pop_curr_ctx();
 
         Ok(())
     }
@@ -2983,7 +2993,7 @@ impl LineageExtractor {
     fn merge_update(
         &mut self,
         ctx: &IndexMap<String, ArenaIndex>,
-        target_table_alias: &str,
+        target_table_name: &str,
         target_table_id: ArenaIndex,
         merge_update: &MergeUpdate,
     ) -> anyhow::Result<()> {
@@ -3009,7 +3019,7 @@ impl LineageExtractor {
             let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!(
                 "Cannot find column {} in table {}",
                 column,
-                target_table_alias
+                target_table_name
             ))?;
 
             let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
@@ -3060,21 +3070,16 @@ impl LineageExtractor {
     }
 
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
-        let target_table = &merge_statement.target_table.name;
-        let target_table_alias = if let Some(ref alias) = merge_statement.target_alias {
-            alias.as_str()
-        } else {
-            target_table
+        let target_table_name = &merge_statement.target_table.name;
+        let target_table_id = match self.get_table_from_context(target_table_name) {
+            Some(target_table_id) => target_table_id,
+            None => {
+                return Err(anyhow!(
+                    "Table like obj name `{}` not in context.",
+                    target_table_name
+                ));
+            }
         };
-
-        let target_table_id = self.get_table_from_context(target_table);
-        if target_table_id.is_none() {
-            return Err(anyhow!(
-                "Table like obj name `{}` not in context.",
-                target_table
-            ));
-        }
-        let target_table_id = target_table_id.unwrap();
 
         let source_table_id = if let MergeSource::Table(path_name) = &merge_statement.source {
             let source_table = &path_name.name;
@@ -3122,10 +3127,30 @@ impl LineageExtractor {
 
         let source_table_id = source_table_id.or(subquery_table_id);
 
-        let mut new_ctx = IndexMap::from([(target_table_alias.to_owned(), target_table_id)]);
+        let mut new_ctx: IndexMap<String, ArenaIndex> = IndexMap::new();
+        let mut new_ctx_for_insert: IndexMap<String, ArenaIndex> = IndexMap::new();
         if let Some(alias) = &merge_statement.source_alias {
-            let source_alias = alias.as_str().to_owned();
-            new_ctx.insert(source_alias, source_table_id.unwrap());
+            let alias_idx =
+                self.create_table_alias_from_table(alias.as_str(), source_table_id.unwrap());
+            self.context
+                .update_output_lineage_with_object_nodes(alias_idx);
+            let source_table = &self.context.arena_objects[alias_idx];
+            new_ctx.insert(source_table.name.clone(), alias_idx);
+            new_ctx_for_insert.insert(source_table.name.clone(), alias_idx);
+        } else if let Some(source_table_id) = source_table_id {
+            let source_table = &self.context.arena_objects[source_table_id];
+            new_ctx.insert(source_table.name.clone(), source_table_id);
+            new_ctx_for_insert.insert(source_table.name.clone().to_owned(), source_table_id);
+        }
+        if let Some(alias) = &merge_statement.target_alias {
+            let alias_idx = self.create_table_alias_from_table(alias.as_str(), target_table_id);
+            self.context
+                .update_output_lineage_with_object_nodes(alias_idx);
+            let target_table = &self.context.arena_objects[alias_idx];
+            new_ctx.insert(target_table.name.clone(), alias_idx);
+        } else {
+            let target_table = &self.context.arena_objects[target_table_id];
+            new_ctx.insert(target_table.name.clone(), target_table_id);
         }
 
         for when in &merge_statement.whens {
@@ -3133,7 +3158,7 @@ impl LineageExtractor {
                 When::Matched(when_matched) => match &when_matched.merge {
                     Merge::Update(merge_update) => self.merge_update(
                         &new_ctx,
-                        target_table_alias,
+                        target_table_name,
                         target_table_id,
                         merge_update,
                     )?,
@@ -3143,7 +3168,7 @@ impl LineageExtractor {
                 When::NotMatchedByTarget(when_not_matched_by_target) => {
                     match &when_not_matched_by_target.merge {
                         Merge::Insert(merge_insert) => {
-                            self.merge_insert(target_table_id, merge_insert)?
+                            self.merge_insert(&new_ctx_for_insert, target_table_id, merge_insert)?
                         }
                         Merge::InsertRow => self.merge_insert_row(
                             target_table_id,
@@ -3157,7 +3182,7 @@ impl LineageExtractor {
                     match &when_not_matched_by_source.merge {
                         Merge::Update(merge_update) => self.merge_update(
                             &new_ctx,
-                            target_table_alias,
+                            target_table_name,
                             target_table_id,
                             merge_update,
                         )?,
