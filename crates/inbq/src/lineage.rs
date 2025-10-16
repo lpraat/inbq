@@ -233,6 +233,24 @@ impl From<ContextObjectKind> for String {
     }
 }
 
+#[derive(Debug, Clone)]
+enum GetColumnError {
+    NotFound(String),
+    Ambiguous(String),
+}
+
+impl Display for GetColumnError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GetColumnError::NotFound(msg) | GetColumnError::Ambiguous(msg) => {
+                write!(f, "{}", msg)
+            }
+        }
+    }
+}
+
+impl std::error::Error for GetColumnError {}
+
 #[derive(Debug, Default)]
 struct Context {
     arena_objects: Arena<ContextObject>,
@@ -863,15 +881,18 @@ impl LineageExtractor {
     ///
     /// If not found, an `Err` is returned.
     fn get_col_or_var(&self, name: &str) -> anyhow::Result<ArenaIndex> {
-        // TODO: improve output error (especially when a column is ambiguous)
-        self.get_column(None, name).or_else(|err| {
-            self.get_var(name).map_err(|_| {
-                anyhow!(
-                    "Could not get column `{name:?}` \
-                    and could not find a variable with that name either. {err}."
-                )
-            })
-        })
+        match self.get_column(None, name) {
+            Ok(col_idx) => Ok(col_idx),
+            Err(col_err) => match col_err.downcast_ref::<GetColumnError>() {
+                Some(GetColumnError::Ambiguous(_)) => Err(col_err),
+                Some(GetColumnError::NotFound(_)) | None => self.get_var(name).map_err(|_| {
+                    anyhow!(
+                        "Could not get column `{name:?}` \
+                        and could not find a variable with that name either."
+                    )
+                }),
+            },
+        }
     }
 
     /// Get the node index of a variable from the current context.
@@ -931,11 +952,10 @@ impl LineageExtractor {
             if let Some((_, col_idx)) = col_in_schema {
                 return Ok(col_idx);
             }
-            Err(anyhow!(
+            Err(anyhow!(GetColumnError::NotFound(format!(
                 "Column `{}` not found in the schema of table `{}`",
-                column,
-                table
-            ))
+                column, table
+            ))))
         } else if let Some(target_tables) = self
             .context
             .curr_columns_stack()
@@ -953,12 +973,6 @@ impl LineageExtractor {
                     // if there are two table (not joined with using) at the same depth -> ambiguous
                     let is_ambiguous = target_tables
                         .iter()
-                        .filter(|&idx| {
-                            !matches!(
-                                &self.context.arena_objects[idx.arena_index].kind,
-                                ContextObjectKind::UsingTable
-                            )
-                        })
                         .map(|idx| (&self.context.arena_objects[idx.arena_index].name, idx.depth))
                         .try_fold(HashSet::new(), |mut acc, (_, depth)| {
                             if acc.insert(depth) { Some(acc) } else { None }
@@ -966,7 +980,7 @@ impl LineageExtractor {
                         .is_none();
 
                     if is_ambiguous {
-                        return Err(anyhow!(
+                        return Err(anyhow!(GetColumnError::Ambiguous(format!(
                             "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
                             column,
                             target_tables
@@ -976,7 +990,7 @@ impl LineageExtractor {
                                     .name
                                     .clone())
                                 .collect::<Vec<String>>()
-                        ));
+                        ))));
                     }
 
                     target_tables[0]
@@ -1002,7 +1016,10 @@ impl LineageExtractor {
                 .unwrap()
                 .1);
         } else {
-            return Err(anyhow!("Column `{}` not found in context.", column));
+            return Err(anyhow!(GetColumnError::NotFound(format!(
+                "Column `{}` not found in context.",
+                column
+            ))));
         }
     }
 
@@ -2367,29 +2384,6 @@ impl LineageExtractor {
                 ));
                 using_columns_added.insert(col_name);
             }
-
-            // Add remaning columns not in using clause
-            lineage_nodes.extend(
-                left_join_table
-                    .lineage_nodes
-                    .iter()
-                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                    .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
-            );
-
-            lineage_nodes.extend(
-                right_join_table
-                    .lineage_nodes
-                    .iter()
-                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                    .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
-            );
-
-            // At this point lineage nodes can contain duplicate columns which would be ambiguous if selected in the query
-            // (those not used in USING(...))
-            // TODO: we could check if this is the case and raise an error when getting the column
 
             let joined_table_name = format!(
                 // Create a new name for the using_table.
