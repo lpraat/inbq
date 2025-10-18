@@ -2442,46 +2442,26 @@ impl LineageExtractor {
                 using_columns_added.insert(col_name);
             }
 
-            // Update ambiguous columns set
-            let start_columns_set: HashSet<String> = left_join_table
-                .lineage_nodes
-                .iter()
-                .map(|idx| {
-                    self.context.arena_lineage_nodes[*idx]
-                        .name
-                        .string()
-                        .to_owned()
-                })
-                .collect();
-            joined_ambiguous_columns.clear();
-
-            // Track ambiguous columns from the previous using table
-            if left_join_table.kind == ContextObjectKind::UsingTable {
-                joined_ambiguous_columns.extend(left_join_table.lineage_nodes.iter().filter_map(
-                    |idx| {
-                        let col_name = self.context.arena_lineage_nodes[*idx].name.string();
-                        if !using_columns_added.contains(col_name) {
-                            Some(col_name.to_owned())
-                        } else {
-                            None
-                        }
-                    },
-                ));
+            for using_col in &using_columns_added {
+                joined_ambiguous_columns.remove(using_col);
             }
 
-            // Extend them using the right table
-            joined_ambiguous_columns.extend(right_join_table.lineage_nodes.iter().filter_map(
-                |idx| {
-                    let col_name = self.context.arena_lineage_nodes[*idx].name.string();
-                    if !using_columns_added.contains(col_name)
-                        && start_columns_set.contains(col_name)
-                    {
-                        Some(col_name.to_owned())
-                    } else {
-                        None
-                    }
-                },
-            ));
+            let left_columns: HashSet<&str> = left_join_table
+                .lineage_nodes
+                .iter()
+                .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
+                .collect();
+            let right_columns: HashSet<&str> = right_join_table
+                .lineage_nodes
+                .iter()
+                .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
+                .collect();
+
+            for col in left_columns.intersection(&right_columns) {
+                if !using_columns_added.contains(*col) {
+                    joined_ambiguous_columns.insert(col.to_string());
+                }
+            }
 
             // Add remaning columns not in using clause
             lineage_nodes.extend(
@@ -2925,7 +2905,7 @@ impl LineageExtractor {
                     self.context.arena_lineage_nodes[*idx]
                         .name
                         .string()
-                        .to_owned(),
+                        .to_lowercase(),
                     *idx,
                 )
             })
@@ -3086,7 +3066,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &merge_insert.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.as_str().to_owned();
+                let col_name = col.as_str().to_lowercase();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,

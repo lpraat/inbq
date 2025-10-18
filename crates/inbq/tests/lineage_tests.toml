@@ -1384,7 +1384,6 @@ kind.table.columns = [{ name = "trunc", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
 trunc = ["proj.dat.in_table->d1"]
 
-
 [[tests]]
 sql="""
 insert into proj.dat.out_table
@@ -1419,3 +1418,105 @@ kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int
 [tests.ready_lineage."proj.dat.out_table"]
 w = ["proj.dat.in_table->w"]
 z = ["proj.dat.in_table->z"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with tmp as (
+    select ts, id
+    from proj.dat.t1
+)
+, tmp2 as (
+    select id, f1
+    from proj.dat.t2
+)
+, tmp3 as (
+    select id, f2
+    from proj.dat.t3
+)
+select
+    ts,
+    id,
+    f1,
+    f2,
+from tmp left join tmp2 using (id) left join tmp3 using (id)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "ts", dtype = "timestamp" },
+    { name = "id", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t2"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "f1", dtype = "string" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t3"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "f2", dtype = "string" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "ts", dtype = "timestamp" },
+    { name = "id", dtype = "int64" },
+    { name = "f1", dtype = "string" },
+    { name = "f2", dtype = "string" },
+
+]
+[tests.ready_lineage."proj.dat.out_table"]
+ts = ["proj.dat.t1->ts"]
+id = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
+f1 = ["proj.dat.t2->f1"]
+f2 = ["proj.dat.t3->f2"]
+
+[[tests]]
+sql="""
+create temp table new_data as (
+    select
+        TS,
+        id,
+        f1
+    from proj.dat.in_table
+);
+
+merge into proj.dat.out_table as T
+using (
+    select TS,id,f1
+    from new_data
+) as S
+on T.TS=S.TS and T.id =S.id and T.TS=current_timestamp
+when not matched by target then
+    insert (
+        TS,
+        id,
+        f1
+    )
+    values (
+        s.TS,
+        s.id,
+        s.f1
+    );
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "ts", dtype = "timestamp" },
+    { name = "id", dtype = "int64" },
+    { name = "f1", dtype = "string" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "ts", dtype = "timestamp" },
+    { name = "id", dtype = "int64" },
+    { name = "f1", dtype = "string" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+ts = ["proj.dat.in_table->ts"]
+id = ["proj.dat.in_table->id"]
+f1 = ["proj.dat.in_table->f1"]
