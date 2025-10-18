@@ -1383,3 +1383,39 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "trunc", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
 trunc = ["proj.dat.in_table->d1"]
+
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with tmp as (
+    select x, y, w, f
+    from proj.dat.in_table
+)
+, tmp2 as (
+    select x, y, f
+    from proj.dat.in_table
+)
+, tmp3 as (
+    select y, z, w, x
+    from proj.dat.in_table
+)
+select
+    w,z  -- x and f are ambiguous
+from tmp inner join tmp2 using (x,y) inner join tmp3 using (y,w)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+    { name = "z", dtype = "int64" },
+    { name = "w", dtype = "int64" },
+    { name = "f", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+w = ["proj.dat.in_table->w"]
+z = ["proj.dat.in_table->z"]

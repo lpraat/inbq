@@ -259,6 +259,7 @@ struct Context {
     objects_stack: Vec<ArenaIndex>,
     stack: Vec<IndexMap<String, IndexDepth>>,
     columns_stack: Vec<IndexMap<String, Vec<IndexDepth>>>,
+    joined_ambiguous_columns_stack: Vec<HashSet<String>>,
     stack_depth: u16,
     vars: IndexMap<String, ArenaIndex>,
     lineage_stack: Vec<ArenaIndex>,
@@ -686,9 +687,14 @@ impl Context {
         self.columns_stack.last()
     }
 
+    fn curr_ambiguous_columns_stack(&self) -> Option<&HashSet<String>> {
+        self.joined_ambiguous_columns_stack.last()
+    }
+
     fn push_new_ctx(
         &mut self,
         ctx_objects: IndexMap<String, ArenaIndex>,
+        ambiguous_columns: HashSet<String>,
         include_outer_context: bool,
     ) {
         self.stack_depth += 1;
@@ -705,6 +711,7 @@ impl Context {
             })
             .collect();
         let mut new_columns: IndexMap<String, Vec<IndexDepth>> = IndexMap::new();
+        let mut new_ambiguous_columns: HashSet<String> = ambiguous_columns;
 
         for key in new_ctx.keys() {
             let ctx_obj = &self.arena_objects[new_ctx[key].arena_index];
@@ -720,30 +727,40 @@ impl Context {
             }
         }
 
-        if include_outer_context && !self.stack.is_empty() {
-            let prev_ctx = self.stack.last().unwrap();
-            for key in prev_ctx.keys() {
-                if !new_ctx.contains_key(key) {
-                    new_ctx.insert(key.clone(), prev_ctx[key]);
-                    let ctx_obj = &self.arena_objects[prev_ctx[key].arena_index];
-                    for node_idx in &ctx_obj.lineage_nodes {
-                        let node = &self.arena_lineage_nodes[*node_idx];
-                        new_columns
-                            .entry(node.name.string().to_lowercase())
-                            .or_default()
-                            .push(prev_ctx[key]);
+        if include_outer_context {
+            if let Some(prev_ctx) = self.stack.last() {
+                for key in prev_ctx.keys() {
+                    if !new_ctx.contains_key(key) {
+                        new_ctx.insert(key.clone(), prev_ctx[key]);
+                        let ctx_obj = &self.arena_objects[prev_ctx[key].arena_index];
+                        for node_idx in &ctx_obj.lineage_nodes {
+                            let node = &self.arena_lineage_nodes[*node_idx];
+                            new_columns
+                                .entry(node.name.string().to_lowercase())
+                                .or_default()
+                                .push(prev_ctx[key]);
+                        }
                     }
+                }
+            }
+
+            if let Some(prev_ambiguous_cols) = self.joined_ambiguous_columns_stack.last() {
+                for col in prev_ambiguous_cols {
+                    new_ambiguous_columns.insert(col.clone());
                 }
             }
         }
 
         self.stack.push(new_ctx);
         self.columns_stack.push(new_columns);
+        self.joined_ambiguous_columns_stack
+            .push(new_ambiguous_columns);
     }
 
     fn pop_curr_ctx(&mut self) {
         self.stack.pop();
         self.columns_stack.pop();
+        self.joined_ambiguous_columns_stack.pop();
         self.stack_depth -= 1;
     }
 
@@ -961,6 +978,18 @@ impl LineageExtractor {
             .curr_columns_stack()
             .and_then(|map| map.get(&column))
         {
+            if self
+                .context
+                .curr_ambiguous_columns_stack()
+                .unwrap()
+                .contains(&column)
+            {
+                return Err(anyhow!(GetColumnError::Ambiguous(format!(
+                    "Joined column `{}` is ambiguous.",
+                    column
+                ))));
+            }
+
             let target_table_idx = if target_tables.len() > 1 {
                 if let Some(using_idx) = target_tables.iter().find(|&idx| {
                     matches!(
@@ -2028,7 +2057,7 @@ impl LineageExtractor {
                             .cloned()
                             .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
                     );
-                    self.context.push_new_ctx(ctx_objects, true);
+                    self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
 
                     let col_source_idx = self.get_column(Some(table), column)?;
                     let col_node = &self.context.arena_lineage_nodes[col_source_idx];
@@ -2134,22 +2163,36 @@ impl LineageExtractor {
         from_expr: &FromExpr,
         from_tables: &mut Vec<ArenaIndex>,
         joined_tables: &mut Vec<ArenaIndex>,
+        joined_ambiguous_columns: &mut HashSet<String>,
     ) -> anyhow::Result<()> {
         match from_expr {
             FromExpr::Join(join_expr)
             | FromExpr::LeftJoin(join_expr)
             | FromExpr::RightJoin(join_expr)
-            | FromExpr::FullJoin(join_expr) => {
-                self.join_expr_lineage(join_expr, from_tables, joined_tables)?
-            }
+            | FromExpr::FullJoin(join_expr) => self.join_expr_lineage(
+                join_expr,
+                from_tables,
+                joined_tables,
+                joined_ambiguous_columns,
+            )?,
             FromExpr::CrossJoin(cross_join_expr) => {
-                self.from_expr_lin(&cross_join_expr.left, from_tables, joined_tables)?;
+                self.from_expr_lin(
+                    &cross_join_expr.left,
+                    from_tables,
+                    joined_tables,
+                    joined_ambiguous_columns,
+                )?;
                 match cross_join_expr.right.as_ref() {
                     FromExpr::Path(from_path_expr) => {
                         // Implicit unnest
                         self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, true)?
                     }
-                    _ => self.from_expr_lin(&cross_join_expr.right, from_tables, joined_tables)?,
+                    _ => self.from_expr_lin(
+                        &cross_join_expr.right,
+                        from_tables,
+                        joined_tables,
+                        joined_ambiguous_columns,
+                    )?,
                 }
 
                 let mut joined_table_names: Vec<&str> = vec![];
@@ -2217,7 +2260,7 @@ impl LineageExtractor {
                         .iter()
                         .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx)),
                 );
-                self.context.push_new_ctx(ctx_objects, true);
+                self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
 
                 let consumed_nodes = self.call_func_and_consume_lineage_nodes(|this| {
                     this.select_expr_col_expr_lin(unnest_expr.array.as_ref(), false)
@@ -2310,9 +2353,12 @@ impl LineageExtractor {
                     .update_output_lineage_with_object_nodes(table_like_idx);
                 self.add_new_from_table(from_tables, table_like_idx)?;
             }
-            FromExpr::GroupingFrom(grouping_from_expr) => {
-                self.from_expr_lin(&grouping_from_expr.query, from_tables, joined_tables)?
-            }
+            FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(
+                &grouping_from_expr.query,
+                from_tables,
+                joined_tables,
+                joined_ambiguous_columns,
+            )?,
         }
         Ok(())
     }
@@ -2322,9 +2368,20 @@ impl LineageExtractor {
         join_expr: &JoinExpr,
         from_tables: &mut Vec<ArenaIndex>,
         joined_tables: &mut Vec<ArenaIndex>,
+        joined_ambiguous_columns: &mut HashSet<String>,
     ) -> anyhow::Result<()> {
-        self.from_expr_lin(&join_expr.left, from_tables, joined_tables)?;
-        self.from_expr_lin(&join_expr.right, from_tables, joined_tables)?;
+        self.from_expr_lin(
+            &join_expr.left,
+            from_tables,
+            joined_tables,
+            joined_ambiguous_columns,
+        )?;
+        self.from_expr_lin(
+            &join_expr.right,
+            from_tables,
+            joined_tables,
+            joined_ambiguous_columns,
+        )?;
 
         let mut joined_table_names: Vec<&str> = vec![];
         let from_tables_len = from_tables.len();
@@ -2384,6 +2441,66 @@ impl LineageExtractor {
                 ));
                 using_columns_added.insert(col_name);
             }
+
+            // Update ambiguous columns set
+            let start_columns_set: HashSet<String> = left_join_table
+                .lineage_nodes
+                .iter()
+                .map(|idx| {
+                    self.context.arena_lineage_nodes[*idx]
+                        .name
+                        .string()
+                        .to_owned()
+                })
+                .collect();
+            joined_ambiguous_columns.clear();
+
+            // Track ambiguous columns from the previous using table
+            if left_join_table.kind == ContextObjectKind::UsingTable {
+                joined_ambiguous_columns.extend(left_join_table.lineage_nodes.iter().filter_map(
+                    |idx| {
+                        let col_name = self.context.arena_lineage_nodes[*idx].name.string();
+                        if !using_columns_added.contains(col_name) {
+                            Some(col_name.to_owned())
+                        } else {
+                            None
+                        }
+                    },
+                ));
+            }
+
+            // Extend them using the right table
+            joined_ambiguous_columns.extend(right_join_table.lineage_nodes.iter().filter_map(
+                |idx| {
+                    let col_name = self.context.arena_lineage_nodes[*idx].name.string();
+                    if !using_columns_added.contains(col_name)
+                        && start_columns_set.contains(col_name)
+                    {
+                        Some(col_name.to_owned())
+                    } else {
+                        None
+                    }
+                },
+            ));
+
+            // Add remaning columns not in using clause
+            lineage_nodes.extend(
+                left_join_table
+                    .lineage_nodes
+                    .iter()
+                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                    .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+            );
+
+            lineage_nodes.extend(
+                right_join_table
+                    .lineage_nodes
+                    .iter()
+                    .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                    .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                    .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+            );
 
             let joined_table_name = format!(
                 // Create a new name for the using_table.
@@ -2455,7 +2572,8 @@ impl LineageExtractor {
 
         if let Some(with) = select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context.push_new_ctx(IndexMap::new(), false);
+            self.context
+                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
             self.context.pop_curr_ctx();
         }
@@ -2573,7 +2691,8 @@ impl LineageExtractor {
         let ctx_objects_start_size = self.context.objects_stack.len();
         if let Some(with) = grouping_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context.push_new_ctx(IndexMap::new(), false);
+            self.context
+                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
             self.context.pop_curr_ctx();
         }
@@ -2594,7 +2713,8 @@ impl LineageExtractor {
 
         if let Some(with) = set_select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context.push_new_ctx(IndexMap::new(), false);
+            self.context
+                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
             self.context.pop_curr_ctx();
         }
@@ -2735,8 +2855,14 @@ impl LineageExtractor {
         // TODO: handle pivot, unpivot
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
+        let mut joined_ambiguous_columns: HashSet<String> = HashSet::new();
 
-        self.from_expr_lin(&from.expr, &mut from_tables, &mut joined_tables)?;
+        self.from_expr_lin(
+            &from.expr,
+            &mut from_tables,
+            &mut joined_tables,
+            &mut joined_ambiguous_columns,
+        )?;
 
         let mut clean_joined_tables: Vec<ArenaIndex> = vec![];
         let mut last_using_idx: Option<ArenaIndex> = None;
@@ -2767,7 +2893,8 @@ impl LineageExtractor {
                 .into_iter()
                 .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
         );
-        self.context.push_new_ctx(ctx_objects, true);
+        self.context
+            .push_new_ctx(ctx_objects, joined_ambiguous_columns, true);
         Ok(())
     }
 
@@ -2834,6 +2961,7 @@ impl LineageExtractor {
         // NOTE: we push the target table after pushing the from context
         self.context.push_new_ctx(
             IndexMap::from([(target_table_alias.to_owned(), target_table_id.unwrap())]),
+            HashSet::new(),
             true,
         );
 
@@ -2950,7 +3078,7 @@ impl LineageExtractor {
         target_table_id: ArenaIndex,
         merge_insert: &MergeInsert,
     ) -> anyhow::Result<()> {
-        self.context.push_new_ctx(ctx.clone(), true);
+        self.context.push_new_ctx(ctx.clone(), HashSet::new(), true);
 
         let target_table_obj = &self.context.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
@@ -2991,7 +3119,7 @@ impl LineageExtractor {
         target_table_id: ArenaIndex,
         merge_update: &MergeUpdate,
     ) -> anyhow::Result<()> {
-        self.context.push_new_ctx(ctx.clone(), true);
+        self.context.push_new_ctx(ctx.clone(), HashSet::new(), true);
         let target_table_obj = &self.context.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
