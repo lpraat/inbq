@@ -265,6 +265,7 @@ struct Context {
     lineage_stack: Vec<ArenaIndex>,
     struct_node_field_types_stack: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
+    last_select_statement: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -279,11 +280,13 @@ impl Context {
         self.objects_stack.clear();
         self.stack.clear();
         self.columns_stack.clear();
+        self.joined_ambiguous_columns_stack.clear();
+        self.stack_depth = 0;
         self.vars.clear();
         self.lineage_stack.clear();
         self.struct_node_field_types_stack.clear();
         self.output.clear();
-        self.stack_depth = 0;
+        self.last_select_statement = None;
     }
 
     fn allocate_new_ctx_object(
@@ -809,6 +812,10 @@ impl LineageExtractor {
         let curr = self.anon_id;
         self.anon_id += 1;
         curr
+    }
+
+    fn get_next_anon_obj_name(&mut self, name: &str) -> String {
+        format!("!{}_{}", name, self.anon_id)
     }
 
     fn get_anon_obj_name(&mut self, name: &str) -> String {
@@ -2549,6 +2556,7 @@ impl LineageExtractor {
         expand_value_table: bool,
     ) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
+        let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
@@ -2565,7 +2573,6 @@ impl LineageExtractor {
             false
         };
 
-        let anon_obj_name = self.get_anon_obj_name("anon");
         let anon_obj_idx = self.context.allocate_new_ctx_object(
             &anon_obj_name,
             ContextObjectKind::Anonymous,
@@ -2690,6 +2697,7 @@ impl LineageExtractor {
         expand_value_table: bool,
     ) -> anyhow::Result<()> {
         let ctx_objects_start_size = self.context.objects_stack.len();
+        let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = set_select_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
@@ -2707,7 +2715,6 @@ impl LineageExtractor {
             this.query_expr_lin(&set_select_query_expr.right_query, expand_value_table)
         })?;
 
-        let anon_obj_name = self.get_anon_obj_name("anon");
         let set_obj_idx = self.context.allocate_new_ctx_object(
             &anon_obj_name,
             ContextObjectKind::Anonymous,
@@ -2775,6 +2782,7 @@ impl LineageExtractor {
     }
 
     fn query_statement_lin(&mut self, query_statement: &QueryStatement) -> anyhow::Result<()> {
+        self.context.last_select_statement = Some(self.get_next_anon_obj_name("anon"));
         self.query_expr_lin(&query_statement.query, false)
     }
 
@@ -3940,10 +3948,15 @@ fn _extract_lineage(
         for (obj_idx, obj_map) in objects {
             let obj = &lineage_extractor.context.arena_objects[obj_idx];
             if just_include_source_objects
-                && !lineage_extractor
+                && (!lineage_extractor
                     .context
                     .source_objects
                     .contains_key(&obj.name)
+                    && !lineage_extractor
+                        .context
+                        .last_select_statement
+                        .as_ref()
+                        .is_some_and(|anon_name| *anon_name == obj.name))
             {
                 continue;
             }

@@ -93,7 +93,7 @@ fn main() -> anyhow::Result<()> {
                     .collect();
                 sql_in_dir
             } else {
-                vec![sql_file_or_dir.clone()] // todo:remove this clone
+                vec![sql_file_or_dir.clone()]
             };
 
             let out_str = {
@@ -195,7 +195,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let elapsed = now.elapsed();
-    log::info!("Elapsed: {:.2?}", elapsed);
+    log::debug!("Elapsed: {:.2?}", elapsed);
 
     Ok(())
 }
