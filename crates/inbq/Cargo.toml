@@ -2,7 +2,6 @@
 name = "inbq"
 description = """
 A library for parsing BigQuery queries and extracting schema-aware, column-level lineage.
-Written in Rust, with Python bindings.
 """
 documentation = { workspace = true }
 homepage = { workspace = true }

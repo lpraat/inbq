@@ -3,7 +3,7 @@ on:
     tags:
       - "*"
 
-name: Release
+name: Rust Release
 
 jobs:
   cargo-publish:

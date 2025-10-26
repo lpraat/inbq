@@ -2,9 +2,9 @@ name: Build and test
 
 on:
   push:
-    branches: [ main, pypackage ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, pypackage ]
+    branches: [ main ]
 
 env:
   CARGO_TERM_COLOR: always
