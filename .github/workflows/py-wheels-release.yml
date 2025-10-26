@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: ./crates/py_inbq
+
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
