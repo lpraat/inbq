@@ -11,7 +11,18 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dynamic = ["version"]
+authors = [
+  {name = "Lorenzo Pratissoli", email = "pratissolil@gmail.com"},
+]
 dependencies = []
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+documentation = "https://github.com/lpraat/inbq"
+homepage = "https://github.com/lpraat/inbq"
+repository = "https://github.com/lpraat/inbq"
+keywords = ["bigquery", "sql", "parser", "data-lineage"]
+
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

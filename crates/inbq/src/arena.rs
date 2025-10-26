@@ -26,10 +26,12 @@ impl<T> Arena<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn len(&self) -> usize {
         self.nodes.len()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn truncate(&mut self, n: usize) {
         self.nodes.truncate(n);
     }
