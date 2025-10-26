@@ -16,6 +16,7 @@ license = "MIT"
 
 [workspace.dependencies]
 inbq = { version = "0.1.0", path = "crates/inbq" }
+inbq_genpy = { version = "0.1.0", path = "crates/inbq_genpy"}
 
 anyhow = "1.0.93"
 clap = { version = "4.5.36" }

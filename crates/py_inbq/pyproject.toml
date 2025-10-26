@@ -1,5 +1,6 @@
 [project]
 name = "inbq"
+description = "A library for parsing BigQuery queries and extracting schema-aware, column-level lineage."
 requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
@@ -20,3 +21,10 @@ build-backend = "maturin"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "inbq._inbq"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.9.6",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+]
