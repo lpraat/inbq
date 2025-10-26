@@ -4,14 +4,24 @@ use inbq::{
     scanner::Scanner,
 };
 
+fn column(name: &str, dtype: &str) -> Column {
+    Column {
+        name: name.to_owned(),
+        dtype: dtype.to_owned(),
+    }
+}
+
 fn main() -> anyhow::Result<()> {
+    env_logger::init();
+
     let sql = r#"
-        insert into proj.dat.out_table
+        declare default_val float64 default (select min(val) from project.dataset.out);
+
+        insert into `project.dataset.out`
         select
-            a,
-            s.f1,
-            s.f2,
-        from proj.dat.in_table
+            id,
+            if(x is null or y is null, default_val, x+y)
+        from `project.dataset.t1` inner join `project.dataset.t2` using (id)
     "#;
     let mut scanner = Scanner::new(sql);
     scanner.scan()?;
@@ -22,39 +32,21 @@ fn main() -> anyhow::Result<()> {
     let data_catalog = Catalog {
         schema_objects: vec![
             SchemaObject {
-                name: "proj.dat.in_table".to_owned(),
+                name: "project.dataset.out".to_owned(),
                 kind: SchemaObjectKind::Table {
-                    columns: vec![
-                        // dtype is case insensitive and can be retrieved, for example, using
-                        // the INFORMATION_SCHEMA.COLUMNS view (https://cloud.google.com/bigquery/docs/information-schema-columns)
-                        Column {
-                            name: "a".to_owned(),
-                            dtype: "STRING".to_owned(),
-                        },
-                        Column {
-                            name: "s".to_owned(),
-                            dtype: "STRUCT<f1 INT64, f2 INT64>".to_owned(),
-                        },
-                    ],
+                    columns: vec![column("id", "int64"), column("val", "int64")],
                 },
             },
             SchemaObject {
-                name: "proj.dat.out_table".to_owned(),
+                name: "project.dataset.t1".to_owned(),
                 kind: SchemaObjectKind::Table {
-                    columns: vec![
-                        Column {
-                            name: "a".to_owned(),
-                            dtype: "STRING".to_owned(),
-                        },
-                        Column {
-                            name: "f1".to_owned(),
-                            dtype: "INT64".to_owned(),
-                        },
-                        Column {
-                            name: "f2".to_owned(),
-                            dtype: "INT64".to_owned(),
-                        },
-                    ],
+                    columns: vec![column("id", "int64"), column("x", "float64")],
+                },
+            },
+            SchemaObject {
+                name: "project.dataset.t2".to_owned(),
+                kind: SchemaObjectKind::Table {
+                    columns: vec![column("id", "int64"), column("y", "float64")],
                 },
             },
         ],
@@ -64,12 +56,6 @@ fn main() -> anyhow::Result<()> {
         .pop()
         .unwrap()?;
 
-    println!();
-    println!("Raw lineage: {:?}\n", output_lineage.raw_lineage);
-    println!();
-    println!(
-        "Ready (human-friendly) lineage: {:?}",
-        output_lineage.lineage
-    );
+    println!("Lineage: {:?}", output_lineage.lineage);
     Ok(())
 }

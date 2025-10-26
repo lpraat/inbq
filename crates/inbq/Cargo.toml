@@ -1,9 +1,8 @@
 [package]
 name = "inbq"
 description = """
-inbq is a rust library and command-line tool for extracting schema-aware,
-column-level lineage (including through nested structs/arrays)
-from multi-statement BigQuery queries.
+A library for parsing BigQuery queries and extracting schema-aware, column-level lineage.
+Written in Rust, with Python bindings.
 """
 documentation = { workspace = true }
 homepage = { workspace = true }
