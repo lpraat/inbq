@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - main
+      - pypackage
     tags:
       - '*'
   pull_request:
@@ -39,6 +40,9 @@ jobs:
             target: s390x
           - runner: ubuntu-22.04
             target: ppc64le
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,11 +55,13 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: auto
+          working-directory: ./crates/py_inbq
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
-          path: dist
+          path: ./crates/py_inbq/dist
+
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -70,6 +76,9 @@ jobs:
             target: aarch64
           - runner: ubuntu-22.04
             target: armv7
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -82,11 +91,13 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           manylinux: musllinux_1_2
+          working-directory: ./crates/py_inbq
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
-          path: dist
+          path: ./crates/py_inbq/dist
+
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -97,6 +108,9 @@ jobs:
             target: x64
           - runner: windows-latest
             target: x86
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -109,11 +123,13 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          working-directory: ./crates/py_inbq
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-${{ matrix.platform.target }}
-          path: dist
+          path: ./crates/py_inbq/dist
+
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -124,6 +140,9 @@ jobs:
             target: x86_64
           - runner: macos-14
             target: aarch64
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -135,14 +154,19 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          working-directory: ./crates/py_inbq
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.platform.target }}
-          path: dist
+          path: ./crates/py_inbq/dist
+
 
   sdist:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
@@ -150,15 +174,19 @@ jobs:
         with:
           command: sdist
           args: --out dist
+          working-directory: ./crates/py_inbq
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
-          path: dist
+          path: ./crates/py_inbq/dist
 
   release:
     name: Release
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./crates/py_inbq
     if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     needs: [linux, musllinux, windows, macos, sdist]
     permissions:
@@ -174,6 +202,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'wheels-*/*'
+          working-directory: ./crates/py_inbq
       - name: Publish to PyPI
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: PyO3/maturin-action@v1
