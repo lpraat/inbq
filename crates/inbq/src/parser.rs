@@ -9,30 +9,30 @@ use crate::ast::{
     CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
     DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
     DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
-    Expr, ExtractFunctionExpr, ExtractFunctionPart, ForInStatement,
-    ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From, FromExpr,
-    FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
-    Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having,
-    Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
-    JoinCondition, JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit, LoopStatement,
-    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
-    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
-    TableFunctionExpr, TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
-    TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
-    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
-    UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource,
-    WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind,
-    WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
+    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
+    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
+    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
+    PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
+    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+    RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+    StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint,
+    TableFunctionArgument, TableFunctionExpr, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
+    TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+    UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -357,6 +357,7 @@ impl<'a> Parser<'a> {
                         "raise" => self.parse_raise_statement()?,
                         "drop" => self.parse_drop_statement()?,
                         "call" => self.parse_call_statement()?,
+                        "execute" => self.parse_execute_immediate_statement()?,
                         "loop" => self.parse_loop_statement()?,
                         "repeat" => self.parse_repeat_statement()?,
                         "while" => self.parse_while_statement()?,
@@ -679,6 +680,48 @@ impl<'a> Parser<'a> {
         Ok(Statement::Call(CallStatement {
             procedure_name,
             arguments,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// execute_immediate_statement ->
+    /// "EXECUTE" "IMMEDIATE" expr ["INTO" var_name ("," var_name)*] ["USING" (var_name | expr) ["AS" alias] ("," (var_name | expr) ["AS" alias])*]
+    /// ```
+    fn parse_execute_immediate_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("execute")?;
+        self.consume_non_reserved_keyword("immediate")?;
+        let sql = self.parse_expr()?;
+        let into_vars = if self.match_token_type(TokenTypeVariant::Into) {
+            let mut vars = vec![];
+            loop {
+                vars.push(self.consume_identifier_into_name()?);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(vars)
+        } else {
+            None
+        };
+        let using_identifiers = if self.match_token_type(TokenTypeVariant::Using) {
+            let mut identifiers = vec![];
+            loop {
+                let identifier = self.parse_expr()?;
+                let alias = self.parse_as_alias()?;
+                identifiers.push(ExecuteImmediateUsingIdentifier { identifier, alias });
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(identifiers)
+        } else {
+            None
+        };
+        Ok(Statement::ExecuteImmediate(ExecuteImmediateStatement {
+            sql,
+            into_vars,
+            using_identifiers,
         }))
     }
 

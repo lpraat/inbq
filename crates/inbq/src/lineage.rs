@@ -3589,6 +3589,10 @@ impl LineageExtractor {
             | Statement::Leave
             | Statement::Continue
             | Statement::Iterate => {}
+            Statement::ExecuteImmediate(_) => {
+                // Execute immediate runs an arbitrary sql string
+                // which may be known only at runtime
+            }
         }
         Ok(())
     }

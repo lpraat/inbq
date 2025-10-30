@@ -28,6 +28,7 @@ pub enum Statement {
     Raise(RaiseStatement),
     Return,
     Call(CallStatement),
+    ExecuteImmediate(ExecuteImmediateStatement),
     Loop(LoopStatement),
     Repeat(RepeatStatement),
     While(WhileStatement),
@@ -37,6 +38,19 @@ pub enum Statement {
     Iterate,
     Leave,
     Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteImmediateStatement {
+    pub sql: Expr,
+    pub into_vars: Option<Vec<Name>>,
+    pub using_identifiers: Option<Vec<ExecuteImmediateUsingIdentifier>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteImmediateUsingIdentifier {
+    pub identifier: Expr,
+    pub alias: Option<Name>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

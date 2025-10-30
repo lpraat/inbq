@@ -46,6 +46,7 @@ class AstNode:
             "Raise": "Statement_Raise",
             "Return": "Statement_Return",
             "Call": "Statement_Call",
+            "ExecuteImmediate": "Statement_ExecuteImmediate",
             "Loop": "Statement_Loop",
             "Repeat": "Statement_Repeat",
             "While": "Statement_While",
@@ -640,6 +641,19 @@ class AstNode:
 @dataclass
 class Ast(AstNode):
     statements: "list[Statement]"
+
+
+@dataclass
+class ExecuteImmediateStatement(AstNode):
+    sql: "Expr"
+    into_vars: "Optional[list[Name]]"
+    using_identifiers: "Optional[list[ExecuteImmediateUsingIdentifier]]"
+
+
+@dataclass
+class ExecuteImmediateUsingIdentifier(AstNode):
+    identifier: "Expr"
+    alias: "Optional[Name]"
 
 
 @dataclass
@@ -1491,6 +1505,11 @@ class Statement_Return(AstNode): ...
 @dataclass
 class Statement_Call(AstNode):
     vty: "CallStatement"
+
+
+@dataclass
+class Statement_ExecuteImmediate(AstNode):
+    vty: "ExecuteImmediateStatement"
 
 
 @dataclass
@@ -3273,6 +3292,7 @@ Statement: TypeAlias = (
     | Statement_Raise
     | Statement_Return
     | Statement_Call
+    | Statement_ExecuteImmediate
     | Statement_Loop
     | Statement_Repeat
     | Statement_While
