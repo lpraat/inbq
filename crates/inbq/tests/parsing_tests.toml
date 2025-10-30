@@ -266,6 +266,32 @@ ORDER BY x NULLS LAST;
 
 [[tests]]
 sql = """
+SELECT *
+  FROM `bigquery-public-data.samples.shakespeare` AS s
+  JOIN mydataset.names_by_year(1950) AS n
+  ON n.name = s.word
+"""
+
+[[tests]]
+sql = """
+WITH my_orders AS (
+    SELECT 1 AS sales, "apple" AS item, 0.99 AS price
+    UNION ALL
+    SELECT 2, "banana", 0.49
+    UNION ALL
+    SELECT 5, "apple", 0.99)
+SELECT *
+FROM mydataset.compute_sales(TABLE my_orders, "apple");
+"""
+
+[[tests]]
+sql = """
+SELECT *
+FROM mydataset.compute_sales(TABLE `proj.dat.orders`, "apple");
+"""
+
+[[tests]]
+sql = """
 SELECT Roster.LastName, TeamMascot.Mascot
 FROM Roster FULL JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 """

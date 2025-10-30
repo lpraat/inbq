@@ -360,9 +360,14 @@ class AstNode:
             "RightJoin": "FromExpr_RightJoin",
             "CrossJoin": "FromExpr_CrossJoin",
             "Path": "FromExpr_Path",
+            "TableFunction": "FromExpr_TableFunction",
             "Unnest": "FromExpr_Unnest",
             "GroupingQuery": "FromExpr_GroupingQuery",
             "GroupingFrom": "FromExpr_GroupingFrom",
+        },
+        "TableFunctionArgument": {
+            "Table": "TableFunctionArgument_Table",
+            "Expr": "TableFunctionArgument_Expr",
         },
         "JoinKind": {
             "Inner": "JoinKind_Inner",
@@ -1284,6 +1289,13 @@ class ColumnToUnpivot(AstNode):
 class ColumnSetToUnpivot(AstNode):
     names: "list[Name]"
     alias: "Optional[Expr]"
+
+
+@dataclass
+class TableFunctionExpr(AstNode):
+    name: "PathName"
+    arguments: "list[TableFunctionArgument]"
+    alias: "Optional[Name]"
 
 
 @dataclass
@@ -2591,6 +2603,11 @@ class FromExpr_Path(AstNode):
 
 
 @dataclass
+class FromExpr_TableFunction(AstNode):
+    vty: "TableFunctionExpr"
+
+
+@dataclass
 class FromExpr_Unnest(AstNode):
     vty: "FromUnnestExpr"
 
@@ -2603,6 +2620,16 @@ class FromExpr_GroupingQuery(AstNode):
 @dataclass
 class FromExpr_GroupingFrom(AstNode):
     vty: "GroupingFromExpr"
+
+
+@dataclass
+class TableFunctionArgument_Table(AstNode):
+    vty: "PathName"
+
+
+@dataclass
+class TableFunctionArgument_Expr(AstNode):
+    vty: "Expr"
 
 
 @dataclass
@@ -3507,9 +3534,13 @@ FromExpr: TypeAlias = (
     | FromExpr_RightJoin
     | FromExpr_CrossJoin
     | FromExpr_Path
+    | FromExpr_TableFunction
     | FromExpr_Unnest
     | FromExpr_GroupingQuery
     | FromExpr_GroupingFrom
+)
+TableFunctionArgument: TypeAlias = (
+    TableFunctionArgument_Table | TableFunctionArgument_Expr
 )
 JoinKind: TypeAlias = JoinKind_Inner | JoinKind_Left | JoinKind_Right | JoinKind_Full
 JoinCondition: TypeAlias = JoinCondition_On | JoinCondition_Using

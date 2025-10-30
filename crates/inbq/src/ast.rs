@@ -1133,9 +1133,23 @@ pub enum FromExpr {
     RightJoin(JoinExpr),
     CrossJoin(CrossJoinExpr),
     Path(FromPathExpr),
+    TableFunction(TableFunctionExpr),
     Unnest(FromUnnestExpr),
     GroupingQuery(FromGroupingQueryExpr),
     GroupingFrom(GroupingFromExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableFunctionExpr {
+    pub name: PathName,
+    pub arguments: Vec<TableFunctionArgument>,
+    pub alias: Option<Name>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TableFunctionArgument {
+    Table(PathName),
+    Expr(Expr),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1179,8 +1193,6 @@ pub struct FromPathExpr {
     pub path: PathName,
     pub alias: Option<Name>,
 }
-
-impl FromPathExpr {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupingFromExpr {

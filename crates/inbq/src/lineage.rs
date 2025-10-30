@@ -2366,6 +2366,12 @@ impl LineageExtractor {
                 joined_tables,
                 joined_ambiguous_columns,
             )?,
+            FromExpr::TableFunction(_) => {
+                // TODO
+                return Err(anyhow!(
+                    "Cannot extract lineage from a table function call (still a todo)."
+                ));
+            }
         }
         Ok(())
     }

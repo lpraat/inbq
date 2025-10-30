@@ -37,12 +37,13 @@ use inbq::{
         SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
         SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
         StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
-        TableConstraint, TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
-        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
-        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
-        WindowSpec, With, WithExpr, WithExprVar,
+        TableConstraint, TableFunctionArgument, TableFunctionExpr, TimeDiffFunctionExpr,
+        TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token,
+        TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+        UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+        WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+        WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+        WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -2627,6 +2628,40 @@ impl RsToPyObject for GroupingFromExpr {
     }
 }
 
+impl RsToPyObject for TableFunctionArgument {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            TableFunctionArgument::Table(path_name) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, path_name)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableFunctionArgument::Table)?,
+                    kwargs,
+                )
+            }
+            TableFunctionArgument::Expr(expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableFunctionArgument::Expr)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
+impl RsToPyObject for TableFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "arguments", self.arguments),
+            kwarg!(py_ctx, "alias", self.alias),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TableFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for FromExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2671,6 +2706,14 @@ impl RsToPyObject for FromExpr {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, FromExpr::GroupingFrom)?,
+                    kwargs,
+                )
+            }
+            FromExpr::TableFunction(table_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, table_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::TableFunction)?,
                     kwargs,
                 )
             }

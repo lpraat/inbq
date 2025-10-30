@@ -26,13 +26,13 @@ use crate::ast::{
     SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-    StructParameterizedFieldType, SystemVariable, TableConstraint, TimeDiffFunctionExpr,
-    TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType,
-    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
-    WithExprVar,
+    StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
+    TableFunctionExpr, TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
+    TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant, TruncateStatement, Type,
+    UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
+    UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource,
+    WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind,
+    WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -2336,7 +2336,9 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// from_item_expr -> path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
+    /// from_item_expr ->
+    /// path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
+    /// | path "(" ("TABLE" path | expr) ("," ("TABLE" path | expr))* ")"
     /// ```
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
         if self.match_token_type(TokenTypeVariant::LeftParen) {
@@ -2377,9 +2379,31 @@ impl<'a> Parser<'a> {
             Ok(FromExpr::Unnest(unnest_expr))
         } else {
             let path = self.parse_path()?;
-            let alias = self.parse_from_item_alias()?;
 
-            Ok(FromExpr::Path(FromPathExpr { path, alias }))
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                let mut arguments = vec![];
+                loop {
+                    let argument = if self.match_non_reserved_keyword("table") {
+                        TableFunctionArgument::Table(self.parse_path()?)
+                    } else {
+                        TableFunctionArgument::Expr(self.parse_expr()?)
+                    };
+                    arguments.push(argument);
+                    if !self.match_token_type(TokenTypeVariant::Comma) {
+                        break;
+                    }
+                }
+                self.consume(TokenTypeVariant::RightParen)?;
+                let alias = self.parse_from_item_alias()?;
+                Ok(FromExpr::TableFunction(TableFunctionExpr {
+                    name: path,
+                    arguments,
+                    alias,
+                }))
+            } else {
+                let alias = self.parse_from_item_alias()?;
+                Ok(FromExpr::Path(FromPathExpr { path, alias }))
+            }
         }
     }
 
