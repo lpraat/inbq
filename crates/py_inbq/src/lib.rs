@@ -16,34 +16,35 @@ use inbq::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
         CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-        CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-        DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
-        DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
-        DropTableStatement, ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr,
-        ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
-        ForeignKeyReference, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-        FromUnnestExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-        GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-        GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-        InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-        LabeledStatement, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-        NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
-        PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-        QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-        RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-        SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-        Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-        StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
-        TableFunctionExpr, TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
-        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
-        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
-        WindowSpec, With, WithExpr, WithExprVar,
+        CreateSchemaStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
+        CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
+        DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
+        DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
+        ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
+        FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+        FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
+        Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr,
+        Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
+        IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit,
+        LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+        MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
+        OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart,
+        Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
+        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
+        TableConstraint, TableFunctionArgument, TableFunctionExpr, TimeDiffFunctionExpr,
+        TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token,
+        TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+        UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+        WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
+        WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
+        WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -3350,6 +3351,11 @@ impl RsToPyObject for CreateTableStatement {
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "schema", self.schema),
             kwarg!(py_ctx, "constraints", self.constraints),
+            kwarg!(py_ctx, "default_collate", self.default_collate),
+            kwarg!(py_ctx, "partition", self.partition),
+            kwarg!(py_ctx, "clustering_columns", self.clustering_columns),
+            kwarg!(py_ctx, "connection", self.connection),
+            kwarg!(py_ctx, "options", self.options),
             kwarg!(py_ctx, "replace", self.replace),
             kwarg!(py_ctx, "is_temporary", self.is_temporary),
             kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
@@ -3548,6 +3554,22 @@ impl RsToPyObject for ExecuteImmediateStatement {
     }
 }
 
+impl RsToPyObject for CreateSchemaStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
+            kwarg!(py_ctx, "default_collate", self.default_collate),
+            kwarg!(py_ctx, "options", self.options),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CreateSchemaStatement)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -3590,6 +3612,14 @@ impl RsToPyObject for Statement {
             Statement::Block(statements_block) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, statements_block)];
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Block)?, kwargs)
+            }
+            Statement::CreateSchema(create_schema_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_schema_statement)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::CreateSchema)?,
+                    kwargs,
+                )
             }
             Statement::CreateTable(create_table_statement) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_table_statement)];

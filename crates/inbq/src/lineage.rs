@@ -2796,12 +2796,18 @@ impl LineageExtractor {
         &mut self,
         create_table_statement: &CreateTableStatement,
     ) -> anyhow::Result<()> {
-        let table_name = &create_table_statement.name.name;
         let table_kind = if create_table_statement.is_temporary {
             ContextObjectKind::TempTable
         } else {
             ContextObjectKind::Table
         };
+
+        if table_kind == ContextObjectKind::Table {
+            return Ok(());
+        }
+
+        let table_name = &create_table_statement.name.name;
+
         let temp_table_idx = if let Some(ref query) = create_table_statement.query {
             // Extract the schema from the query lineage
             let consumed_lineage_nodes =
@@ -3401,20 +3407,19 @@ impl LineageExtractor {
         Ok(())
     }
 
+    /// Drop tables (just consider temp tables)
     fn drop_table_statement_lin(
         &mut self,
         drop_table_statement: &DropTableStatement,
     ) -> anyhow::Result<()> {
         let table_name = &drop_table_statement.name.name;
-        let removed = self.context.source_objects.swap_remove(table_name);
+        let is_source_object = self.context.source_objects.contains_key(table_name);
 
-        if removed.is_none() {
+        if !is_source_object {
             // Not a source object, it is a table created in this script
             self.context.objects_stack.retain(|obj_idx| {
                 let obj = &self.context.arena_objects[*obj_idx];
-                !(obj.name == *table_name
-                    && (obj.kind == ContextObjectKind::Table
-                        || obj.kind == ContextObjectKind::TempTable))
+                !(obj.name == *table_name && obj.kind == ContextObjectKind::TempTable)
             });
         }
         Ok(())
@@ -3525,13 +3530,8 @@ impl LineageExtractor {
             Statement::Insert(insert_statement) => self.insert_statement_lin(insert_statement)?,
             Statement::Merge(merge_statement) => self.merge_statement_lin(merge_statement)?,
             Statement::CreateTable(create_table_statement) => {
+                // To handle temp tables
                 self.create_table_statement_lin(create_table_statement)?
-            }
-            Statement::CreateView(_) => {
-                // TODO
-                return Err(anyhow!(
-                    "Cannot extract lineage from a create view statement (still a todo)."
-                ));
             }
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(declare_var_statement)?;
@@ -3546,6 +3546,7 @@ impl LineageExtractor {
                 }
             }
             Statement::DropTableStatement(drop_table_statement) => {
+                // To handle drop of temp tables
                 self.drop_table_statement_lin(drop_table_statement)?
             }
             Statement::If(if_statement) => {
@@ -3592,6 +3593,9 @@ impl LineageExtractor {
             Statement::ExecuteImmediate(_) => {
                 // Execute immediate runs an arbitrary sql string
                 // which may be known only at runtime
+            }
+            Statement::CreateSchema(_) | Statement::CreateView(_) => {
+                // Ignored DDLs
             }
         }
         Ok(())

@@ -6,8 +6,8 @@ use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
     CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-    CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-    DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+    CreateSchemaStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
+    CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
     DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
     ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
     ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
@@ -321,7 +321,15 @@ impl<'a> Parser<'a> {
                     {
                         self.parse_create_view_statement()?
                     } else {
-                        self.parse_create_table_statement()?
+                        match &self.peek_next_i(1).kind {
+                            TokenType::Identifier(non_reserved_keyword) => {
+                                match non_reserved_keyword.to_lowercase().as_str() {
+                                    "schema" => self.parse_create_schema_statement()?,
+                                    _ => self.parse_create_table_statement()?,
+                                }
+                            }
+                            _ => self.parse_create_table_statement()?,
+                        }
                     }
                 }
                 TokenType::Merge => self.parse_merge_statement()?,
@@ -1047,6 +1055,10 @@ impl<'a> Parser<'a> {
     /// ```text
     /// CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] TABLE [ IF NOT EXISTS ] table_name
     /// ["(" (column | table_constraint) ("," (column | table_constraint)*) ")"]
+    /// ["DEFAULT" "COLLATE" expr]
+    /// ["PARTITION" "BY" expr]
+    /// ["CLUSTER" "BY" name ("," name)*]
+    /// ["WITH CONNECTION" path_name]
     /// ["AS" query_statement]
     /// where:
     /// column -> column_name parameterized_bq_type ("," column_name parameterized_bq_type)*
@@ -1116,26 +1128,68 @@ impl<'a> Parser<'a> {
             (None, None)
         };
 
+        let default_collate = if self.match_token_type(TokenTypeVariant::Default) {
+            self.consume(TokenTypeVariant::Collate)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        let partition = if self.match_token_type(TokenTypeVariant::Partition) {
+            self.consume(TokenTypeVariant::By)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        let clustering_columns = if self.match_non_reserved_keyword("cluster") {
+            self.consume(TokenTypeVariant::By)?;
+            let mut columns = vec![];
+            loop {
+                columns.push(self.consume_identifier_into_name()?);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            Some(columns)
+        } else {
+            None
+        };
+
+        let connection = if self.match_token_type(TokenTypeVariant::With) {
+            self.consume_non_reserved_keyword("connection")?;
+            Some(self.parse_path()?)
+        } else {
+            None
+        };
+
         let query = if self.match_token_type(TokenTypeVariant::As) {
             Some(self.parse_query_expr()?)
         } else {
             None
         };
 
-        Ok(Statement::CreateTable(CreateTableStatement {
+        let options = self.parse_ddl_options()?;
+
+        Ok(Statement::CreateTable(Box::new(CreateTableStatement {
             name,
             schema,
             constraints,
+            default_collate,
+            partition,
+            clustering_columns,
+            connection,
+            options,
             replace,
             is_temporary,
             if_not_exists,
             query,
-        }))
+        })))
     }
 
     /// Rule:
     /// ```text
-    /// ddl_options -> name "=" expr ("," name "=" expr)*
+    /// ddl_options -> "OPTIONS" "(" name "=" expr ("," name "=" expr)* ")"
     /// ```
     fn parse_ddl_options(&mut self) -> anyhow::Result<Option<Vec<DdlOption>>> {
         Ok(if self.match_non_reserved_keyword("options") {
@@ -1159,8 +1213,8 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// "CREATE" ["OR" "REPLACE"] "VIEW" ["IF" "NOT" "EXISTS"] path_name [name ["OPTIONS" "(" ddl_options ")"] ("," [name ["OPTIONS" "(" ddl_options ")"])*
-    /// ["OPTIONS" "(" ddl_options ")"] "AS" query_expr
+    /// "CREATE" ["OR" "REPLACE"] "VIEW" ["IF" "NOT" "EXISTS"] path_name [name [ddl_options] ("," [name [ddl_options])*
+    /// [ddl_options] "AS" query_expr
     /// ```
     fn parse_create_view_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume(TokenTypeVariant::Create)?;
@@ -1204,6 +1258,37 @@ impl<'a> Parser<'a> {
             columns,
             options,
             query,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// create_schema_statement ->
+    /// "CREATE" "SCHEMA" ["IF" "NOT" "EXISTS"] path_name ["DEFAULT" "COLLATE" expr] [ddl_options]
+    /// ```
+    fn parse_create_schema_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::Create)?;
+        self.consume_non_reserved_keyword("schema")?;
+        let if_not_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Not)?;
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+        let name = self.parse_path()?;
+        let default_collate = if self.match_token_type(TokenTypeVariant::Default) {
+            self.consume(TokenTypeVariant::Collate)?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+        let options = self.parse_ddl_options()?;
+        Ok(Statement::CreateSchema(CreateSchemaStatement {
+            name,
+            if_not_exists,
+            default_collate,
+            options,
         }))
     }
 

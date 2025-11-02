@@ -17,7 +17,8 @@ pub enum Statement {
     DeclareVar(DeclareVarStatement),
     SetVar(SetVarStatement),
     Block(StatementsBlock),
-    CreateTable(CreateTableStatement),
+    CreateSchema(CreateSchemaStatement),
+    CreateTable(Box<CreateTableStatement>),
     CreateView(CreateViewStatement),
     DropTableStatement(DropTableStatement),
     If(IfStatement),
@@ -38,6 +39,14 @@ pub enum Statement {
     Iterate,
     Leave,
     Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSchemaStatement {
+    pub name: PathName,
+    pub if_not_exists: bool,
+    pub default_collate: Option<Expr>,
+    pub options: Option<Vec<DdlOption>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,6 +248,11 @@ pub struct CreateTableStatement {
     pub name: PathName,
     pub schema: Option<Vec<ColumnSchema>>,
     pub constraints: Option<Vec<TableConstraint>>,
+    pub default_collate: Option<Expr>,
+    pub partition: Option<Expr>,
+    pub clustering_columns: Option<Vec<Name>>,
+    pub connection: Option<PathName>,
+    pub options: Option<Vec<DdlOption>>,
     pub replace: bool,
     pub is_temporary: bool,
     pub if_not_exists: bool,

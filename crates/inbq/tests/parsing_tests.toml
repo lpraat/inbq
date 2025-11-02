@@ -828,6 +828,22 @@ create temp table bar(foreign key(x) references foo(x) not enforced, x int64) as
 """
 
 [[tests]]
+sql = """
+CREATE TABLE mydataset.myclusteredtable
+(
+  input_timestamp TIMESTAMP,
+  customer_id STRING,
+  transaction_amount NUMERIC
+)
+PARTITION BY TIMESTAMP_TRUNC(input_timestamp, HOUR)
+CLUSTER BY customer_id
+OPTIONS (
+  partition_expiration_days=3,
+  description="a table clustered by customer_id"
+)
+"""
+
+[[tests]]
 sql="""
 CREATE VIEW mydataset.age_groups(age, count) AS SELECT age, COUNT(*)
 FROM mydataset.people
@@ -856,6 +872,21 @@ CREATE OR REPLACE VIEW `myproject.mydataset.newview` (
 AS SELECT column_1, column_2, column_3 FROM `myproject.mydataset.mytable`
 """
 
+[[tests]]
+sql="""
+CREATE SCHEMA mydataset
+OPTIONS(
+  location="us",
+  default_table_expiration_days=3.75,
+  labels=[("label1","value1"),("label2","value2")]
+  )
+"""
+
+[[tests]]
+sql="""
+CREATE SCHEMA mydataset
+DEFAULT COLLATE 'und:ci'
+"""
 
 [[tests]]
 sql = """

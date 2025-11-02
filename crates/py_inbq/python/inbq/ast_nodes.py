@@ -35,6 +35,7 @@ class AstNode:
             "DeclareVar": "Statement_DeclareVar",
             "SetVar": "Statement_SetVar",
             "Block": "Statement_Block",
+            "CreateSchema": "Statement_CreateSchema",
             "CreateTable": "Statement_CreateTable",
             "CreateView": "Statement_CreateView",
             "DropTableStatement": "Statement_DropTableStatement",
@@ -644,6 +645,14 @@ class Ast(AstNode):
 
 
 @dataclass
+class CreateSchemaStatement(AstNode):
+    name: "PathName"
+    if_not_exists: "bool"
+    default_collate: "Optional[Expr]"
+    options: "Optional[list[DdlOption]]"
+
+
+@dataclass
 class ExecuteImmediateStatement(AstNode):
     sql: "Expr"
     into_vars: "Optional[list[Name]]"
@@ -776,6 +785,11 @@ class CreateTableStatement(AstNode):
     name: "PathName"
     schema: "Optional[list[ColumnSchema]]"
     constraints: "Optional[list[TableConstraint]]"
+    default_collate: "Optional[Expr]"
+    partition: "Optional[Expr]"
+    clustering_columns: "Optional[list[Name]]"
+    connection: "Optional[PathName]"
+    options: "Optional[list[DdlOption]]"
     replace: "bool"
     is_temporary: "bool"
     if_not_exists: "bool"
@@ -1454,6 +1468,11 @@ class Statement_SetVar(AstNode):
 @dataclass
 class Statement_Block(AstNode):
     vty: "StatementsBlock"
+
+
+@dataclass
+class Statement_CreateSchema(AstNode):
+    vty: "CreateSchemaStatement"
 
 
 @dataclass
@@ -3281,6 +3300,7 @@ Statement: TypeAlias = (
     | Statement_DeclareVar
     | Statement_SetVar
     | Statement_Block
+    | Statement_CreateSchema
     | Statement_CreateTable
     | Statement_CreateView
     | Statement_DropTableStatement
