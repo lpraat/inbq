@@ -95,6 +95,14 @@ SELECT
 
 [[tests]]
 sql = """
+with tmp as (
+  select a as `in`
+)
+select tmp.in FROM tmp
+"""
+
+[[tests]]
+sql = """
 select null is not null
 """
 
