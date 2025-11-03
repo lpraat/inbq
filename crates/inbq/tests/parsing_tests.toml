@@ -312,6 +312,39 @@ FROM Roster FULL JOIN TeamMascot ON Roster.SchoolID = TeamMascot.SchoolID;
 
 [[tests]]
 sql = """
+SELECT *
+FROM t
+  FOR SYSTEM_TIME AS OF TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 HOUR);
+"""
+
+[[tests]]
+sql = """
+DECLARE before_replace_timestamp TIMESTAMP;
+
+-- Create table books.
+CREATE TABLE books AS
+SELECT 'Hamlet' title, 'William Shakespeare' author;
+
+-- Get current timestamp before table replacement.
+SET before_replace_timestamp = CURRENT_TIMESTAMP();
+
+-- Replace table with different schema(title and release_date).
+CREATE OR REPLACE TABLE books AS
+SELECT 'Hamlet' title, DATE '1603-01-01' release_date;
+
+-- This query returns Hamlet, William Shakespeare as result.
+SELECT * FROM books FOR SYSTEM_TIME AS OF before_replace_timestamp;
+"""
+
+[[tests]]
+sql = """
+SELECT *
+FROM t
+  FOR SYSTEM_TIME AS OF '2017-01-01 10:00:00-07:00';
+"""
+
+[[tests]]
+sql = """
 SELECT * FROM UNNEST ([10,20,30]) as numbers WITH OFFSET;
 """
 
@@ -551,6 +584,11 @@ UNPIVOT(
   (first_half_sales, second_half_sales)
   FOR semesters
   IN ((Q1, Q2) AS 'semester_1', (Q3, Q4) AS 'semester_2'))
+"""
+
+[[tests]]
+sql = """
+SELECT * FROM dataset.my_table TABLESAMPLE SYSTEM (10 PERCENT)
 """
 
 [[tests]]

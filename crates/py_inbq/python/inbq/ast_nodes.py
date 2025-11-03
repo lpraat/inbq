@@ -1264,6 +1264,7 @@ class From(AstNode):
     expr: "FromExpr"
     pivot: "Optional[Pivot]"
     unpivot: "Optional[Unpivot]"
+    table_sample: "Optional[TableSample]"
 
 
 @dataclass
@@ -1291,6 +1292,11 @@ class Unpivot(AstNode):
     nulls: "UnpivotNulls"
     kind: "UnpivotKind"
     alias: "Optional[Name]"
+
+
+@dataclass
+class TableSample(AstNode):
+    percent: "Expr"
 
 
 @dataclass
@@ -1352,6 +1358,7 @@ class FromUnnestExpr(AstNode):
 class FromPathExpr(AstNode):
     path: "PathName"
     alias: "Optional[Name]"
+    system_time: "Optional[Expr]"
 
 
 @dataclass

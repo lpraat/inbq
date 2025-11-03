@@ -38,13 +38,13 @@ use inbq::{
         SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
         SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
         StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
-        TableConstraint, TableFunctionArgument, TableFunctionExpr, TimeDiffFunctionExpr,
-        TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token,
-        TokenType, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-        UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
-        WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where,
-        WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With,
-        WithExpr, WithExprVar,
+        TableConstraint, TableFunctionArgument, TableFunctionExpr, TableSample,
+        TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
+        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
+        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
+        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
+        WindowSpec, With, WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -2591,6 +2591,7 @@ impl RsToPyObject for FromPathExpr {
         let kwargs = &[
             kwarg!(py_ctx, "path", self.path),
             kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "system_time", self.system_time),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromPathExpr)?, kwargs)
     }
@@ -2847,12 +2848,20 @@ impl RsToPyObject for Unpivot {
     }
 }
 
+impl RsToPyObject for TableSample {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "percent", self.percent)];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TableSample)?, kwargs)
+    }
+}
+
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "expr", self.expr),
             kwarg!(py_ctx, "pivot", self.pivot),
             kwarg!(py_ctx, "unpivot", self.unpivot),
+            kwarg!(py_ctx, "table_sample", self.table_sample),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, From)?, kwargs)
     }

@@ -1086,6 +1086,7 @@ pub struct From {
     pub expr: Box<FromExpr>,
     pub pivot: Option<Pivot>,
     pub unpivot: Option<Unpivot>,
+    pub table_sample: Option<TableSample>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1113,6 +1114,11 @@ pub struct Unpivot {
     pub nulls: UnpivotNulls,
     pub kind: UnpivotKind,
     pub alias: Option<Name>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableSample {
+    pub percent: Expr,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1220,6 +1226,7 @@ pub struct FromUnnestExpr {
 pub struct FromPathExpr {
     pub path: PathName,
     pub alias: Option<Name>,
+    pub system_time: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -27,12 +27,13 @@ use crate::ast::{
     SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
     SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
     StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint,
-    TableFunctionArgument, TableFunctionExpr, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
-    TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-    UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+    TableFunctionArgument, TableFunctionExpr, TableSample, TimeDiffFunctionExpr,
+    TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType,
+    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
+    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
+    WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -2107,31 +2108,28 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// from -> "FROM" from_expr [pivot | unpivot]
+    /// from -> "FROM" from_expr [pivot | unpivot] [tablesample]
     /// ```
     fn parse_from(&mut self) -> anyhow::Result<Option<From>> {
         Ok(if self.match_token_type(TokenTypeVariant::From) {
             let from_expr = self.parse_from_expr()?;
 
-            if self.check_non_reserved_keyword("pivot") {
-                Some(crate::parser::From {
-                    expr: Box::new(from_expr),
-                    pivot: Some(self.parse_pivot()?),
-                    unpivot: None,
-                })
+            let (pivot, unpivot) = if self.check_non_reserved_keyword("pivot") {
+                (Some(self.parse_pivot()?), None)
             } else if self.check_non_reserved_keyword("unpivot") {
-                Some(crate::parser::From {
-                    expr: Box::new(from_expr),
-                    pivot: None,
-                    unpivot: Some(self.parse_unpivot()?),
-                })
+                (None, Some(self.parse_unpivot()?))
             } else {
-                Some(crate::parser::From {
-                    expr: Box::new(from_expr),
-                    pivot: None,
-                    unpivot: None,
-                })
-            }
+                (None, None)
+            };
+
+            let table_sample = self.parse_tablesample()?;
+
+            Some(crate::parser::From {
+                expr: Box::new(from_expr),
+                pivot,
+                unpivot,
+                table_sample,
+            })
         } else {
             None
         })
@@ -2286,6 +2284,22 @@ impl<'a> Parser<'a> {
         let alias = self.parse_as_alias()?;
 
         Ok(Unpivot { nulls, kind, alias })
+    }
+
+    /// Rule:
+    /// ```text
+    /// tablesample -> "TABLESAMPLE" "SYSTEM" "(" expr "PERCENT" ")"
+    /// ```
+    fn parse_tablesample(&mut self) -> anyhow::Result<Option<TableSample>> {
+        if !self.match_token_type(TokenTypeVariant::Tablesample) {
+            return Ok(None);
+        }
+        self.consume_non_reserved_keyword("system")?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let percent = self.parse_expr()?;
+        self.consume_non_reserved_keyword("percent")?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Some(TableSample { percent }))
     }
 
     /// Rule:
@@ -2465,7 +2479,7 @@ impl<'a> Parser<'a> {
     /// Rule:
     /// ```text
     /// from_item_expr ->
-    /// path [as_alias] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
+    /// path [as_alias] ["FOR" "SYSTEM_TIME" "AS" "OF" expr] | "(" query_expr ")" [as_alias] | "(" from_expr ")" | unnest_operator
     /// | path "(" ("TABLE" path | expr) ("," ("TABLE" path | expr))* ")"
     /// ```
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
@@ -2530,7 +2544,19 @@ impl<'a> Parser<'a> {
                 }))
             } else {
                 let alias = self.parse_from_item_alias()?;
-                Ok(FromExpr::Path(FromPathExpr { path, alias }))
+                let system_time = if self.match_token_type(TokenTypeVariant::For) {
+                    self.consume_non_reserved_keyword("system_time")?;
+                    self.consume(TokenTypeVariant::As)?;
+                    self.consume(TokenTypeVariant::Of)?;
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+                Ok(FromExpr::Path(FromPathExpr {
+                    path,
+                    alias,
+                    system_time,
+                }))
             }
         }
     }
