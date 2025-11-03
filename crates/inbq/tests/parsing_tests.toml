@@ -95,6 +95,12 @@ SELECT
 
 [[tests]]
 sql = """
+select *
+from `ग्राहक`, `table 01`, `00_お客様`, `étudiant-01`
+"""
+
+[[tests]]
+sql = """
 with tmp as (
   select a as `in`
 )
