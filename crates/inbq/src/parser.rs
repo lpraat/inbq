@@ -2031,7 +2031,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            if self.check_token_type(TokenTypeVariant::Select) {
+            if self.match_token_type(TokenTypeVariant::Select) {
                 return Err(anyhow!(self.error(self.peek(), "Expected `;`.")));
             }
 
