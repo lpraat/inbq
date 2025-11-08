@@ -167,10 +167,56 @@ impl NestedNodeName {
 #[derive(Debug, Clone)]
 enum NodeType {
     Unknown,
-    #[allow(dead_code)]
-    Base(String),
+    BigNumeric,
+    Boolean,
+    Bytes,
+    Date,
+    Datetime,
+    Float64,
+    Geography,
+    Int64,
+    Interval,
+    Json,
+    Numeric,
+    Range,
+    String,
+    Time,
+    Timestamp,
     Struct(StructNodeType),
     Array(Box<ArrayNodeType>),
+}
+
+impl Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeType::Unknown => write!(f, "UNKNOWN"),
+            NodeType::BigNumeric => write!(f, "BIGNUMERIC"),
+            NodeType::Boolean => write!(f, "BOOLEAN"),
+            NodeType::Bytes => write!(f, "BYTES"),
+            NodeType::Date => write!(f, "DATE"),
+            NodeType::Datetime => write!(f, "DATETIME"),
+            NodeType::Float64 => write!(f, "FLOAT64"),
+            NodeType::Geography => write!(f, "GEOGRAPHY"),
+            NodeType::Int64 => write!(f, "INT64"),
+            NodeType::Interval => write!(f, "INTERVAL"),
+            NodeType::Json => write!(f, "JSON"),
+            NodeType::Numeric => write!(f, "NUMERIC"),
+            NodeType::Range => write!(f, "RANGE"),
+            NodeType::String => write!(f, "STRING"),
+            NodeType::Time => write!(f, "TIME"),
+            NodeType::Timestamp => write!(f, "TIMESTAMP"),
+            NodeType::Struct(struct_node_type) => {
+                let struct_types = struct_node_type
+                    .fields
+                    .iter()
+                    .map(|f| format!("{} {}", f.name, f.r#type))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                write!(f, "STRUCT<{}>", struct_types)
+            }
+            NodeType::Array(array_node_type) => write!(f, "ARRAY<{}>", array_node_type.r#type),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -373,9 +419,6 @@ impl Context {
         input_node_indices: &[ArenaIndex],
     ) -> Vec<ArenaIndex> {
         match node_type {
-            NodeType::Unknown | NodeType::Base(_) => {
-                vec![]
-            }
             NodeType::Struct(struct_node_type) => {
                 let mut added_nested_nodes = vec![];
                 let mut star_indices = vec![];
@@ -498,6 +541,7 @@ impl Context {
                 added_nested_nodes.extend(&inner_nested_nodes);
                 added_nested_nodes
             }
+            _ => vec![],
         }
     }
 
@@ -514,9 +558,6 @@ impl Context {
         curr_input: &[ArenaIndex],
     ) -> Vec<ArenaIndex> {
         match node_type {
-            NodeType::Unknown | NodeType::Base(_) => {
-                vec![]
-            }
             NodeType::Struct(struct_node_type) => {
                 let mut added_nested_nodes = vec![];
 
@@ -617,6 +658,7 @@ impl Context {
 
                 added_nested_nodes
             }
+            _ => vec![],
         }
     }
 
@@ -3648,6 +3690,7 @@ pub struct ReadyLineageNodeInput {
 #[derive(Serialize, Debug, Clone)]
 pub struct ReadyLineageNode {
     pub name: String,
+    pub r#type: String,
     pub input: Vec<ReadyLineageNodeInput>,
 }
 
@@ -3699,19 +3742,19 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
             r#type: node_type_from_parser_type(r#type, types_vec),
             input: vec![],
         })),
-        Type::BigNumeric => NodeType::Base("BIGNUMERIC".to_owned()),
-        Type::Bool => NodeType::Base("BOOLEAN".to_owned()),
-        Type::Bytes => NodeType::Base("BYTES".to_owned()),
-        Type::Date => NodeType::Base("DATE".to_owned()),
-        Type::Datetime => NodeType::Base("DATETIME".to_owned()),
-        Type::Float64 => NodeType::Base("FLOAT64".to_owned()),
-        Type::Geography => NodeType::Base("GEOGRAPHY".to_owned()),
-        Type::Int64 => NodeType::Base("INT64".to_owned()),
-        Type::Interval => NodeType::Base("INTERVAL".to_owned()),
-        Type::Json => NodeType::Base("JSON".to_owned()),
-        Type::Numeric => NodeType::Base("NUMERIC".to_owned()),
-        Type::Range { r#type: _ } => NodeType::Base("RANGE".to_owned()),
-        Type::String => NodeType::Base("STRING".to_owned()),
+        Type::BigNumeric => NodeType::BigNumeric,
+        Type::Bool => NodeType::Boolean,
+        Type::Bytes => NodeType::Bytes,
+        Type::Date => NodeType::Date,
+        Type::Datetime => NodeType::Datetime,
+        Type::Float64 => NodeType::Float64,
+        Type::Geography => NodeType::Geography,
+        Type::Int64 => NodeType::Int64,
+        Type::Interval => NodeType::Interval,
+        Type::Json => NodeType::Json,
+        Type::Numeric => NodeType::Numeric,
+        Type::Range { r#type: _ } => NodeType::Range,
+        Type::String => NodeType::String,
         Type::Struct { fields } => NodeType::Struct(StructNodeType {
             fields: fields
                 .iter()
@@ -3725,8 +3768,8 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
                 })
                 .collect(),
         }),
-        Type::Time => NodeType::Base("TIME".to_owned()),
-        Type::Timestamp => NodeType::Base("TIMESTAMP".to_owned()),
+        Type::Time => NodeType::Time,
+        Type::Timestamp => NodeType::Timestamp,
     };
     types_vec.push(r#type.clone());
     r#type
@@ -3743,22 +3786,22 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
         ParameterizedType::BigNumeric {
             precision: _,
             scale: _,
-        } => NodeType::Base("BIGNUMERIC".to_owned()),
-        ParameterizedType::Bool => NodeType::Base("BOOLEAN".to_owned()),
-        ParameterizedType::Bytes { max_length: _ } => NodeType::Base("BYTES".to_owned()),
-        ParameterizedType::Date => NodeType::Base("DATE".to_owned()),
-        ParameterizedType::Datetime => NodeType::Base("DATETIME".to_owned()),
-        ParameterizedType::Float64 => NodeType::Base("FLOAT64".to_owned()),
-        ParameterizedType::Geography => NodeType::Base("GEOGRAPHY".to_owned()),
-        ParameterizedType::Int64 => NodeType::Base("INT64".to_owned()),
-        ParameterizedType::Interval => NodeType::Base("INTERVAL".to_owned()),
-        ParameterizedType::Json => NodeType::Base("JSON".to_owned()),
+        } => NodeType::BigNumeric,
+        ParameterizedType::Bool => NodeType::Boolean,
+        ParameterizedType::Bytes { max_length: _ } => NodeType::Bytes,
+        ParameterizedType::Date => NodeType::Date,
+        ParameterizedType::Datetime => NodeType::Datetime,
+        ParameterizedType::Float64 => NodeType::Float64,
+        ParameterizedType::Geography => NodeType::Geography,
+        ParameterizedType::Int64 => NodeType::Int64,
+        ParameterizedType::Interval => NodeType::Interval,
+        ParameterizedType::Json => NodeType::Json,
         ParameterizedType::Numeric {
             precision: _,
             scale: _,
-        } => NodeType::Base("NUMERIC".to_owned()),
-        ParameterizedType::Range { r#type: _ } => NodeType::Base("RANGE".to_owned()),
-        ParameterizedType::String { max_length: _ } => NodeType::Base("STRING".to_owned()),
+        } => NodeType::Numeric,
+        ParameterizedType::Range { r#type: _ } => NodeType::Range,
+        ParameterizedType::String { max_length: _ } => NodeType::String,
         ParameterizedType::Struct { fields } => NodeType::Struct(StructNodeType {
             fields: fields
                 .iter()
@@ -3769,8 +3812,8 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
                 })
                 .collect(),
         }),
-        ParameterizedType::Time => NodeType::Base("TIME".to_owned()),
-        ParameterizedType::Timestamp => NodeType::Base("TIMESTAMP".to_owned()),
+        ParameterizedType::Time => NodeType::Time,
+        ParameterizedType::Timestamp => NodeType::Timestamp,
     }
 }
 
@@ -3999,6 +4042,7 @@ fn _extract_lineage(
 
                 obj_nodes.push(ReadyLineageNode {
                     name: node.name.nested_path().to_owned(),
+                    r#type: node.r#type.to_string(),
                     input: node_input,
                 });
             }

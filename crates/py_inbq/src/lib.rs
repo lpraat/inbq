@@ -3763,6 +3763,7 @@ impl RsToPyObject for ReadyLineageNode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "type_", self.r#type),
             kwarg!(py_ctx, "input", self.input),
         ];
         instantiate_py_class(

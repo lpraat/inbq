@@ -33,6 +33,7 @@ class ReadyLineageNodeInput:
 @dataclass
 class ReadyLineageNode:
     name: str
+    type_: str
     input: list[ReadyLineageNodeInput]
 
 
