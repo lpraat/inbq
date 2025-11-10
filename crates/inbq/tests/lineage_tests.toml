@@ -1306,7 +1306,7 @@ with s as (
 
 select
     s.s.x+s.s.y,
-    s.s.x+s.s.y
+    s.s.X+s.s.Y
 from s
 """
 [[tests.schema_objects]]
