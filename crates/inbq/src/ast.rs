@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumDiscriminants;
+use strum_macros::{Display, EnumDiscriminants};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ast {
@@ -867,7 +867,7 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Display)]
 pub enum BinaryOperator {
     BitwiseNot,
     Star,
