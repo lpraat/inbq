@@ -203,18 +203,23 @@ impl NodeType {
             (NodeType::Numeric, NodeType::Float64) => Some(NodeType::Float64),
             (NodeType::Float64, NodeType::BigNumeric) => Some(NodeType::Float64),
             (NodeType::BigNumeric, NodeType::Float64) => Some(NodeType::Float64),
-            (NodeType::Array(t1), NodeType::Array(t2)) => {
-                if let Some(super_type) = t1.r#type.common_supertype_with(&t2.r#type) {
-                    let mut super_input = t1.input.clone();
-                    super_input.extend(&t2.input);
-                    Some(NodeType::Array(Box::new(ArrayNodeType {
-                        r#type: super_type,
-                        input: super_input,
-                    })))
-                } else {
-                    None
-                }
-            }
+
+            // array<f64> and array<int64> are not coerceable to a common supertype
+            // but struct<x f64> and struct<x int64> are
+            // select if(true, struct(1.5 as x), struct(1 as x)).x -> ok
+            // select if(true, [1.5], [1])[0] -> ko
+            // (NodeType::Array(t1), NodeType::Array(t2)) => {
+            //     if let Some(super_type) = t1.r#type.common_supertype_with(&t2.r#type) {
+            //         let mut super_input = t1.input.clone();
+            //         super_input.extend(&t2.input);
+            //         Some(NodeType::Array(Box::new(ArrayNodeType {
+            //             r#type: super_type,
+            //             input: super_input,
+            //         })))
+            //     } else {
+            //         None
+            //     }
+            // }
             (NodeType::Struct(s1), NodeType::Struct(s2)) => {
                 let mut fields = vec![];
                 for (f1, f2) in s1.fields.iter().zip(&s2.fields) {
@@ -232,6 +237,8 @@ impl NodeType {
                 }
                 Some(NodeType::Struct(StructNodeType { fields }))
             }
+            (NodeType::Unknown, t2) => Some(t2.clone()),
+            (t1, NodeType::Unknown) => Some(t1.clone()),
             (t1, t2) if t1.is_same_type_of(t2) => Some(t1.clone()),
             _ => None,
         }
@@ -315,9 +322,10 @@ enum ContextObjectKind {
     JoinTable,
     TableAlias,
     UsingTable,
-    Anonymous, // TODO: anonymous_subquery?
+    AnonymousQuery,
     AnonymousStruct,
     AnonymousArray,
+    AnonymousExpr,
     Unnest,
     Var,
 }
@@ -332,7 +340,8 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::TableAlias => "table_alias".to_owned(),
             ContextObjectKind::JoinTable => "join_table".to_owned(),
             ContextObjectKind::UsingTable => "using_table".to_owned(),
-            ContextObjectKind::Anonymous => "anonymous".to_owned(),
+            ContextObjectKind::AnonymousQuery => "anonymous_query".to_owned(),
+            ContextObjectKind::AnonymousExpr => "anonymous_expr".to_owned(),
             ContextObjectKind::AnonymousStruct => "anonymous_struct".to_owned(),
             ContextObjectKind::AnonymousArray => "anonymous_array".to_owned(),
             ContextObjectKind::Unnest => "unnest".to_owned(),
@@ -435,7 +444,7 @@ impl Context {
         r#type: NodeType,
         source_obj: ArenaIndex,
         input: Vec<ArenaIndex>,
-    ) -> anyhow::Result<ArenaIndex> {
+    ) -> ArenaIndex {
         let idx = self.arena_lineage_nodes.allocate(LineageNode {
             name,
             r#type,
@@ -444,7 +453,7 @@ impl Context {
             nested_nodes: IndexMap::new(),
         });
         self.add_nested_nodes_from_input_nodes(idx, &input);
-        Ok(idx)
+        idx
     }
 
     fn add_nested_nodes_from_input_nodes(
@@ -899,10 +908,6 @@ impl Context {
         let nodes = &obj.lineage_nodes;
         self.output.extend(nodes);
     }
-
-    fn update_output_lineage_from_nodes(&mut self, new_lineage_nodes_indices: &Vec<ArenaIndex>) {
-        self.output.extend(new_lineage_nodes_indices);
-    }
 }
 
 #[derive(Debug, Default)]
@@ -926,52 +931,22 @@ impl LineageExtractor {
         format!("!{}_{}", name, self.get_anon_obj_id())
     }
 
-    fn call_func_and_consume_lineage_nodes<T>(
-        &mut self,
-        func: impl Fn(&mut LineageExtractor) -> std::result::Result<T, anyhow::Error>,
-    ) -> anyhow::Result<(Vec<ArenaIndex>, T)> {
-        let initial_stack_size = self.context.lineage_stack.len();
-        let f_out = func(self)?;
-        let curr_lineage_len = self.context.lineage_stack.len();
-        Ok((
-            self.consume_lineage_nodes(initial_stack_size, curr_lineage_len),
-            f_out,
-        ))
-    }
-
-    fn consume_lineage_nodes(
-        &mut self,
-        initial_stack_size: usize,
-        final_stack_size: usize,
-    ) -> Vec<ArenaIndex> {
-        let n_nodes = final_stack_size - initial_stack_size;
-        let mut lineage_nodes = Vec::with_capacity(n_nodes);
-        for _ in 0..n_nodes {
-            let node_idx = self.context.lineage_stack.pop().unwrap();
-            lineage_nodes.push(node_idx)
-        }
-        lineage_nodes.reverse();
-        lineage_nodes
-    }
-
     fn cte_lin(&mut self, cte: &Cte) -> anyhow::Result<()> {
         match cte {
             Cte::NonRecursive(non_recursive_cte) => {
                 let cte_name = &non_recursive_cte.name;
 
-                let (consumed_lineage_nodes, _) =
-                    self.call_func_and_consume_lineage_nodes(|this| {
-                        this.query_expr_lin(&non_recursive_cte.query, true)
-                    })?;
+                let obj_idx = self.query_expr_lin(&non_recursive_cte.query, true)?;
+                let obj = &self.context.arena_objects[obj_idx];
 
                 let cte_idx = self.context.allocate_new_ctx_object(
                     &cte_name.as_str().to_lowercase(),
                     ContextObjectKind::Cte,
-                    consumed_lineage_nodes
-                        .into_iter()
+                    obj.lineage_nodes
+                        .iter()
                         .map(|idx| {
-                            let node = &self.context.arena_lineage_nodes[idx];
-                            (node.name.clone(), node.r#type.clone(), vec![idx])
+                            let node = &self.context.arena_lineage_nodes[*idx];
+                            (node.name.clone(), node.r#type.clone(), vec![*idx])
                         })
                         .collect(),
                 );
@@ -1156,7 +1131,7 @@ impl LineageExtractor {
                 .lineage_nodes
                 .iter()
                 .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
-                .find(|(n, _)| n.name.string() == column)
+                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column))
                 .unwrap()
                 .1);
         } else {
@@ -1167,19 +1142,24 @@ impl LineageExtractor {
         }
     }
 
-    fn nested_node_lin(&mut self, access_path: &AccessPath, nested_node_idx: ArenaIndex) {
+    fn nested_node_lin(
+        &mut self,
+        access_path: &AccessPath,
+        nested_node_idx: ArenaIndex,
+    ) -> ArenaIndex {
         let path_len = access_path.path.len();
         if matches!(access_path.path[path_len - 1], AccessOp::FieldStar) {
-            let node = &self.context.arena_lineage_nodes[nested_node_idx];
-            node.input
-                .iter()
-                .for_each(|inp| self.context.lineage_stack.push(*inp));
+            let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
+            let node_idx =
+                self.allocate_expr_node("star", NodeType::Unknown, nested_node.input.clone());
+            self.context.output.push(node_idx);
+            node_idx
         } else {
-            self.context.lineage_stack.push(nested_node_idx);
+            nested_node_idx
         }
     }
 
-    fn binary_col_expr_lin(&mut self, expr: &BinaryExpr) -> anyhow::Result<NodeType> {
+    fn binary_col_expr_lin(&mut self, expr: &BinaryExpr) -> anyhow::Result<ArenaIndex> {
         let mut b = expr;
         let mut access_path = AccessPath::default();
         loop {
@@ -1203,20 +1183,24 @@ impl LineageExtractor {
                                 // table.col
                                 let col_source_idx =
                                     self.get_column(Some(left_ident), right_ident)?;
-                                self.context.lineage_stack.push(col_source_idx);
-                                return Ok(self.context.arena_lineage_nodes[col_source_idx]
-                                    .r#type
-                                    .clone());
+                                let col = &self.context.arena_lineage_nodes[col_source_idx];
+                                let col_name = col.name.clone();
+                                let allocated_node_idx = self.allocate_expr_node(
+                                    "col",
+                                    col.r#type.clone(),
+                                    vec![col_source_idx],
+                                );
+                                let allocated_node =
+                                    &mut self.context.arena_lineage_nodes[allocated_node_idx];
+                                allocated_node.name = col_name;
+                                return Ok(allocated_node_idx);
                             } else {
                                 // col_struct.field (or var_struct.field)
                                 let col_or_node_idx = self.get_col_or_var(left_ident)?;
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 let node = &self.context.arena_lineage_nodes[col_or_node_idx];
                                 let nested_node_idx = node.access(&access_path)?;
-                                self.nested_node_lin(&access_path, nested_node_idx);
-                                return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                                    .r#type
-                                    .clone());
+                                return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                             }
                         } else {
                             let col_or_var_source_idx = if self.get_table(left_ident).ok().is_some()
@@ -1233,10 +1217,7 @@ impl LineageExtractor {
                             access_path.path.reverse();
                             let node = &self.context.arena_lineage_nodes[col_or_var_source_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            self.nested_node_lin(&access_path, nested_node_idx);
-                            return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                                .r#type
-                                .clone());
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                         }
                     }
                     (Expr::Binary(left), right) => {
@@ -1290,26 +1271,20 @@ impl LineageExtractor {
                             }
                             _ => unreachable!(),
                         };
+                        self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (Expr::Array(array_expr), _) => {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
                         let node_idx = self.array_expr_lin(array_expr)?;
+                        self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (
                         Expr::Identifier(Identifier { name: ident })
@@ -1327,10 +1302,7 @@ impl LineageExtractor {
                         if self.get_table(ident).ok().is_some() {
                             // table.array_field
                             let col_source_idx = self.get_column(Some(ident), &array_field)?;
-                            self.context.lineage_stack.push(col_source_idx);
-                            return Ok(self.context.arena_lineage_nodes[col_source_idx]
-                                .r#type
-                                .clone());
+                            return Ok(col_source_idx);
                         } else {
                             // struct_col.array_field (or struct_var.array_field)
                             let col_or_var_idx = self.get_col_or_var(ident)?;
@@ -1342,10 +1314,7 @@ impl LineageExtractor {
 
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            self.nested_node_lin(&access_path, nested_node_idx);
-                            return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                                .r#type
-                                .clone());
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                         }
                     }
                     (
@@ -1357,24 +1326,21 @@ impl LineageExtractor {
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
+                        self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (Expr::Struct(struct_expr), Expr::Star) => {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr)?;
+                        self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(NodeType::Unknown);
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (
                         Expr::Identifier(Identifier { name: ident })
@@ -1384,10 +1350,11 @@ impl LineageExtractor {
                         if let Ok(source_obj_idx) = self.get_table(ident) {
                             // table.*
                             let source_obj = &self.context.arena_objects[source_obj_idx];
-                            self.context
-                                .lineage_stack
-                                .extend(source_obj.lineage_nodes.clone());
-                            return Ok(NodeType::Unknown);
+                            return Ok(self.allocate_expr_node(
+                                "table_star",
+                                NodeType::Unknown,
+                                source_obj.lineage_nodes.clone(),
+                            ));
                         } else {
                             // col_struct.*
                             let col_or_var_idx = self.get_col_or_var(ident)?;
@@ -1396,8 +1363,7 @@ impl LineageExtractor {
                                 path: vec![AccessOp::FieldStar],
                             };
                             let nested_node_idx = node.access(&access_path)?;
-                            self.nested_node_lin(&access_path, nested_node_idx);
-                            return Ok(NodeType::Unknown);
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                         }
                     }
                     (
@@ -1413,87 +1379,53 @@ impl LineageExtractor {
                             path: vec![AccessOp::Index],
                         };
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (
-                        Expr::Grouping(_) | Expr::Function(_) | Expr::GenericFunction(_),
+                        Expr::QueryNamedParameter(_)
+                        | Expr::QueryPositionalParameter
+                        | Expr::SystemVariable(_)
+                        | Expr::Query(_)
+                        | Expr::Grouping(_)
+                        | Expr::Function(_)
+                        | Expr::GenericFunction(_),
                         Expr::Identifier(Identifier { name: ident })
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                     ) => {
-                        // TODO: fix lineage by adding super node for function expressions
                         // select if(true, struct(3 as X), struct(10 as x)).x
+                        // select (select struct(1 as a, 2 as b)).a
+                        // todo: handle named/positional parameters and sysvars from schema
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
-                        let (consumed_nodes, left_type) = self
-                            .call_func_and_consume_lineage_nodes(|this| {
-                                this.select_expr_col_expr_lin(left, false)
-                            })?;
-                        debug_assert!(matches!(left_type, NodeType::Struct(_)));
                         let access_path = AccessPath {
                             path: vec![AccessOp::Field(ident.clone())],
                         };
-                        let node_idx = consumed_nodes[0];
+                        let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
+                        debug_assert!(matches!(node.r#type, NodeType::Struct(_)));
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
                     (
-                        Expr::Query(_),
-                        Expr::Identifier(Identifier { name: ident })
-                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
+                        Expr::QueryNamedParameter(_)
+                        | Expr::QueryPositionalParameter
+                        | Expr::SystemVariable(_)
+                        | Expr::Query(_)
+                        | Expr::Grouping(_)
+                        | Expr::Function(_)
+                        | Expr::GenericFunction(_),
+                        Expr::Number(_),
                     ) => {
-                        // select (select struct(1 as a, 2 as b)).a
-                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
-                        let (consumed_nodes, _) =
-                            self.call_func_and_consume_lineage_nodes(|this| {
-                                this.select_expr_col_expr_lin(left, false)
-                            })?;
-                        debug_assert!(consumed_nodes.len() == 1);
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Field(ident.clone())],
-                        };
-                        let node_idx = consumed_nodes[0];
-                        let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
-                        let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
-                    }
-                    (Expr::Grouping(_) | Expr::Query(_), Expr::Number(_)) => {
                         // select (select [1,2,3])[0]
+                        // todo: handle named/positional parameters and sysvars from schema
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
-                        let (consumed_nodes, _) =
-                            self.call_func_and_consume_lineage_nodes(|this| {
-                                this.select_expr_col_expr_lin(left, false)
-                            })?;
-                        debug_assert!(consumed_nodes.len() == 1);
                         let access_path = AccessPath {
                             path: vec![AccessOp::Index],
                         };
-                        let node_idx = consumed_nodes[0];
+                        let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        self.nested_node_lin(&access_path, nested_node_idx);
-                        return Ok(self.context.arena_lineage_nodes[nested_node_idx]
-                            .r#type
-                            .clone());
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
                     }
-
-                    (Expr::QueryNamedParameter(_), _)
-                    | (Expr::SystemVariable(_), _)
-                    | (Expr::QueryPositionalParameter, _) => {
-                        break;
-                    }
-
                     _ => {
                         return Err(anyhow!(
                             "Found unexpected binary expr with left: {:?} and right {:?}.",
@@ -1506,8 +1438,6 @@ impl LineageExtractor {
                 return self.binary_expr_col_type(left, right, op);
             }
         }
-
-        Ok(NodeType::Unknown)
     }
 
     fn binary_expr_col_type(
@@ -1515,11 +1445,18 @@ impl LineageExtractor {
         left_expr: &Expr,
         right_expr: &Expr,
         op: &BinaryOperator,
-    ) -> anyhow::Result<NodeType> {
-        let left_type = self.select_expr_col_expr_lin(left_expr, false)?;
-        let right_type = self.select_expr_col_expr_lin(right_expr, false)?;
+    ) -> anyhow::Result<ArenaIndex> {
+        let left_idx = self.select_expr_col_expr_lin(left_expr, false)?;
+        let right_idx = self.select_expr_col_expr_lin(right_expr, false)?;
+
+        let left_node = &self.context.arena_lineage_nodes[left_idx];
+        let right_node = &self.context.arena_lineage_nodes[right_idx];
+
+        let left_type = &left_node.r#type;
+        let right_type = &right_node.r#type;
+
         let node_type = match op {
-            BinaryOperator::Star | BinaryOperator::Slash => match (&left_type, &right_type) {
+            BinaryOperator::Star | BinaryOperator::Slash => match (left_type, right_type) {
                 (left, right) if left == right => left.clone(),
                 (NodeType::Int64, NodeType::Float64) | (NodeType::Float64, NodeType::Int64) => {
                     NodeType::Float64
@@ -1549,7 +1486,7 @@ impl LineageExtractor {
                     ));
                 }
             },
-            BinaryOperator::Plus | BinaryOperator::Minus => match (&left_type, &right_type) {
+            BinaryOperator::Plus | BinaryOperator::Minus => match (left_type, right_type) {
                 (left, right) if left == right => left.clone(),
                 (NodeType::Int64, NodeType::Float64) | (NodeType::Float64, NodeType::Int64) => {
                     NodeType::Float64
@@ -1582,7 +1519,7 @@ impl LineageExtractor {
                     ));
                 }
             },
-            BinaryOperator::Concat => match (&left_type, &right_type) {
+            BinaryOperator::Concat => match (left_type, right_type) {
                 (left, right)
                     if left == right
                         && matches!(
@@ -1604,7 +1541,7 @@ impl LineageExtractor {
                 }
             },
             BinaryOperator::BitwiseLeftShift | BinaryOperator::BitwiseRightShift => {
-                match (&left_type, &right_type) {
+                match (left_type, right_type) {
                     (NodeType::Bytes, NodeType::Int64) => NodeType::Bytes,
                     (NodeType::Int64, NodeType::Int64) => NodeType::Int64,
                     _ => {
@@ -1620,7 +1557,7 @@ impl LineageExtractor {
                 }
             }
             BinaryOperator::BitwiseAnd | BinaryOperator::BitwiseOr | BinaryOperator::BitwiseXor => {
-                match (&left_type, &right_type) {
+                match (left_type, right_type) {
                     (NodeType::Int64, NodeType::Int64) => NodeType::Int64,
                     (NodeType::Bytes, NodeType::Bytes) => NodeType::Bytes,
                     _ => {
@@ -1655,7 +1592,13 @@ impl LineageExtractor {
             | BinaryOperator::Or => NodeType::Boolean,
             _ => unreachable!(),
         };
-        Ok(node_type)
+        let node_idx = self.allocate_expr_node(
+            &format!("bin_expr_{}", op),
+            node_type,
+            vec![left_idx, right_idx],
+        );
+        self.context.output.push(node_idx);
+        Ok(node_idx)
     }
 
     fn add_struct_node_field_types_from_type(&mut self, typ: &Type) {
@@ -1682,21 +1625,15 @@ impl LineageExtractor {
         for field in struct_expr.fields.iter() {
             let name = field.alias.as_ref().map(|tok| tok.as_str().to_owned());
 
-            let (consumed_nodes, field_type) =
-                self.call_func_and_consume_lineage_nodes(|this| {
-                    this.select_expr_col_expr_lin(&field.expr, false)
-                })?;
+            let node_field_idx = self.select_expr_col_expr_lin(&field.expr, false)?;
+            let node_field = &self.context.arena_lineage_nodes[node_field_idx];
 
             let mut name_from_col = None;
-            if consumed_nodes.len() == 1 {
-                if let NodeName::Defined(name) =
-                    &self.context.arena_lineage_nodes[consumed_nodes[0]].name
-                {
-                    name_from_col = Some(name);
-                }
-            };
+            if let NodeName::Defined(ref name) = node_field.name {
+                name_from_col = Some(name);
+            }
 
-            input.extend(consumed_nodes.clone());
+            input.push(node_field_idx);
 
             let struct_node_field_type = self.context.struct_node_field_types_stack.pop();
 
@@ -1710,8 +1647,11 @@ impl LineageExtractor {
                 "!anonymous"
             };
 
-            let struct_node_field_type =
-                StructNodeFieldType::new(field_name, field_type, consumed_nodes);
+            let struct_node_field_type = StructNodeFieldType::new(
+                field_name,
+                node_field.r#type.clone(),
+                vec![node_field_idx],
+            );
             fields.push(struct_node_field_type);
         }
 
@@ -1739,10 +1679,6 @@ impl LineageExtractor {
 
         let obj = &mut self.context.arena_objects[obj_idx];
         obj.lineage_nodes.push(node_idx);
-
-        self.context.lineage_stack.push(node_idx);
-        self.context.output.push(node_idx);
-
         Ok(node_idx)
     }
 
@@ -1752,24 +1688,25 @@ impl LineageExtractor {
             self.add_struct_node_field_types_from_type(typ);
         }
 
-        let (consumed_nodes, array_type) = self.call_func_and_consume_lineage_nodes(|this| {
-            let mut array_type: Option<NodeType> = None;
-            for expr in array_expr.exprs.iter() {
-                let element_type = this.select_expr_col_expr_lin(expr, false)?;
-                if let Some(array_type) = &array_type {
-                    if !element_type.is_same_type_of(array_type) {
-                        return Err(anyhow!(
-                            "Found element of type `{}` in array of type `{}`",
-                            element_type,
-                            array_type
-                        ));
-                    }
-                } else {
-                    array_type = Some(element_type);
+        let mut input = vec![];
+        let mut array_type: Option<NodeType> = None;
+        for expr in &array_expr.exprs {
+            let element_node_idx = self.select_expr_col_expr_lin(expr, false)?;
+            let element = &self.context.arena_lineage_nodes[element_node_idx];
+            if let Some(array_type) = &array_type {
+                if !element.r#type.is_same_type_of(array_type) {
+                    return Err(anyhow!(
+                        "Found element of type `{}` in array of type `{}`",
+                        element.r#type,
+                        array_type
+                    ));
                 }
+            } else {
+                array_type = Some(element.r#type.clone());
             }
-            Ok(array_type.unwrap())
-        })?;
+            input.extend(&element.input)
+        }
+        let array_type = array_type.unwrap();
 
         let obj_name = self.get_anon_obj_name("anon_array");
         let obj_idx = self.context.allocate_new_ctx_object(
@@ -1780,14 +1717,14 @@ impl LineageExtractor {
 
         let arr_node_type = NodeType::Array(Box::new(ArrayNodeType {
             r#type: array_type,
-            input: consumed_nodes.clone(),
+            input: input.clone(),
         }));
 
         let node = LineageNode {
             name: NodeName::Anonymous,
             r#type: arr_node_type,
             source_obj: obj_idx,
-            input: consumed_nodes,
+            input,
             nested_nodes: IndexMap::new(),
         };
 
@@ -1796,9 +1733,6 @@ impl LineageExtractor {
 
         let obj = &mut self.context.arena_objects[obj_idx];
         obj.lineage_nodes.push(node_idx);
-
-        self.context.lineage_stack.push(node_idx);
-        self.context.output.push(node_idx);
         Ok(node_idx)
     }
 
@@ -1844,269 +1778,489 @@ impl LineageExtractor {
         node_idx
     }
 
+    fn allocate_expr_node(
+        &mut self,
+        source_name: &str,
+        r#type: NodeType,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
+        // TODO: use a common container obj for literals
+        let obj_name = self.get_anon_obj_name(source_name);
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousExpr,
+            vec![],
+        );
+        self.context
+            .allocate_new_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
+    }
+
+    fn common_supertype_error_msg(
+        &self,
+        t1: &NodeType,
+        t2: &NodeType,
+        expr_name: &str,
+        expr: &Expr,
+    ) -> String {
+        format!(
+            "Cannot find common supertype for type `{}` and type `{}` in {} expr `{:?}`",
+            t1, t2, expr_name, expr
+        )
+    }
+
     fn select_expr_col_expr_lin(
         &mut self,
         expr: &Expr,
         expand_value_table: bool,
-    ) -> anyhow::Result<NodeType> {
-        Ok(match expr {
-            Expr::Null
-            | Expr::Default
-            | Expr::QueryNamedParameter(_)
-            | Expr::QueryPositionalParameter
-            | Expr::SystemVariable(_) => NodeType::Unknown,
-            Expr::RawBytes(_) | Expr::Bytes(_) | Expr::BytesConcat(_) => NodeType::Bytes,
-            Expr::String(_) | Expr::RawString(_) | Expr::StringConcat(_) => NodeType::String,
-            Expr::Bool(_) => NodeType::Boolean,
+    ) -> anyhow::Result<ArenaIndex> {
+        let node_idx = match expr {
+            // todo: retrieve type from schema for query named/positional
+            Expr::QueryNamedParameter(_) => {
+                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+            }
+            Expr::QueryPositionalParameter => {
+                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+            }
+
+            // todo: retrieve type from sysvars
+            Expr::SystemVariable(_) => {
+                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+            }
+
+            Expr::Null => self.allocate_expr_node("literal", NodeType::Unknown, vec![]),
+            Expr::Default => self.allocate_expr_node("literal", NodeType::Unknown, vec![]),
+            Expr::RawBytes(_) | Expr::Bytes(_) | Expr::BytesConcat(_) => {
+                self.allocate_expr_node("literal", NodeType::Bytes, vec![])
+            }
+            Expr::String(_) | Expr::RawString(_) | Expr::StringConcat(_) => {
+                self.allocate_expr_node("literal", NodeType::String, vec![])
+            }
+            Expr::Bool(_) => self.allocate_expr_node("literal", NodeType::Boolean, vec![]),
             Expr::Number(num_expr) => {
-                if num_expr.value.parse::<i64>().is_ok() {
+                let r#type = if num_expr.value.parse::<i64>().is_ok() {
                     NodeType::Int64
                 } else {
                     NodeType::Float64
-                }
+                };
+                self.allocate_expr_node("constant", r#type, vec![])
             }
-            Expr::Numeric(_) => NodeType::Numeric,
-            Expr::BigNumeric(_) => NodeType::BigNumeric,
-            Expr::Range(_) => NodeType::Range,
-            Expr::Date(_) => NodeType::Date,
-            Expr::Timestamp(_) => NodeType::Timestamp,
-            Expr::Datetime(_) => NodeType::Datetime,
-            Expr::Time(_) => NodeType::Time,
-            Expr::Json(_) => NodeType::Json,
+            Expr::Numeric(_) => self.allocate_expr_node("constant", NodeType::Numeric, vec![]),
+            Expr::BigNumeric(_) => {
+                self.allocate_expr_node("constant", NodeType::BigNumeric, vec![])
+            }
+            Expr::Range(_) => self.allocate_expr_node("constant", NodeType::Range, vec![]),
+            Expr::Date(_) => self.allocate_expr_node("constant", NodeType::Date, vec![]),
+            Expr::Timestamp(_) => self.allocate_expr_node("constant", NodeType::Timestamp, vec![]),
+            Expr::Datetime(_) => self.allocate_expr_node("constant", NodeType::Datetime, vec![]),
+            Expr::Time(_) => self.allocate_expr_node("constant", NodeType::Time, vec![]),
+            Expr::Json(_) => self.allocate_expr_node("constant", NodeType::Json, vec![]),
             Expr::Binary(binary_expr) => self.binary_col_expr_lin(binary_expr)?,
             Expr::Unary(unary_expr) => {
-                self.select_expr_col_expr_lin(&unary_expr.right, expand_value_table)?
+                let node_idx =
+                    self.select_expr_col_expr_lin(&unary_expr.right, expand_value_table)?;
+                let node = &self.context.arena_lineage_nodes[node_idx];
+                self.allocate_expr_node("unary", node.r#type.clone(), vec![node_idx])
             }
             Expr::Grouping(grouping_expr) => {
-                self.select_expr_col_expr_lin(&grouping_expr.expr, expand_value_table)?
+                let node_idx =
+                    self.select_expr_col_expr_lin(&grouping_expr.expr, expand_value_table)?;
+                let node = &self.context.arena_lineage_nodes[node_idx];
+                self.allocate_expr_node("grouping", node.r#type.clone(), vec![node_idx])
             }
             Expr::Identifier(Identifier { name: ident })
             | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
                 if let Ok(source_obj_idx) = self.get_table(ident) {
                     // table (can be unnest)
                     let source_obj = &self.context.arena_objects[source_obj_idx];
-                    let struct_idx = self.create_anon_struct_from_table_nodes(
+                    self.create_anon_struct_from_table_nodes(
                         ident,
                         &source_obj.lineage_nodes.clone(),
-                    );
-                    self.context.arena_lineage_nodes[struct_idx].r#type.clone()
+                    )
                 } else {
                     // col
-                    let col_or_var_idx = self.get_col_or_var(ident)?;
-                    self.context.lineage_stack.push(col_or_var_idx);
-                    self.context.arena_lineage_nodes[col_or_var_idx]
-                        .r#type
-                        .clone()
+                    let node_idx = self.get_col_or_var(ident)?;
+                    let node = &self.context.arena_lineage_nodes[node_idx];
+                    let allocated_node_idx =
+                        self.allocate_expr_node("col", node.r#type.clone(), vec![node_idx]);
+                    let allocated_node = &mut self.context.arena_lineage_nodes[allocated_node_idx];
+                    allocated_node.name = NodeName::Defined(ident.clone());
+                    allocated_node_idx
                 }
             }
             Expr::Interval(interval_expr) => match interval_expr {
                 IntervalExpr::Interval { value, .. } => {
-                    self.select_expr_col_expr_lin(value, expand_value_table)?;
-                    NodeType::Interval
+                    let node_idx = self.select_expr_col_expr_lin(value, expand_value_table)?;
+                    self.allocate_expr_node("interval", NodeType::Interval, vec![node_idx])
                 }
-                IntervalExpr::IntervalRange { .. } => NodeType::Interval,
+                IntervalExpr::IntervalRange { .. } => {
+                    self.allocate_expr_node("constant", NodeType::Interval, vec![])
+                }
             },
-            Expr::Array(array_expr) => {
-                let array_idx = self.array_expr_lin(array_expr)?;
-                self.context.arena_lineage_nodes[array_idx].r#type.clone()
-            }
+            Expr::Array(array_expr) => self.array_expr_lin(array_expr)?,
             Expr::Unnest(unnext_expr) => {
-                self.select_expr_col_expr_lin(&unnext_expr.array, expand_value_table)?
+                let node_idx =
+                    self.select_expr_col_expr_lin(&unnext_expr.array, expand_value_table)?;
+                let node = &self.context.arena_lineage_nodes[node_idx];
+                self.allocate_expr_node("unnest", node.r#type.clone(), vec![node_idx])
             }
-            Expr::Struct(struct_expr) => {
-                let struct_idx = self.struct_expr_lin(struct_expr)?;
-                self.context.arena_lineage_nodes[struct_idx].r#type.clone()
-            }
+            Expr::Struct(struct_expr) => self.struct_expr_lin(struct_expr)?,
             Expr::Query(query_expr) => {
-                self.query_expr_lin(query_expr, expand_value_table)?;
-                NodeType::Unknown
+                let obj_idx = self.query_expr_lin(query_expr, expand_value_table)?;
+                let obj = &self.context.arena_objects[obj_idx];
+                debug_assert!(obj.lineage_nodes.len() == 1);
+                let node_idx = obj.lineage_nodes[0];
+                let node = &self.context.arena_lineage_nodes[node_idx];
+                self.allocate_expr_node("subquery", node.r#type.clone(), vec![node_idx])
             }
             Expr::Exists(query_expr) => {
-                self.query_expr_lin(query_expr, expand_value_table)?;
-                NodeType::Unknown
+                let obj_idx = self.query_expr_lin(query_expr, expand_value_table)?;
+                let obj = &self.context.arena_objects[obj_idx];
+                debug_assert!(obj.lineage_nodes.len() == 1);
+                let node_idx = obj.lineage_nodes[0];
+                let node = &self.context.arena_lineage_nodes[node_idx];
+                self.allocate_expr_node("exists_subquery", node.r#type.clone(), vec![node_idx])
             }
             Expr::Case(case_expr) => {
+                let mut super_type = NodeType::Unknown;
+                let mut input = vec![];
+
                 if let Some(case) = &case_expr.case {
-                    self.select_expr_col_expr_lin(case, expand_value_table)?;
+                    let node_idx = self.select_expr_col_expr_lin(case, expand_value_table)?;
+                    let node = &self.context.arena_lineage_nodes[node_idx];
+                    super_type = super_type.common_supertype_with(&node.r#type).unwrap();
+                    input.push(node_idx);
                 }
+
                 for when_then in &case_expr.when_thens {
-                    self.select_expr_col_expr_lin(&when_then.when, expand_value_table)?;
-                    self.select_expr_col_expr_lin(&when_then.then, expand_value_table)?;
+                    let when_idx =
+                        self.select_expr_col_expr_lin(&when_then.when, expand_value_table)?;
+                    let when_node = &self.context.arena_lineage_nodes[when_idx];
+                    if let Some(new_super_type) =
+                        super_type.common_supertype_with(&when_node.r#type)
+                    {
+                        super_type = new_super_type;
+                    } else {
+                        return Err(anyhow!(self.common_supertype_error_msg(
+                            &super_type,
+                            &when_node.r#type,
+                            "case",
+                            expr
+                        )));
+                    }
+                    input.push(when_idx);
+
+                    let then_idx =
+                        self.select_expr_col_expr_lin(&when_then.then, expand_value_table)?;
+                    let then_node = &self.context.arena_lineage_nodes[then_idx];
+                    if let Some(new_super_type) =
+                        super_type.common_supertype_with(&then_node.r#type)
+                    {
+                        super_type = new_super_type;
+                    } else {
+                        return Err(anyhow!(self.common_supertype_error_msg(
+                            &super_type,
+                            &then_node.r#type,
+                            "case",
+                            expr
+                        )));
+                    }
+                    input.push(then_idx);
                 }
+
                 if let Some(else_expr) = &case_expr.r#else {
-                    self.select_expr_col_expr_lin(else_expr, expand_value_table)?;
+                    let else_idx = self.select_expr_col_expr_lin(else_expr, expand_value_table)?;
+                    let else_node = &self.context.arena_lineage_nodes[else_idx];
+                    if let Some(new_super_type) =
+                        super_type.common_supertype_with(&else_node.r#type)
+                    {
+                        super_type = new_super_type;
+                    } else {
+                        return Err(anyhow!(self.common_supertype_error_msg(
+                            &super_type,
+                            &else_node.r#type,
+                            "case",
+                            expr
+                        )));
+                    }
+                    input.push(else_idx);
                 }
-                NodeType::Unknown
+
+                self.allocate_expr_node("case", super_type, input)
             }
             Expr::GenericFunction(function_expr) => {
+                let mut input = vec![];
                 for arg in &function_expr.arguments {
-                    self.select_expr_col_expr_lin(&arg.expr, expand_value_table)?;
+                    let node_idx = self.select_expr_col_expr_lin(&arg.expr, expand_value_table)?;
+                    input.push(node_idx);
                 }
-                NodeType::Unknown
+                // TODO: retrieve return type from fn->info map
+                self.allocate_expr_node(function_expr.name.as_str(), NodeType::Unknown, input)
             }
             Expr::Function(function_expr) => match function_expr.as_ref() {
                 FunctionExpr::Concat(concat_fn_expr) => {
+                    let mut super_type = NodeType::Unknown;
+                    let mut input = vec![];
                     for expr in &concat_fn_expr.values {
-                        self.select_expr_col_expr_lin(expr, expand_value_table)?;
+                        let node_idx = self.select_expr_col_expr_lin(expr, expand_value_table)?;
+                        let node = &self.context.arena_lineage_nodes[node_idx];
+                        if let Some(new_super_type) = super_type.common_supertype_with(&node.r#type)
+                        {
+                            super_type = new_super_type
+                        } else {
+                            return Err(anyhow!(self.common_supertype_error_msg(
+                                &super_type,
+                                &node.r#type,
+                                "concat",
+                                expr
+                            )));
+                        }
+                        input.push(node_idx);
                     }
-                    NodeType::Unknown
+
+                    if !matches!(super_type, NodeType::Bytes | NodeType::String) {
+                        return Err(anyhow!(
+                            "Found unexpected return type `{}` in concat function {:?}. Return type must be {} or {}.",
+                            super_type,
+                            concat_fn_expr,
+                            NodeType::Bytes,
+                            NodeType::String
+                        ));
+                    }
+
+                    self.allocate_expr_node("fn_concat", super_type, input)
                 }
                 FunctionExpr::Cast(cast_fn_expr) => {
-                    self.select_expr_col_expr_lin(&cast_fn_expr.expr, expand_value_table)?
+                    let node_idx =
+                        self.select_expr_col_expr_lin(&cast_fn_expr.expr, expand_value_table)?;
+                    let cast_type = node_type_from_parser_parameterized_type(&cast_fn_expr.r#type);
+                    self.allocate_expr_node("cast", cast_type, vec![node_idx])
                 }
                 FunctionExpr::SafeCast(safe_cast_fn_expr) => {
-                    self.select_expr_col_expr_lin(&safe_cast_fn_expr.expr, expand_value_table)?
+                    let node_idx =
+                        self.select_expr_col_expr_lin(&safe_cast_fn_expr.expr, expand_value_table)?;
+                    let safe_cast_type =
+                        node_type_from_parser_parameterized_type(&safe_cast_fn_expr.r#type);
+                    self.allocate_expr_node("safe_cast", safe_cast_type, vec![node_idx])
                 }
                 FunctionExpr::Array(array_function_expr) => {
-                    self.array_function_expr_lin(array_function_expr)?;
-                    NodeType::Unknown
+                    self.array_function_expr_lin(array_function_expr)?
                 }
                 FunctionExpr::ArrayAgg(array_agg_function_expr) => {
-                    self.array_agg_function_expr_lin(array_agg_function_expr, expand_value_table)?;
-                    NodeType::Unknown
-                }
-                FunctionExpr::CurrentDate(current_date_function_expr) => {
-                    if let Some(timezone_expr) = &current_date_function_expr.timezone {
-                        self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
-                    }
-                    NodeType::Date
+                    self.array_agg_function_expr_lin(array_agg_function_expr, expand_value_table)?
                 }
                 FunctionExpr::If(if_function_expr) => {
-                    self.select_expr_col_expr_lin(&if_function_expr.condition, expand_value_table)?;
-                    let true_result_type = self.select_expr_col_expr_lin(
+                    let cond_node_idx = self.select_expr_col_expr_lin(
+                        &if_function_expr.condition,
+                        expand_value_table,
+                    )?;
+                    let true_result_node_idx = self.select_expr_col_expr_lin(
                         &if_function_expr.true_result,
                         expand_value_table,
                     )?;
-                    let false_result_type = self.select_expr_col_expr_lin(
+
+                    let false_result_node_idx = self.select_expr_col_expr_lin(
                         &if_function_expr.false_result,
                         expand_value_table,
                     )?;
 
-                    if let Some(if_type) =
-                        true_result_type.common_supertype_with(&false_result_type)
+                    let true_result_node = &self.context.arena_lineage_nodes[true_result_node_idx];
+                    let false_result_node =
+                        &self.context.arena_lineage_nodes[false_result_node_idx];
+
+                    let if_type = if let Some(if_type) = true_result_node
+                        .r#type
+                        .common_supertype_with(&false_result_node.r#type)
                     {
                         if_type
                     } else {
-                        return Err(anyhow!(
-                            "Cannot find common supertype for true branch type `{}` and false branch type `{}` in if expr `{:?}`/",
-                            true_result_type,
-                            false_result_type,
-                            if_function_expr
-                        ));
-                    }
+                        return Err(anyhow!(self.common_supertype_error_msg(
+                            &true_result_node.r#type,
+                            &false_result_node.r#type,
+                            "if",
+                            expr
+                        )));
+                    };
+
+                    self.allocate_expr_node(
+                        "if",
+                        if_type,
+                        vec![cond_node_idx, true_result_node_idx, false_result_node_idx],
+                    )
                 }
                 FunctionExpr::Right(right_function_expr) => {
-                    self.select_expr_col_expr_lin(&right_function_expr.value, expand_value_table)?;
-                    self.select_expr_col_expr_lin(&right_function_expr.length, expand_value_table)?;
-                    NodeType::Unknown
+                    let value_idx = self
+                        .select_expr_col_expr_lin(&right_function_expr.value, expand_value_table)?;
+                    let len_idx = self.select_expr_col_expr_lin(
+                        &right_function_expr.length,
+                        expand_value_table,
+                    )?;
+
+                    let value = &self.context.arena_lineage_nodes[value_idx];
+
+                    self.allocate_expr_node("right", value.r#type.clone(), vec![value_idx, len_idx])
                 }
-                FunctionExpr::CurrentTimestamp => NodeType::Timestamp,
+                FunctionExpr::CurrentDate(current_date_function_expr) => {
+                    let mut input = vec![];
+                    if let Some(timezone_expr) = &current_date_function_expr.timezone {
+                        let node_idx =
+                            self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
+                        input.push(node_idx);
+                    }
+                    self.allocate_expr_node("current_date", NodeType::Date, input)
+                }
+                FunctionExpr::CurrentTimestamp => {
+                    self.allocate_expr_node("current_timestamp", NodeType::Timestamp, vec![])
+                }
                 FunctionExpr::Extract(extract_function_expr) => {
-                    self.select_expr_col_expr_lin(&extract_function_expr.expr, expand_value_table)?;
-                    NodeType::Unknown
+                    let node_idx = self.select_expr_col_expr_lin(
+                        &extract_function_expr.expr,
+                        expand_value_table,
+                    )?;
+                    self.allocate_expr_node("extract", NodeType::Int64, vec![node_idx])
                 }
                 FunctionExpr::DateDiff(date_diff_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let start_date_idx = self.select_expr_col_expr_lin(
                         &date_diff_function_expr.start_date,
                         expand_value_table,
                     )?;
-                    self.select_expr_col_expr_lin(
+                    let end_date_idx = self.select_expr_col_expr_lin(
                         &date_diff_function_expr.end_date,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node(
+                        "date_diff",
+                        NodeType::Int64,
+                        vec![start_date_idx, end_date_idx],
+                    )
                 }
                 FunctionExpr::DatetimeDiff(datetime_diff_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let start_datetime_idx = self.select_expr_col_expr_lin(
                         &datetime_diff_function_expr.start_datetime,
                         expand_value_table,
                     )?;
-                    self.select_expr_col_expr_lin(
+                    let end_datetime_idx = self.select_expr_col_expr_lin(
                         &datetime_diff_function_expr.end_datetime,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node(
+                        "datetime_diff",
+                        NodeType::Int64,
+                        vec![start_datetime_idx, end_datetime_idx],
+                    )
                 }
                 FunctionExpr::TimestampDiff(timestamp_diff_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let start_timestamp_idx = self.select_expr_col_expr_lin(
                         &timestamp_diff_function_expr.start_timestamp,
                         expand_value_table,
                     )?;
-                    self.select_expr_col_expr_lin(
+                    let end_timestamp_idx = self.select_expr_col_expr_lin(
                         &timestamp_diff_function_expr.end_timestamp,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node(
+                        "timestamp_diff",
+                        NodeType::Timestamp,
+                        vec![start_timestamp_idx, end_timestamp_idx],
+                    )
                 }
                 FunctionExpr::TimeDiff(time_diff_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let start_time_idx = self.select_expr_col_expr_lin(
                         &time_diff_function_expr.start_time,
                         expand_value_table,
                     )?;
-                    self.select_expr_col_expr_lin(
+                    let end_time_idx = self.select_expr_col_expr_lin(
                         &time_diff_function_expr.end_time,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node(
+                        "time_diff",
+                        NodeType::Time,
+                        vec![start_time_idx, end_time_idx],
+                    )
                 }
                 FunctionExpr::DateTrunc(date_trunc_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let node_idx = self.select_expr_col_expr_lin(
                         &date_trunc_function_expr.date,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node("date_trunc", NodeType::Date, vec![node_idx])
                 }
                 FunctionExpr::DatetimeTrunc(datetime_trunc_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let mut input = vec![];
+                    let datetime_idx = self.select_expr_col_expr_lin(
                         &datetime_trunc_function_expr.datetime,
                         expand_value_table,
                     )?;
+                    input.push(datetime_idx);
                     if let Some(timezone) = &datetime_trunc_function_expr.timezone {
-                        self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                        let timezone_idx =
+                            self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                        input.push(timezone_idx)
                     }
-                    NodeType::Unknown
+                    self.allocate_expr_node("datetime_trunc", NodeType::Datetime, input)
                 }
                 FunctionExpr::TimestampTrunc(timestamp_trunc_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let mut input = vec![];
+                    let timestamp_idx = self.select_expr_col_expr_lin(
                         &timestamp_trunc_function_expr.timestamp,
                         expand_value_table,
                     )?;
+                    input.push(timestamp_idx);
                     if let Some(timezone) = &timestamp_trunc_function_expr.timezone {
-                        self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                        let timezone_idx =
+                            self.select_expr_col_expr_lin(timezone, expand_value_table)?;
+                        input.push(timezone_idx)
                     }
-                    NodeType::Unknown
+                    self.allocate_expr_node("timestamp_trunc", NodeType::Timestamp, input)
                 }
                 FunctionExpr::TimeTrunc(time_trunc_function_expr) => {
-                    self.select_expr_col_expr_lin(
+                    let node_idx = self.select_expr_col_expr_lin(
                         &time_trunc_function_expr.time,
                         expand_value_table,
                     )?;
-                    NodeType::Unknown
+                    self.allocate_expr_node("time_trunc", NodeType::Time, vec![node_idx])
                 }
             },
             Expr::Star => {
-                // NOTE: we can enter here for a COUNT(*) – currently a no‑op placeholder
-                NodeType::Unknown
+                // NOTE: we can enter here for a COUNT(*)
+                self.allocate_expr_node("star", NodeType::Int64, vec![])
             }
             Expr::QuantifiedLike(quantified_like_expr) => match &quantified_like_expr.pattern {
                 QuantifiedLikeExprPattern::ExprList { exprs } => {
+                    let mut input = vec![];
                     for expr in exprs {
-                        self.select_expr_col_expr_lin(expr, expand_value_table)?;
+                        let node_idx = self.select_expr_col_expr_lin(expr, expand_value_table)?;
+                        input.push(node_idx);
                     }
-                    NodeType::Unknown
+                    self.allocate_expr_node("quantified_like_expr", NodeType::Boolean, input)
                 }
                 QuantifiedLikeExprPattern::ArrayUnnest { expr } => {
-                    self.select_expr_col_expr_lin(expr, expand_value_table)?;
-                    NodeType::Unknown
+                    let node_idx = self.select_expr_col_expr_lin(expr, expand_value_table)?;
+                    self.allocate_expr_node(
+                        "quantified_like_array_unnest",
+                        NodeType::Boolean,
+                        vec![node_idx],
+                    )
                 }
             },
             Expr::With(with_expr) => {
+                let mut input = vec![];
                 for with_var in &with_expr.vars {
-                    self.select_expr_col_expr_lin(&with_var.value, expand_value_table)?;
+                    let node_idx =
+                        self.select_expr_col_expr_lin(&with_var.value, expand_value_table)?;
+                    input.push(node_idx)
                 }
-                NodeType::Unknown
+                let result_idx =
+                    self.select_expr_col_expr_lin(&with_expr.result, expand_value_table)?;
+                let result = &self.context.arena_lineage_nodes[result_idx];
+                input.push(result_idx);
+                self.allocate_expr_node("with", result.r#type.clone(), input)
             }
-        })
+        };
+
+        self.context.output.push(node_idx);
+
+        Ok(node_idx)
     }
 
     fn array_function_expr_lin(
@@ -2124,9 +2278,8 @@ impl LineageExtractor {
         array_agg_function_expr: &ArrayAggFunctionExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<ArenaIndex> {
-        let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.select_expr_col_expr_lin(&array_agg_function_expr.arg.expr, expand_value_table)
-        })?;
+        let node_idx =
+            self.select_expr_col_expr_lin(&array_agg_function_expr.arg.expr, expand_value_table)?;
         let obj_name = self.get_anon_obj_name("anon_array");
         let obj_idx = self.context.allocate_new_ctx_object(
             &obj_name,
@@ -2134,27 +2287,23 @@ impl LineageExtractor {
             vec![],
         );
 
-        let consumed_node_idx = consumed_nodes[0];
-        let consumed_node = &self.context.arena_lineage_nodes[consumed_node_idx];
+        let node = &self.context.arena_lineage_nodes[node_idx];
 
         let lin_node = LineageNode {
             name: NodeName::Anonymous,
             r#type: NodeType::Array(Box::new(ArrayNodeType {
-                r#type: consumed_node.r#type.clone(),
-                input: vec![consumed_node_idx],
+                r#type: node.r#type.clone(),
+                input: vec![node_idx],
             })),
-            source_obj: consumed_node.source_obj,
-            input: consumed_node.input.clone(),
+            source_obj: node.source_obj,
+            input: node.input.clone(),
             nested_nodes: IndexMap::new(),
         };
         let lin_node_idx = self.context.arena_lineage_nodes.allocate(lin_node);
         self.context.add_nested_nodes(lin_node_idx);
 
         let obj = &mut self.context.arena_objects[obj_idx];
-        obj.lineage_nodes.push(consumed_node_idx);
-
-        self.context.lineage_stack.push(lin_node_idx);
-        self.context.output.push(lin_node_idx);
+        obj.lineage_nodes.push(node_idx);
         Ok(lin_node_idx)
     }
 
@@ -2241,7 +2390,7 @@ impl LineageExtractor {
         for tup in new_lineage_nodes {
             let lineage_node_idx = self
                 .context
-                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3)?;
+                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3);
             self.context.lineage_stack.push(lineage_node_idx);
             lineage_nodes.push(lineage_node_idx);
             self.context.arena_objects[anon_obj_idx]
@@ -2264,13 +2413,12 @@ impl LineageExtractor {
                 .collect::<HashSet<String>>()
         });
 
-        let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.select_expr_col_expr_lin(&col_expr.expr, false)
-        })?;
+        let node_idx = self.select_expr_col_expr_lin(&col_expr.expr, false)?;
+        let node = &self.context.arena_lineage_nodes[node_idx];
 
         let mut new_lineage_nodes = vec![];
-        for node_idx in &consumed_nodes {
-            let node = &mut self.context.arena_lineage_nodes[*node_idx];
+        for node_idx in node.input.clone() {
+            let node = &mut self.context.arena_lineage_nodes[node_idx];
             if except_columns.contains(node.name.string()) {
                 continue;
             }
@@ -2279,15 +2427,14 @@ impl LineageExtractor {
                 node.name.clone(),
                 node.r#type.clone(),
                 anon_obj_idx,
-                vec![*node_idx],
+                vec![node_idx],
             ))
         }
 
         for tup in new_lineage_nodes {
             let lineage_node_idx = self
                 .context
-                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3)?;
-            self.context.lineage_stack.push(lineage_node_idx);
+                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3);
             lineage_nodes.push(lineage_node_idx);
             self.context.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -2308,39 +2455,29 @@ impl LineageExtractor {
             NodeType::Unknown,
             anon_obj_idx,
             vec![],
-        )?;
+        );
         self.context.arena_objects[anon_obj_idx]
             .lineage_nodes
             .push(pending_node_idx);
 
-        let (consumed_nodes, col_type) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.select_expr_col_expr_lin(&col_expr.expr, false)
-        })?;
-
-        let first_node = consumed_nodes
-            .first()
-            .map(|idx| &self.context.arena_lineage_nodes[*idx])
-            .cloned();
+        let node_idx = self.select_expr_col_expr_lin(&col_expr.expr, false)?;
+        let node = &self.context.arena_lineage_nodes[node_idx];
+        let node_name = node.name.clone();
+        let node_type = node.r#type.clone();
 
         let pending_node = &mut self.context.arena_lineage_nodes[pending_node_idx];
-
-        pending_node.input.extend(consumed_nodes.clone());
+        pending_node.input.push(node_idx);
 
         if let Some(alias) = &col_expr.alias {
             pending_node.name = NodeName::Defined(alias.as_str().to_lowercase());
+        } else if matches!(node_name, NodeName::Defined(_) | NodeName::Nested(_)) {
+            pending_node.name = NodeName::Defined(node_name.string().to_owned());
         }
 
-        if pending_node.input.len() == 1 {
-            let first_node = first_node.unwrap();
-            if let NodeName::Anonymous = pending_node.name {
-                pending_node.name = first_node.name.clone();
-            }
-        }
-
-        pending_node.r#type = col_type;
+        pending_node.r#type = node_type;
 
         self.context
-            .add_nested_nodes_from_input_nodes(pending_node_idx, &consumed_nodes);
+            .add_nested_nodes_from_input_nodes(pending_node_idx, &[node_idx]);
 
         self.context.lineage_stack.push(pending_node_idx);
         lineage_nodes.push(pending_node_idx);
@@ -2610,9 +2747,7 @@ impl LineageExtractor {
                 );
                 self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
 
-                let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                    this.select_expr_col_expr_lin(unnest_expr.array.as_ref(), false)
-                })?;
+                let node_idx = self.select_expr_col_expr_lin(unnest_expr.array.as_ref(), false)?;
 
                 let name = unnest_expr
                     .alias
@@ -2620,6 +2755,7 @@ impl LineageExtractor {
                     .map_or(self.get_anon_obj_name("unnest"), |alias| {
                         alias.as_str().to_owned()
                     });
+
                 let col_name = unnest_expr
                     .alias
                     .as_ref()
@@ -2627,12 +2763,9 @@ impl LineageExtractor {
                         NodeName::Defined(alias.as_str().to_owned())
                     });
 
-                debug_assert!(consumed_nodes.len() == 1);
+                let node = &self.context.arena_lineage_nodes[node_idx];
 
-                let consumed_node = &self.context.arena_lineage_nodes[*consumed_nodes
-                    .first()
-                    .ok_or(anyhow!("Could not find consumed node while unnesting"))?];
-                let nested_node_idx = consumed_node.access(&AccessPath {
+                let nested_node_idx = node.access(&AccessPath {
                     path: vec![AccessOp::Index],
                 })?;
                 let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
@@ -2676,25 +2809,23 @@ impl LineageExtractor {
                     .as_ref()
                     .map(|alias| alias.as_str().to_owned());
 
-                let (consumed_lineage_nodes, _) =
-                    self.call_func_and_consume_lineage_nodes(|this| {
-                        this.query_expr_lin(&from_grouping_query_expr.query, true)
-                    })?;
-
                 let new_source_name = if let Some(name) = source_name {
                     name
                 } else {
                     &self.get_anon_obj_name("query")
                 };
 
+                let obj_idx = self.query_expr_lin(&from_grouping_query_expr.query, true)?;
+                let obj = &self.context.arena_objects[obj_idx];
+
                 let table_like_idx = self.context.allocate_new_ctx_object(
                     new_source_name,
                     ContextObjectKind::Query,
-                    consumed_lineage_nodes
-                        .into_iter()
+                    obj.lineage_nodes
+                        .iter()
                         .map(|idx| {
-                            let node = &self.context.arena_lineage_nodes[idx];
-                            (node.name.clone(), node.r#type.clone(), vec![idx])
+                            let node = &self.context.arena_lineage_nodes[*idx];
+                            (node.name.clone(), node.r#type.clone(), vec![*idx])
                         })
                         .collect(),
                 );
@@ -2902,7 +3033,7 @@ impl LineageExtractor {
         &mut self,
         select_query_expr: &SelectQueryExpr,
         expand_value_table: bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ArenaIndex> {
         let ctx_objects_start_size = self.context.objects_stack.len();
         let anon_obj_name = self.get_anon_obj_name("anon");
 
@@ -2923,7 +3054,7 @@ impl LineageExtractor {
 
         let anon_obj_idx = self.context.allocate_new_ctx_object(
             &anon_obj_name,
-            ContextObjectKind::Anonymous,
+            ContextObjectKind::AnonymousQuery,
             vec![],
         );
 
@@ -2948,7 +3079,6 @@ impl LineageExtractor {
                     let mut struct_node_tyupes = vec![];
                     let mut input = vec![];
                     for node_idx in &lineage_nodes {
-                        self.context.lineage_stack.pop();
                         let node = &self.context.arena_lineage_nodes[*node_idx];
                         struct_node_tyupes.push(StructNodeFieldType::new(
                             node.name.string(),
@@ -2958,6 +3088,7 @@ impl LineageExtractor {
                         input.extend(&node.input);
                     }
                     lineage_nodes.drain(..);
+
                     let struct_node = NodeType::Struct(StructNodeType {
                         fields: struct_node_tyupes,
                     });
@@ -2967,14 +3098,12 @@ impl LineageExtractor {
                         struct_node,
                         anon_obj_idx,
                         input,
-                    )?;
+                    );
 
                     lineage_nodes.push(struct_node_idx);
-                    self.context.lineage_stack.push(struct_node_idx);
                 }
                 SelectTableValue::Value if expand_value_table => {
                     let struct_node = &self.context.arena_lineage_nodes[lineage_nodes[0]].clone();
-                    self.context.lineage_stack.pop();
                     lineage_nodes.pop();
                     match &struct_node.r#type {
                         NodeType::Struct(struct_node_type) => {
@@ -2991,10 +3120,9 @@ impl LineageExtractor {
                                     nested_field.r#type.clone(),
                                     anon_obj_idx,
                                     vec![nested_field_idx],
-                                )?;
+                                );
 
                                 lineage_nodes.push(new_node_idx);
-                                self.context.lineage_stack.push(new_node_idx);
                             }
                         }
                         _ => unreachable!(),
@@ -3004,8 +3132,11 @@ impl LineageExtractor {
             }
         }
 
+        let anon_obj = &mut self.context.arena_objects[anon_obj_idx];
+        anon_obj.lineage_nodes = lineage_nodes.clone();
+
         self.context
-            .update_output_lineage_from_nodes(&lineage_nodes);
+            .update_output_lineage_with_object_nodes(anon_obj_idx);
 
         let ctx_objects_curr_size = self.context.objects_stack.len();
         for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
@@ -3015,14 +3146,15 @@ impl LineageExtractor {
         if pushed_context {
             self.context.pop_curr_ctx();
         }
-        Ok(())
+
+        Ok(anon_obj_idx)
     }
 
     fn grouping_query_expr_lin(
         &mut self,
         grouping_query_expr: &GroupingQueryExpr,
         expand_value_table: bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ArenaIndex> {
         let ctx_objects_start_size = self.context.objects_stack.len();
         if let Some(with) = grouping_query_expr.with.as_ref() {
             // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
@@ -3031,19 +3163,19 @@ impl LineageExtractor {
             self.with_lin(with)?;
             self.context.pop_curr_ctx();
         }
-        self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
+        let obj_idx = self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
         let ctx_objects_curr_size = self.context.objects_stack.len();
         for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
             self.context.pop_object();
         }
-        Ok(())
+        Ok(obj_idx)
     }
 
     fn set_select_query_expr_lin(
         &mut self,
         set_select_query_expr: &SetSelectQueryExpr,
         expand_value_table: bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ArenaIndex> {
         let ctx_objects_start_size = self.context.objects_stack.len();
         let anon_obj_name = self.get_anon_obj_name("anon");
 
@@ -3055,23 +3187,24 @@ impl LineageExtractor {
             self.context.pop_curr_ctx();
         }
 
-        let (left_consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)
-        })?;
-
-        let (right_consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.query_expr_lin(&set_select_query_expr.right_query, expand_value_table)
-        })?;
-
         let set_obj_idx = self.context.allocate_new_ctx_object(
             &anon_obj_name,
-            ContextObjectKind::Anonymous,
+            ContextObjectKind::AnonymousQuery,
             vec![],
         );
 
-        let nodes_elems = left_consumed_nodes
+        let left_obj_idx =
+            self.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)?;
+        let right_obj_idx =
+            self.query_expr_lin(&set_select_query_expr.right_query, expand_value_table)?;
+
+        let left_obj = &self.context.arena_objects[left_obj_idx];
+        let right_obj = &self.context.arena_objects[right_obj_idx];
+
+        let nodes_elems = left_obj
+            .lineage_nodes
             .iter()
-            .zip(right_consumed_nodes.iter())
+            .zip(right_obj.lineage_nodes.iter())
             .map(|(l_node_idx, r_node_idx)| {
                 let l_node = &self.context.arena_lineage_nodes[*l_node_idx];
                 (
@@ -3087,7 +3220,7 @@ impl LineageExtractor {
         for (name, r#type, source_obj, input) in nodes_elems.into_iter() {
             let node_idx = self
                 .context
-                .allocate_new_lineage_node(name, r#type, source_obj, input)?;
+                .allocate_new_lineage_node(name, r#type, source_obj, input);
             set_nodes.push(node_idx);
         }
 
@@ -3106,15 +3239,15 @@ impl LineageExtractor {
             self.context.pop_object();
         }
 
-        Ok(())
+        Ok(set_obj_idx)
     }
 
     fn query_expr_lin(
         &mut self,
         query: &QueryExpr,
         expand_value_table: bool,
-    ) -> anyhow::Result<()> {
-        match query {
+    ) -> anyhow::Result<ArenaIndex> {
+        Ok(match query {
             QueryExpr::Grouping(grouping_query_expr) => {
                 self.grouping_query_expr_lin(grouping_query_expr, expand_value_table)?
             }
@@ -3124,14 +3257,13 @@ impl LineageExtractor {
             QueryExpr::SetSelect(set_select_query_expr) => {
                 self.set_select_query_expr_lin(set_select_query_expr, expand_value_table)?
             }
-        }
-
-        Ok(())
+        })
     }
 
     fn query_statement_lin(&mut self, query_statement: &QueryStatement) -> anyhow::Result<()> {
         self.context.last_select_statement = Some(self.get_next_anon_obj_name("anon"));
-        self.query_expr_lin(&query_statement.query, false)
+        self.query_expr_lin(&query_statement.query, false)?;
+        Ok(())
     }
 
     fn create_table_statement_lin(
@@ -3151,18 +3283,18 @@ impl LineageExtractor {
         let table_name = &create_table_statement.name.name;
 
         let temp_table_idx = if let Some(ref query) = create_table_statement.query {
-            // Extract the schema from the query lineage
-            let (consumed_lineage_nodes, _) =
-                self.call_func_and_consume_lineage_nodes(|this| this.query_expr_lin(query, false))?;
+            // Extract the schema from the query lineage?;
+            let obj_idx = self.query_expr_lin(query, false)?;
+            let obj = &self.context.arena_objects[obj_idx];
 
             self.context.allocate_new_ctx_object(
                 table_name,
                 table_kind,
-                consumed_lineage_nodes
-                    .into_iter()
+                obj.lineage_nodes
+                    .iter()
                     .map(|idx| {
-                        let node = &self.context.arena_lineage_nodes[idx];
-                        (node.name.clone(), node.r#type.clone(), vec![idx])
+                        let node = &self.context.arena_lineage_nodes[*idx];
+                        (node.name.clone(), node.r#type.clone(), vec![*idx])
                     })
                     .collect(),
             )
@@ -3328,15 +3460,10 @@ impl LineageExtractor {
                 target_table_alias
             ))?;
 
-            let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                this.select_expr_col_expr_lin(&update_item.expr, false)
-            })?;
-
-            if !consumed_nodes.is_empty() {
-                let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
-                col_lineage_node.input.extend(consumed_nodes);
-                self.context.output.push(*col_source_idx);
-            }
+            let node_idx = self.select_expr_col_expr_lin(&update_item.expr, false)?;
+            let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
+            col_lineage_node.input.push(node_idx);
+            self.context.output.push(*col_source_idx);
         }
 
         self.context.pop_curr_ctx();
@@ -3378,11 +3505,10 @@ impl LineageExtractor {
         };
 
         if let Some(query_expr) = &insert_statement.query {
-            let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                this.query_expr_lin(query_expr, false)
-            })?;
+            let obj_idx = self.query_expr_lin(query_expr, false)?;
+            let obj = &self.context.arena_objects[obj_idx];
 
-            if consumed_nodes.len() != target_columns.len() {
+            if obj.lineage_nodes.len() != target_columns.len() {
                 return Err(anyhow!(
                     "The number of insert columns is not equal to the number of insert values."
                 ));
@@ -3390,10 +3516,10 @@ impl LineageExtractor {
 
             target_columns
                 .iter()
-                .zip(consumed_nodes)
+                .zip(obj.lineage_nodes.iter())
                 .for_each(|(target_col, value)| {
                     let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-                    target_lineage_node.input.push(value);
+                    target_lineage_node.input.push(*value);
                     self.context.output.push(*target_col);
                 });
         } else {
@@ -3401,12 +3527,9 @@ impl LineageExtractor {
                 .iter()
                 .zip(insert_statement.values.as_ref().unwrap())
             {
-                let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                    this.select_expr_col_expr_lin(value, false)
-                })?;
-
+                let node_idx = self.select_expr_col_expr_lin(value, false)?;
                 let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-                target_lineage_node.input.extend(consumed_nodes);
+                target_lineage_node.input.push(node_idx);
                 self.context.output.push(*target_col);
             }
         }
@@ -3441,12 +3564,9 @@ impl LineageExtractor {
             target_table_obj.lineage_nodes.clone()
         };
         for (target_col, value) in target_columns.iter().zip(&merge_insert.values) {
-            let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                this.select_expr_col_expr_lin(value, false)
-            })?;
-
+            let node_idx = self.select_expr_col_expr_lin(value, false)?;
             let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-            target_lineage_node.input.extend(consumed_nodes);
+            target_lineage_node.input.push(node_idx);
             self.context.output.push(*target_col);
         }
         self.context.pop_curr_ctx();
@@ -3486,15 +3606,10 @@ impl LineageExtractor {
                 target_table_name
             ))?;
 
-            let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                this.select_expr_col_expr_lin(&update_item.expr, false)
-            })?;
-
-            if !consumed_nodes.is_empty() {
-                let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
-                col_lineage_node.input.extend(consumed_nodes);
-                self.context.output.push(*col_source_idx);
-            }
+            let node_idx = self.select_expr_col_expr_lin(&update_item.expr, false)?;
+            let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
+            col_lineage_node.input.push(node_idx);
+            self.context.output.push(*col_source_idx);
         }
         self.context.pop_curr_ctx();
 
@@ -3562,16 +3677,16 @@ impl LineageExtractor {
 
         let (subquery_table_id, subquery_nodes) =
             if let MergeSource::Subquery(query_expr) = &merge_statement.source {
-                let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                    this.query_expr_lin(query_expr, false)
-                })?;
+                let obj_idx = self.query_expr_lin(query_expr, false)?;
+                let obj = &self.context.arena_objects[obj_idx];
+                let input = obj.lineage_nodes.clone();
 
                 if let Some(alias) = &merge_statement.source_alias {
                     let new_source_name = alias.as_str();
                     let source_idx = self.context.allocate_new_ctx_object(
                         new_source_name,
                         ContextObjectKind::Query,
-                        consumed_nodes
+                        input
                             .iter()
                             .map(|idx| {
                                 let node = &self.context.arena_lineage_nodes[*idx];
@@ -3581,9 +3696,9 @@ impl LineageExtractor {
                     );
                     self.context
                         .update_output_lineage_with_object_nodes(source_idx);
-                    (Some(source_idx), Some(consumed_nodes))
+                    (Some(source_idx), Some(input))
                 } else {
-                    (None, Some(consumed_nodes))
+                    (None, Some(input))
                 }
             } else {
                 (None, None)
@@ -3692,10 +3807,8 @@ impl LineageExtractor {
         let declared_vars = Vec::with_capacity(declare_var_statement.vars.len());
 
         let input_lineage_nodes = if let Some(default_expr) = &declare_var_statement.default {
-            self.call_func_and_consume_lineage_nodes(|this| {
-                this.select_expr_col_expr_lin(default_expr, false)
-            })?
-            .0
+            let node_idx = self.select_expr_col_expr_lin(default_expr, false)?;
+            vec![node_idx]
         } else {
             vec![]
         };
@@ -3716,16 +3829,22 @@ impl LineageExtractor {
 
     fn set_var_statement_lin(&mut self, set_var_statement: &SetVarStatement) -> anyhow::Result<()> {
         if set_var_statement.vars.len() > 1 && set_var_statement.exprs.len() == 1 {
-            let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-                this.select_expr_col_expr_lin(&set_var_statement.exprs[0], true)
-            })?;
-
+            let node_idx = self.select_expr_col_expr_lin(&set_var_statement.exprs[0], false)?;
+            let node = &self.context.arena_lineage_nodes[node_idx];
+            let mut inputs = vec![];
+            match &node.r#type {
+                NodeType::Struct(struct_node_type) => struct_node_type
+                    .fields
+                    .iter()
+                    .for_each(|f| inputs.push(f.input.clone())),
+                _ => return Err(anyhow!("Expected struct node.")),
+            }
             for (i, var) in set_var_statement.vars.iter().enumerate() {
                 match var {
                     SetVariable::UserVariable(var_name) => {
                         let var_node_idx = self.get_var(var_name.as_str())?;
                         let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
-                        var_node.input = vec![consumed_nodes[i]];
+                        var_node.input = inputs[i].clone();
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -3735,13 +3854,10 @@ impl LineageExtractor {
             for (var, expr) in set_var_statement.vars.iter().zip(&set_var_statement.exprs) {
                 match var {
                     SetVariable::UserVariable(var_name) => {
-                        let (consumed_nodes, _) =
-                            self.call_func_and_consume_lineage_nodes(|this| {
-                                this.select_expr_col_expr_lin(expr, false)
-                            })?;
+                        let node_idx = self.select_expr_col_expr_lin(expr, false)?;
                         let var_node_idx = self.get_var(var_name.as_str())?;
                         let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
-                        var_node.input = consumed_nodes;
+                        var_node.input = vec![node_idx];
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -3803,13 +3919,12 @@ impl LineageExtractor {
     }
 
     fn for_in_statement_lin(&mut self, for_in_statement: &ForInStatement) -> anyhow::Result<()> {
-        let (consumed_nodes, _) = self.call_func_and_consume_lineage_nodes(|this| {
-            this.query_expr_lin(&for_in_statement.table_expr, false)
-        })?;
+        let obj_idx = self.query_expr_lin(&for_in_statement.table_expr, false)?;
+        let obj = &self.context.arena_objects[obj_idx];
 
         let mut struct_node_tyupes = vec![];
         let mut input = vec![];
-        for node_idx in &consumed_nodes {
+        for node_idx in &obj.lineage_nodes {
             let node = &self.context.arena_lineage_nodes[*node_idx];
             struct_node_tyupes.push(StructNodeFieldType::new(
                 node.name.string(),
