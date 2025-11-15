@@ -67,14 +67,14 @@ fn main() -> anyhow::Result<()> {
                 &std::fs::read_to_string(&lineage_command.catalog).map_err(|_| {
                     anyhow!(
                         "Failed to read catalog file: {}",
-                        lineage_command.catalog.display().to_string()
+                        lineage_command.catalog.display()
                     )
                 })?,
             )
             .map_err(|err| {
                 anyhow!(
                     "Failed to parse JSON catalog in file {} due to error: {}",
-                    lineage_command.catalog.display().to_string(),
+                    lineage_command.catalog.display(),
                     err
                 )
             })?;
@@ -100,10 +100,7 @@ fn main() -> anyhow::Result<()> {
                 let mut sqls = vec![];
                 for sql_file_path in &sql_file_paths {
                     let sql = std::fs::read_to_string(sql_file_path).map_err(|_| {
-                        anyhow!(
-                            "Failed to read sql file {}",
-                            sql_file_path.display().to_string()
-                        )
+                        anyhow!("Failed to read sql file {}", sql_file_path.display())
                     })?;
                     sqls.push(sql);
                 }
