@@ -1520,3 +1520,27 @@ kind.table.columns = [
 ts = ["proj.dat.in_table->ts"]
 id = ["proj.dat.in_table->id"]
 f1 = ["proj.dat.in_table->f1"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+SELECT ARRAY_CONCAT_AGG(x) AS array_concat_agg FROM (
+  SELECT [NULL, 1, 2, 3, 4] AS x
+  UNION ALL SELECT NULL
+  UNION ALL SELECT [5, f0] from proj.dat.in_table
+  UNION ALL SELECT [7, f1.a.x, f1.a.y[0]] from proj.dat.in_table
+);
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "f0", dtype = "int64" },
+    { name = "f1", dtype = "struct<a struct<x int64, y array<int64>>>" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "arr", dtype = "array<int64>" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]

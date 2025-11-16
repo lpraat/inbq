@@ -9,6 +9,13 @@ pub(crate) struct FunctionDefinition {
     pub(crate) compute_return_type: Box<dyn Fn(&[&NodeType], &[ArenaIndex]) -> NodeType>,
 }
 
+fn array_type_with_unkown_type() -> NodeType {
+    NodeType::Array(Box::new(ArrayNodeType {
+        r#type: NodeType::Unknown,
+        input: vec![],
+    }))
+}
+
 pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> {
     match name.to_lowercase().as_str() {
         "abs" => Some(FunctionDefinition {
@@ -403,26 +410,6 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
-        "array_agg" => Some(FunctionDefinition {
-            name: "array_agg".to_owned(),
-            compute_return_type: Box::new(|tys, indices| {
-                let return_type = NodeType::Array(Box::new(ArrayNodeType {
-                    r#type: tys[0].clone(),
-                    input: vec![indices[0]],
-                }));
-                match tys {
-                    [t @ NodeType::Array(_)] => {
-                        log::warn!("Found unexpected input type {} in array_agg function.", t);
-                        return_type
-                    }
-                    [_] => return_type,
-                    _ => {
-                        log::warn!("array_agg expects 1 argument, but got {}", tys.len());
-                        NodeType::Unknown
-                    }
-                }
-            }),
-        }),
         "array_concat_agg" => Some(FunctionDefinition {
             name: "array_concat_agg".to_owned(),
             compute_return_type: Box::new(|tys, _| match tys {
@@ -697,10 +684,10 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         }),
         "approx_quantiles" => Some(FunctionDefinition {
             name: "approx_quantiles".to_owned(),
-            compute_return_type: Box::new(|tys, _| {
+            compute_return_type: Box::new(|tys, indices| {
                 let return_type = NodeType::Array(Box::new(ArrayNodeType {
                     r#type: tys[0].clone(),
-                    input: vec![],
+                    input: indices.to_vec(),
                 }));
 
                 match tys {
@@ -732,11 +719,11 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         }),
         "approx_top_count" => Some(FunctionDefinition {
             name: "approx_top_count".to_owned(),
-            compute_return_type: Box::new(|tys, _| {
+            compute_return_type: Box::new(|tys, indices| {
                 let return_type = NodeType::Struct(StructNodeType {
                     fields: vec![
-                        StructNodeFieldType::new("value", tys[0].clone(), vec![]),
-                        StructNodeFieldType::new("count", NodeType::Int64, vec![]),
+                        StructNodeFieldType::new("value", tys[0].clone(), vec![indices[0]]),
+                        StructNodeFieldType::new("count", NodeType::Int64, indices.to_vec()),
                     ],
                 });
 
@@ -762,12 +749,12 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         }),
         "approx_top_sum" => Some(FunctionDefinition {
             name: "approx_top_sum".to_owned(),
-            compute_return_type: Box::new(|tys, _| {
+            compute_return_type: Box::new(|tys, indices| {
                 let return_type = NodeType::Array(Box::new(ArrayNodeType {
                     r#type: NodeType::Struct(StructNodeType {
                         fields: vec![
-                            StructNodeFieldType::new("value", tys[0].clone(), vec![]),
-                            StructNodeFieldType::new("count", NodeType::Int64, vec![]),
+                            StructNodeFieldType::new("value", tys[0].clone(), vec![indices[0]]),
+                            StructNodeFieldType::new("sum", NodeType::Int64, indices.to_vec()),
                         ],
                     }),
                     input: vec![],
@@ -798,12 +785,424 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
-
+        //Array functions
+        "array_concat" => Some(FunctionDefinition {
+            name: "array_concat".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                if let Some(first_ty) = tys.first() {
+                    (*first_ty).clone()
+                } else {
+                    log::warn!("array_concat expects at least 1 argument, but got 0");
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: NodeType::Unknown,
+                        input: indices.to_vec(),
+                    }))
+                }
+            }),
+        }),
+        "array_first" => Some(FunctionDefinition {
+            name: "array_first".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(array_type)] => array_type.r#type.clone(),
+                [t] => {
+                    log::warn!("Found unexpected input type {} in array_first function.", t);
+                    array_type_with_unkown_type()
+                }
+                _ => {
+                    log::warn!("array_first expects 1 argument, but got {}", tys.len());
+                    array_type_with_unkown_type()
+                }
+            }),
+        }),
+        "array_last" => Some(FunctionDefinition {
+            name: "array_last".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(array_type)] => array_type.r#type.clone(),
+                [t] => {
+                    log::warn!("Found unexpected input type {} in array_last function.", t);
+                    array_type_with_unkown_type()
+                }
+                _ => {
+                    log::warn!("array_last expects 1 argument, but got {}", tys.len());
+                    array_type_with_unkown_type()
+                }
+            }),
+        }),
+        "array_length" => Some(FunctionDefinition {
+            name: "array_length".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_)] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in array_length function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("array_length expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "array_reverse" => Some(FunctionDefinition {
+            name: "array_reverse".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t @ NodeType::Array(_)] => (*t).clone(),
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in array_reverse function.",
+                        t
+                    );
+                    array_type_with_unkown_type()
+                }
+                _ => {
+                    log::warn!("array_reverse expects 1 argument, but got {}", tys.len());
+                    array_type_with_unkown_type()
+                }
+            }),
+        }),
+        "array_slice" => Some(FunctionDefinition {
+            name: "array_slice".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t @ NodeType::Array(_), NodeType::Int64] => (*t).clone(),
+                [t @ NodeType::Array(_), NodeType::Int64, NodeType::Int64] => (*t).clone(),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in array_slice function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    array_type_with_unkown_type()
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in array_slice function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    array_type_with_unkown_type()
+                }
+                _ => {
+                    log::warn!(
+                        "array_slice expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    array_type_with_unkown_type()
+                }
+            }),
+        }),
+        "array_to_string" => Some(FunctionDefinition {
+            name: "array_to_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(array_node_type), NodeType::String]
+                | [
+                    NodeType::Array(array_node_type),
+                    NodeType::String,
+                    NodeType::String,
+                ] if matches!(array_node_type.r#type, NodeType::String) => NodeType::String,
+                [NodeType::Array(array_node_type), NodeType::Bytes]
+                | [
+                    NodeType::Array(array_node_type),
+                    NodeType::Bytes,
+                    NodeType::Bytes,
+                ] if matches!(array_node_type.r#type, NodeType::Bytes) => NodeType::Bytes,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in array_to_string function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in array_to_string function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "array_to_string expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "generate_array" => Some(FunctionDefinition {
+            name: "generate_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| match tys {
+                [start, end] if start.is_number() && end.is_number() => {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: (*start).clone(),
+                        input: indices.to_vec(),
+                    }))
+                }
+                [start, end, step] if start.is_number() && end.is_number() && step.is_number() => {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: (*start).clone(),
+                        input: indices.to_vec(),
+                    }))
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in generate_array function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: (*t1).clone(),
+                        input: indices.to_vec(),
+                    }))
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in generate_array function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: (*t1).clone(),
+                        input: indices.to_vec(),
+                    }))
+                }
+                _ => {
+                    log::warn!(
+                        "generate_array expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "generate_date_array" => Some(FunctionDefinition {
+            name: "generate_date_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Date,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Date, NodeType::Date]
+                    | [NodeType::Date, NodeType::Date, NodeType::Interval] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in generate_date_array function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    [t1, t2, t3] => {
+                        log::warn!(
+                            "Found unexpected input types in generate_date_array function: ({}, {}, {})",
+                            t1,
+                            t2,
+                            t3
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "generate_date_array expects 2 or 3 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "generate_timestamp_array" => Some(FunctionDefinition {
+            name: "generate_timestamp_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Timestamp,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Timestamp, NodeType::Timestamp, NodeType::Interval] => return_type,
+                    [t1, t2, t3] => {
+                        log::warn!(
+                            "Found unexpected input types in generate_timestamp_array function: ({}, {}, {})",
+                            t1,
+                            t2,
+                            t3
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "generate_timestamp_array expects 3 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        // Bit functions
+        "bit_count" => Some(FunctionDefinition {
+            name: "bit_count".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] | [NodeType::Bytes] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in bit_count function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("bit_count expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
         // Date functions
         "date" => Some(FunctionDefinition {
             name: "date".to_owned(),
-            // todo
-            compute_return_type: Box::new(|_, _| NodeType::Date),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64, NodeType::Int64, NodeType::Int64]
+                | [NodeType::Timestamp]
+                | [NodeType::Timestamp, NodeType::String]
+                | [NodeType::Datetime] => NodeType::Date,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in date function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Date
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in date function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Date
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in date function.", t);
+                    NodeType::Date
+                }
+                _ => {
+                    log::warn!("date expects 1, 2 or 3 arguments, but got {}", tys.len());
+                    NodeType::Date
+                }
+            }),
+        }),
+        "date_add" => Some(FunctionDefinition {
+            name: "date_add".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Date, NodeType::Interval] => NodeType::Date,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in date_add function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Date
+                }
+                _ => {
+                    log::warn!("date_add expects 2 arguments, but got {}", tys.len());
+                    NodeType::Date
+                }
+            }),
+        }),
+
+        "date_from_unix_date" => Some(FunctionDefinition {
+            name: "date_from_unix_date".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Date,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in date_from_unix_date function.",
+                        t
+                    );
+                    NodeType::Date
+                }
+                _ => {
+                    log::warn!(
+                        "date_from_unix_date expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Date
+                }
+            }),
+        }),
+        "date_sub" => Some(FunctionDefinition {
+            name: "date_sub".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Date, NodeType::Interval] => NodeType::Date,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in date_sub function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Date
+                }
+                _ => {
+                    log::warn!("date_sub expects 2 arguments, but got {}", tys.len());
+                    NodeType::Date
+                }
+            }),
+        }),
+        // note: we dont include extract (already in ast and has 'part from expr' arg)
+        "format_date" => Some(FunctionDefinition {
+            name: "format_date".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::Date] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in format_date function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("format_date expects 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "parse_date" => Some(FunctionDefinition {
+            name: "parse_date".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] => NodeType::Date,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in parse_date function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Date
+                }
+                _ => {
+                    log::warn!("parse_date expects 2 arguments, but got {}", tys.len());
+                    NodeType::Date
+                }
+            }),
+        }),
+        "unix_date" => Some(FunctionDefinition {
+            name: "unix_date".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Date] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in unix_date function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("unix_date expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
         }),
         _ => None,
     }

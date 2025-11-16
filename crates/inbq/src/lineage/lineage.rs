@@ -198,6 +198,13 @@ impl NodeType {
         !matches!(self, NodeType::Geography | NodeType::Json)
     }
 
+    pub(crate) fn is_number(&self) -> bool {
+        matches!(
+            self,
+            NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric
+        )
+    }
+
     pub(crate) fn common_supertype_with(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (NodeType::Int64, NodeType::Numeric) => Some(NodeType::Numeric),
@@ -1452,6 +1459,21 @@ impl LineageExtractor {
                         return Ok(node_idx);
                     }
 
+                    (
+                        Expr::Identifier(Identifier { name: ident })
+                        | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
+                        Expr::Function(_),
+                    ) => {
+                        if ident.eq_ignore_ascii_case("safe") {
+                            return self.select_expr_col_expr_lin(right, false);
+                        }
+                        return Err(anyhow!(
+                            "Found unexpected binary expr with left: {:?} and right {:?}.",
+                            left,
+                            right
+                        ));
+                    }
+
                     _ => {
                         return Err(anyhow!(
                             "Found unexpected binary expr with left: {:?} and right {:?}.",
@@ -1747,7 +1769,7 @@ impl LineageExtractor {
                     array_type
                 ));
             }
-            input.extend(&element.input)
+            input.push(element_node_idx)
         }
 
         let obj_name = self.get_anon_obj_name("anon_array");
@@ -1875,7 +1897,7 @@ impl LineageExtractor {
             NodeType::Unknown
         };
 
-        Ok(self.allocate_expr_node(name, return_type, input))
+        Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, input))
     }
 
     fn select_expr_col_expr_lin(
@@ -2298,6 +2320,13 @@ impl LineageExtractor {
                     )?;
                     self.allocate_expr_node("time_trunc", NodeType::Time, vec![node_idx])
                 }
+                FunctionExpr::LastDay(last_day_function_expr) => {
+                    let node_idx = self.select_expr_col_expr_lin(
+                        &last_day_function_expr.expr,
+                        expand_value_table,
+                    )?;
+                    self.allocate_expr_node("last_day", NodeType::Date, vec![node_idx])
+                }
             },
             Expr::Star => {
                 // NOTE: we can enter here for a COUNT(*)
@@ -2374,7 +2403,7 @@ impl LineageExtractor {
                 input: vec![node_idx],
             })),
             source_obj: node.source_obj,
-            input: node.input.clone(),
+            input: vec![node_idx],
             nested_nodes: IndexMap::new(),
         };
         let lin_node_idx = self.context.arena_lineage_nodes.allocate(lin_node);

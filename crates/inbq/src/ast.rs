@@ -630,7 +630,15 @@ pub enum FunctionExpr {
     TimeDiff(TimeDiffFunctionExpr),
     TimeTrunc(TimeTruncFunctionExpr),
 
+    LastDay(LastDayFunctionExpr),
+
     Right(RightFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastDayFunctionExpr {
+    pub expr: Expr,
+    pub granularity: Option<Granularity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -775,14 +783,20 @@ pub struct ConcatFunctionExpr {
 pub struct CastFunctionExpr {
     pub expr: Box<Expr>,
     pub r#type: ParameterizedType,
-    pub format: Option<Box<Expr>>,
+    pub format: Option<CastFunctionFormat>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SafeCastFunctionExpr {
     pub expr: Box<Expr>,
     pub r#type: ParameterizedType,
-    pub format: Option<Box<Expr>>,
+    pub format: Option<CastFunctionFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CastFunctionFormat {
+    pub format: Expr,
+    pub time_zone: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
