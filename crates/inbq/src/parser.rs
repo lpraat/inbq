@@ -5,35 +5,35 @@ use strum::IntoDiscriminant;
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-    CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-    CreateSchemaStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
-    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
-    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
-    LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
-    MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number,
-    OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
-    PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
-    QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-    RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
-    SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-    SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-    SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-    StructField, StructFieldType, StructParameterizedFieldType, SystemVariable, TableConstraint,
-    TableFunctionArgument, TableFunctionExpr, TableSample, TimeDiffFunctionExpr,
-    TimeTruncFunctionExpr, TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType,
-    TokenTypeVariant, TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot,
-    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
-    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
-    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
-    WithExprVar,
+    CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
+    ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
+    CrossJoinExpr, Cte, CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
+    DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
+    DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
+    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
+    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
+    Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having,
+    Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
+    JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LikeQuantifier,
+    Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+    MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot,
+    PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+    Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+    StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
+    TableFunctionExpr, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
+    TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
+    UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
+    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
+    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -3848,13 +3848,21 @@ impl<'a> Parser<'a> {
 
     fn parse_cast_fn_arguments(
         &mut self,
-    ) -> anyhow::Result<(Box<Expr>, ParameterizedType, Option<Box<Expr>>)> {
+    ) -> anyhow::Result<(Box<Expr>, ParameterizedType, Option<CastFunctionFormat>)> {
         self.consume(TokenTypeVariant::LeftParen)?;
         let expr = self.parse_expr()?;
         self.consume(TokenTypeVariant::As)?;
         let r#type = self.parse_parameterized_bq_type()?;
         let format = if self.match_non_reserved_keyword("format") {
-            Some(Box::new(self.parse_expr()?))
+            let format = self.parse_expr()?;
+            let time_zone = if self.match_token_type(TokenTypeVariant::At) {
+                self.consume_non_reserved_keyword("time")?;
+                self.consume_non_reserved_keyword("zone")?;
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            Some(CastFunctionFormat { format, time_zone })
         } else {
             None
         };
@@ -3864,7 +3872,7 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
+    /// cast -> "CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr [["AT" "TIME" "ZONE" expr]] ")"
     /// ```
     fn parse_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
         self.consume(TokenTypeVariant::Cast)?;
@@ -4339,6 +4347,28 @@ impl<'a> Parser<'a> {
         ))))
     }
 
+    /// Rule:
+    /// ```text
+    /// last_day -> "LAST_DAY" "(" expr ["," granularity] ")"
+    /// ```
+    fn parse_last_day_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let expr = self.parse_expr()?;
+        let part = if self.match_token_type(TokenTypeVariant::Comma) {
+            Some(self.parse_granularity()?)
+        } else {
+            None
+        };
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::LastDay(
+            LastDayFunctionExpr {
+                expr,
+                granularity: part,
+            },
+        ))))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         match &self.peek().kind {
             TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
@@ -4349,6 +4379,7 @@ impl<'a> Parser<'a> {
                     "current_date" => self.parse_current_date_fn_expr(),
                     "date_diff" => self.parse_date_diff_fn_expr(),
                     "date_trunc" => self.parse_date_trunc_fn_expr(),
+                    "last_day" => self.parse_last_day_fn_expr(),
                     "datetime_diff" => self.parse_datetime_diff_fn_expr(),
                     "datetime_trunc" => self.parse_datetime_trunc_fn_expr(),
                     "current_timestamp" => self.parse_current_timestamp_fn_expr(),

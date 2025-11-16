@@ -15,9 +15,9 @@ use inbq::{
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-        CastFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
-        CreateSchemaStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
-        CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
+        CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
+        ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
+        CrossJoinExpr, Cte, CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
         DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
         DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
         ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
@@ -27,24 +27,24 @@ use inbq::{
         FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
         Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr,
         Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
-        IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LikeQuantifier, Limit,
-        LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
-        MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
-        OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart,
-        Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
-        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
-        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
-        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
-        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
-        TableConstraint, TableFunctionArgument, TableFunctionExpr, TableSample,
-        TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
-        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
-        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
-        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
-        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
-        WindowSpec, With, WithExpr, WithExprVar,
+        IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr,
+        LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
+        MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte,
+        Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
+        PathName, PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced,
+        Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+        QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement,
+        RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
+        SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
+        SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
+        StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+        StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
+        TableFunctionExpr, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
+        TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement,
+        Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
+        UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource,
+        WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window, WindowFrame,
+        WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
     },
     lineage::{
         Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
@@ -1563,6 +1563,16 @@ impl RsToPyObject for ConcatFunctionExpr {
     }
 }
 
+impl RsToPyObject for CastFunctionFormat {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "format", self.format),
+            kwarg!(py_ctx, "time_zone", self.time_zone),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CastFunctionFormat)?, kwargs)
+    }
+}
+
 impl RsToPyObject for CastFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
@@ -1933,6 +1943,16 @@ impl RsToPyObject for TimeTruncFunctionExpr {
     }
 }
 
+impl RsToPyObject for LastDayFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "expr", self.expr),
+            kwarg!(py_ctx, "granularity", self.granularity),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LastDayFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2078,6 +2098,14 @@ impl RsToPyObject for FunctionExpr {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::TimeTrunc)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::LastDay(last_day_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, last_day_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::LastDay)?,
                     kwargs,
                 )
             }

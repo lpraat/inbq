@@ -488,6 +488,14 @@ select
 
 [[tests]]
 sql = """
+SELECT CAST(
+  TIMESTAMP '2008-12-25 00:00:00+00:00'
+  AS STRING FORMAT 'YYYY-MM-DD HH24:MI:SS TZH:TZM'
+  AT TIME ZONE 'Asia/Kolkata') AS date_time_to_string
+"""
+
+[[tests]]
+sql = """
 select
     CASE
       WHEN SAFE_CAST(CPU_COUNT AS INT64) IS NOT NULL THEN SAFE_CAST(CPU_COUNT AS INT64)
@@ -532,6 +540,11 @@ SELECT DATE_TRUNC(DATE '2008-12-25', MONTH) AS month;
 [[tests]]
 sql = """
 SELECT DATE_DIFF(DATE '2010-07-07', DATE '2008-12-25', DAY) AS days_diff;
+"""
+
+[[tests]]
+sql = """
+SELECT LAST_DAY(DATE '2008-11-10', WEEK(SUNDAY)) AS last_day
 """
 
 [[tests]]

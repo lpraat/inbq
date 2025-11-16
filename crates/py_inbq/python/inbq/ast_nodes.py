@@ -206,6 +206,7 @@ class AstNode:
             "TimestampTrunc": "FunctionExpr_TimestampTrunc",
             "TimeDiff": "FunctionExpr_TimeDiff",
             "TimeTrunc": "FunctionExpr_TimeTrunc",
+            "LastDay": "FunctionExpr_LastDay",
             "Right": "FunctionExpr_Right",
         },
         "Granularity": {
@@ -984,6 +985,12 @@ class RangeExpr(AstNode):
 
 
 @dataclass
+class LastDayFunctionExpr(AstNode):
+    expr: "Expr"
+    granularity: "Optional[Granularity]"
+
+
+@dataclass
 class DateTruncFunctionExpr(AstNode):
     date: "Expr"
     granularity: "Granularity"
@@ -1074,14 +1081,20 @@ class ConcatFunctionExpr(AstNode):
 class CastFunctionExpr(AstNode):
     expr: "Expr"
     type_: "ParameterizedType"
-    format: "Optional[Expr]"
+    format: "Optional[CastFunctionFormat]"
 
 
 @dataclass
 class SafeCastFunctionExpr(AstNode):
     expr: "Expr"
     type_: "ParameterizedType"
-    format: "Optional[Expr]"
+    format: "Optional[CastFunctionFormat]"
+
+
+@dataclass
+class CastFunctionFormat(AstNode):
+    format: "Expr"
+    time_zone: "Optional[Expr]"
 
 
 @dataclass
@@ -2154,6 +2167,11 @@ class FunctionExpr_TimeDiff(AstNode):
 @dataclass
 class FunctionExpr_TimeTrunc(AstNode):
     vty: "TimeTruncFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_LastDay(AstNode):
+    vty: "LastDayFunctionExpr"
 
 
 @dataclass
@@ -3458,6 +3476,7 @@ FunctionExpr: TypeAlias = (
     | FunctionExpr_TimestampTrunc
     | FunctionExpr_TimeDiff
     | FunctionExpr_TimeTrunc
+    | FunctionExpr_LastDay
     | FunctionExpr_Right
 )
 Granularity: TypeAlias = (
