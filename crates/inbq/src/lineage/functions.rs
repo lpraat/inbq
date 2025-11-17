@@ -1153,7 +1153,6 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
-        // note: we dont include extract (already in ast and has 'part from expr' arg)
         "format_date" => Some(FunctionDefinition {
             name: "format_date".to_owned(),
             compute_return_type: Box::new(|tys, _| match tys {
@@ -1200,6 +1199,521 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
                 _ => {
                     log::warn!("unix_date expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        // Conversion functions
+        "parse_bignumeric" => Some(FunctionDefinition {
+            name: "parse_bignumeric".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::BigNumeric,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in parse_bignumeric function.",
+                        t
+                    );
+                    NodeType::BigNumeric
+                }
+                _ => {
+                    log::warn!("parse_bignumeric expects 1 argument, but got {}", tys.len());
+                    NodeType::BigNumeric
+                }
+            }),
+        }),
+        "parse_numeric" => Some(FunctionDefinition {
+            name: "parse_numeric".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::Numeric,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in parse_numeric function.",
+                        t
+                    );
+                    NodeType::Numeric
+                }
+                _ => {
+                    log::warn!("parse_numeric expects 1 argument, but got {}", tys.len());
+                    NodeType::Numeric
+                }
+            }),
+        }),
+        // Datetime functions
+        "datetime" => Some(FunctionDefinition {
+            name: "datetime".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ]
+                | [NodeType::Date, NodeType::Time]
+                | [NodeType::Timestamp]
+                | [NodeType::Timestamp, NodeType::String] => NodeType::Datetime,
+                [t1, t2, t3, t4, t5, t6] => {
+                    log::warn!(
+                        "Found unexpected input types in datetime function: ({}, {}, {}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4,
+                        t5,
+                        t6
+                    );
+                    NodeType::Datetime
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in datetime function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Datetime
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in datetime function.", t);
+                    NodeType::Datetime
+                }
+                _ => {
+                    log::warn!(
+                        "datetime has no matching signature for {} arguments",
+                        tys.len()
+                    );
+                    NodeType::Datetime
+                }
+            }),
+        }),
+        "datetime_add" => Some(FunctionDefinition {
+            name: "datetime_add".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Datetime, NodeType::Interval] => NodeType::Datetime,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in datetime_add function: ({}, {})",
+                        t1,
+                        t2,
+                    );
+                    NodeType::Datetime
+                }
+                _ => {
+                    log::warn!("datetime_add expects 2 arguments, but got {}", tys.len());
+                    NodeType::Datetime
+                }
+            }),
+        }),
+        "datetime_sub" => Some(FunctionDefinition {
+            name: "datetime_sub".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Datetime, NodeType::Interval] => NodeType::Datetime,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in datetime_sub function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Datetime
+                }
+                _ => {
+                    log::warn!("datetime_sub expects 2 arguments, but got {}", tys.len());
+                    NodeType::Datetime
+                }
+            }),
+        }),
+        "format_datetime" => Some(FunctionDefinition {
+            name: "format_datetime".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::Datetime] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in format_datetime function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("format_datetime expects 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "parse_datetime" => Some(FunctionDefinition {
+            name: "parse_datetime".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] => NodeType::Datetime,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in parse_datetime function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Datetime
+                }
+                _ => {
+                    log::warn!("parse_datetime expects 2 arguments, but got {}", tys.len());
+                    NodeType::Datetime
+                }
+            }),
+        }),
+        // Time functions
+        "time" => Some(FunctionDefinition {
+            name: "time".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64, NodeType::Int64, NodeType::Int64]
+                | [NodeType::Timestamp]
+                | [NodeType::Timestamp, NodeType::String]
+                | [NodeType::Datetime] => NodeType::Time,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in time function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Time
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in time function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Time
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in time function.", t);
+                    NodeType::Time
+                }
+                _ => {
+                    log::warn!("time has no matching signature for {} arguments", tys.len());
+                    NodeType::Time
+                }
+            }),
+        }),
+        "time_add" => Some(FunctionDefinition {
+            name: "time_add".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Time, NodeType::Interval] => NodeType::Time,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in time_add function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Time
+                }
+                _ => {
+                    log::warn!("time_add expects 2 arguments, but got {}", tys.len());
+                    NodeType::Time
+                }
+            }),
+        }),
+        "time_sub" => Some(FunctionDefinition {
+            name: "time_sub".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Time, NodeType::Interval] => NodeType::Time,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in time_sub function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Time
+                }
+                _ => {
+                    log::warn!("time_sub expects 2 arguments, but got {}", tys.len());
+                    NodeType::Time
+                }
+            }),
+        }),
+        "format_time" => Some(FunctionDefinition {
+            name: "format_time".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::Time] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in format_time function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("format_time expects 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "parse_time" => Some(FunctionDefinition {
+            name: "parse_time".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] => NodeType::Time,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in parse_time function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Time
+                }
+                _ => {
+                    log::warn!("parse_time expects 2 arguments, but got {}", tys.len());
+                    NodeType::Time
+                }
+            }),
+        }),
+        // Timestamp functions
+        "format_timestamp" => Some(FunctionDefinition {
+            name: "format_timestamp".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::Timestamp]
+                | [NodeType::String, NodeType::Timestamp, NodeType::String] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in format_timestamp function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in format_timestamp function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "format_timestamp expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "parse_timestamp" => Some(FunctionDefinition {
+            name: "parse_timestamp".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String]
+                | [NodeType::String, NodeType::String, NodeType::String] => NodeType::Timestamp,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in parse_timestamp function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Timestamp
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in parse_timestamp function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!(
+                        "parse_timestamp expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "string" => Some(FunctionDefinition {
+            name: "string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp] | [NodeType::Timestamp, NodeType::String] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in string function for timestamp.",
+                        t
+                    );
+                    NodeType::String
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in string function for timestamp: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "string for timestamp expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "timestamp" => Some(FunctionDefinition {
+            name: "timestamp".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String]
+                | [NodeType::String, NodeType::String]
+                | [NodeType::Date]
+                | [NodeType::Date, NodeType::String]
+                | [NodeType::Datetime]
+                | [NodeType::Datetime, NodeType::String] => NodeType::Timestamp,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in timestamp function.", t);
+                    NodeType::Timestamp
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in timestamp function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!("timestamp expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "timestamp_add" => Some(FunctionDefinition {
+            name: "timestamp_add".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp, NodeType::Interval] => NodeType::Timestamp,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in timestamp_add function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!("timestamp_add expects 2 arguments, but got {}", tys.len());
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "timestamp_sub" => Some(FunctionDefinition {
+            name: "timestamp_sub".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp, NodeType::Interval] => NodeType::Timestamp,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in timestamp_sub function: ({}, {})",
+                        t1,
+                        t2,
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!("timestamp_sub expects 2 arguments, but got {}", tys.len());
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "timestamp_micros" => Some(FunctionDefinition {
+            name: "timestamp_micros".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Timestamp,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in timestamp_micros function.",
+                        t
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!("timestamp_micros expects 1 argument, but got {}", tys.len());
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "timestamp_millis" => Some(FunctionDefinition {
+            name: "timestamp_millis".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Timestamp,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in timestamp_millis function.",
+                        t
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!("timestamp_millis expects 1 argument, but got {}", tys.len());
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "timestamp_seconds" => Some(FunctionDefinition {
+            name: "timestamp_seconds".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Timestamp,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in timestamp_seconds function.",
+                        t
+                    );
+                    NodeType::Timestamp
+                }
+                _ => {
+                    log::warn!(
+                        "timestamp_seconds expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Timestamp
+                }
+            }),
+        }),
+        "unix_micros" => Some(FunctionDefinition {
+            name: "unix_micros".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in unix_micros function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("unix_micros expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "unix_millis" => Some(FunctionDefinition {
+            name: "unix_millis".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in unix_millis function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("unix_millis expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "unix_seconds" => Some(FunctionDefinition {
+            name: "unix_seconds".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in unix_seconds function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("unix_seconds expects 1 argument, but got {}", tys.len());
                     NodeType::Int64
                 }
             }),

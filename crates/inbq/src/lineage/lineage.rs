@@ -2208,6 +2208,24 @@ impl LineageExtractor {
                     }
                     self.allocate_expr_node("current_date", NodeType::Date, input)
                 }
+                FunctionExpr::CurrentDatetime(current_datetime_function_expr) => {
+                    let mut input = vec![];
+                    if let Some(timezone_expr) = &current_datetime_function_expr.timezone {
+                        let node_idx =
+                            self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
+                        input.push(node_idx);
+                    }
+                    self.allocate_expr_node("current_datetime", NodeType::Datetime, input)
+                }
+                FunctionExpr::CurrentTime(current_time_function_expr) => {
+                    let mut input = vec![];
+                    if let Some(timezone_expr) = &current_time_function_expr.timezone {
+                        let node_idx =
+                            self.select_expr_col_expr_lin(timezone_expr, expand_value_table)?;
+                        input.push(node_idx);
+                    }
+                    self.allocate_expr_node("current_time", NodeType::Time, input)
+                }
                 FunctionExpr::CurrentTimestamp => {
                     self.allocate_expr_node("current_timestamp", NodeType::Timestamp, vec![])
                 }
