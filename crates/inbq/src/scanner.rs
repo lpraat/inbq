@@ -459,7 +459,13 @@ impl Scanner {
                 }
             }
             '+' => self.add_token(TokenType::Plus),
-            '=' => self.add_token(TokenType::Equal),
+            '=' => {
+                if self.match_char('>') {
+                    self.add_token(TokenType::RightArrow);
+                } else {
+                    self.add_token(TokenType::Equal)
+                }
+            }
             '/' => {
                 if self.match_char('*') {
                     loop {
