@@ -199,11 +199,13 @@ class AstNode:
             "CurrentDate": "FunctionExpr_CurrentDate",
             "DateDiff": "FunctionExpr_DateDiff",
             "DateTrunc": "FunctionExpr_DateTrunc",
+            "CurrentDatetime": "FunctionExpr_CurrentDatetime",
             "DatetimeDiff": "FunctionExpr_DatetimeDiff",
             "DatetimeTrunc": "FunctionExpr_DatetimeTrunc",
             "CurrentTimestamp": "FunctionExpr_CurrentTimestamp",
             "TimestampDiff": "FunctionExpr_TimestampDiff",
             "TimestampTrunc": "FunctionExpr_TimestampTrunc",
+            "CurrentTime": "FunctionExpr_CurrentTime",
             "TimeDiff": "FunctionExpr_TimeDiff",
             "TimeTrunc": "FunctionExpr_TimeTrunc",
             "LastDay": "FunctionExpr_LastDay",
@@ -982,6 +984,16 @@ class WhenThen(AstNode):
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
+
+
+@dataclass
+class CurrentDatetimeFunctionExpr(AstNode):
+    timezone: "Optional[Expr]"
+
+
+@dataclass
+class CurrentTimeFunctionExpr(AstNode):
+    timezone: "Optional[Expr]"
 
 
 @dataclass
@@ -2136,6 +2148,11 @@ class FunctionExpr_DateTrunc(AstNode):
 
 
 @dataclass
+class FunctionExpr_CurrentDatetime(AstNode):
+    vty: "CurrentDatetimeFunctionExpr"
+
+
+@dataclass
 class FunctionExpr_DatetimeDiff(AstNode):
     vty: "DatetimeDiffFunctionExpr"
 
@@ -2157,6 +2174,11 @@ class FunctionExpr_TimestampDiff(AstNode):
 @dataclass
 class FunctionExpr_TimestampTrunc(AstNode):
     vty: "TimestampTruncFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_CurrentTime(AstNode):
+    vty: "CurrentTimeFunctionExpr"
 
 
 @dataclass
@@ -3469,11 +3491,13 @@ FunctionExpr: TypeAlias = (
     | FunctionExpr_CurrentDate
     | FunctionExpr_DateDiff
     | FunctionExpr_DateTrunc
+    | FunctionExpr_CurrentDatetime
     | FunctionExpr_DatetimeDiff
     | FunctionExpr_DatetimeTrunc
     | FunctionExpr_CurrentTimestamp
     | FunctionExpr_TimestampDiff
     | FunctionExpr_TimestampTrunc
+    | FunctionExpr_CurrentTime
     | FunctionExpr_TimeDiff
     | FunctionExpr_TimeTrunc
     | FunctionExpr_LastDay

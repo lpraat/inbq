@@ -618,6 +618,7 @@ pub enum FunctionExpr {
     DateTrunc(DateTruncFunctionExpr),
 
     /// Datetime
+    CurrentDatetime(CurrentDatetimeFunctionExpr),
     DatetimeDiff(DatetimeDiffFunctionExpr),
     DatetimeTrunc(DatetimeTruncFunctionExpr),
 
@@ -627,12 +628,23 @@ pub enum FunctionExpr {
     TimestampTrunc(TimestampTruncFunctionExpr),
 
     /// Time
+    CurrentTime(CurrentTimeFunctionExpr),
     TimeDiff(TimeDiffFunctionExpr),
     TimeTrunc(TimeTruncFunctionExpr),
 
     LastDay(LastDayFunctionExpr),
 
     Right(RightFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrentDatetimeFunctionExpr {
+    pub timezone: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrentTimeFunctionExpr {
+    pub timezone: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -760,7 +772,7 @@ pub enum WeekBegin {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrentDateFunctionExpr {
-    pub timezone: Option<Box<Expr>>,
+    pub timezone: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

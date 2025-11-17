@@ -7,24 +7,25 @@ use crate::ast::{
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
     CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
     ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
-    CrossJoinExpr, Cte, CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
-    DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
-    DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
-    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
-    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
-    Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having,
-    Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
-    JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LikeQuantifier,
-    Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
-    MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot,
-    PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
-    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
-    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
-    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
+    CurrentTimeFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
+    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
+    GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
+    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
+    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
+    LastDayFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
+    MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
+    NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+    ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
+    PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+    QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
+    RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
@@ -4048,6 +4049,60 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// current_time -> "CURRENT_TIME" | "CURRENT_TIME" "(" [expr] ")"
+    /// ```
+    fn parse_current_time_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+
+        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                None
+            } else {
+                Some(self.parse_expr()?)
+            };
+            self.consume(TokenTypeVariant::RightParen)?;
+            timezone
+        } else {
+            None
+        };
+
+        Ok(Expr::Function(Box::new(FunctionExpr::CurrentTime(
+            CurrentTimeFunctionExpr { timezone },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
+    /// current_datetime -> "CURRENT_DATETIME" | "CURRENT_DATETIME" "(" [expr] ")"
+    /// ```
+    fn parse_current_datetime_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_one_of(&[
+            TokenTypeVariant::Identifier,
+            TokenTypeVariant::QuotedIdentifier,
+        ])?;
+
+        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
+            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                None
+            } else {
+                Some(self.parse_expr()?)
+            };
+            self.consume(TokenTypeVariant::RightParen)?;
+            timezone
+        } else {
+            None
+        };
+
+        Ok(Expr::Function(Box::new(FunctionExpr::CurrentDatetime(
+            CurrentDatetimeFunctionExpr { timezone },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
     /// current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
     /// ```
     fn parse_current_date_fn_expr(&mut self) -> anyhow::Result<Expr> {
@@ -4060,7 +4115,7 @@ impl<'a> Parser<'a> {
             let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
                 None
             } else {
-                Some(Box::new(self.parse_expr()?))
+                Some(self.parse_expr()?)
             };
             self.consume(TokenTypeVariant::RightParen)?;
             timezone
@@ -4377,11 +4432,13 @@ impl<'a> Parser<'a> {
                     "safe_cast" => self.parse_safe_cast_fn_expr(),
                     "array_agg" => self.parse_array_agg_fn_expr(),
                     "current_date" => self.parse_current_date_fn_expr(),
+                    "current_datetime" => self.parse_current_datetime_fn_expr(),
                     "date_diff" => self.parse_date_diff_fn_expr(),
                     "date_trunc" => self.parse_date_trunc_fn_expr(),
                     "last_day" => self.parse_last_day_fn_expr(),
                     "datetime_diff" => self.parse_datetime_diff_fn_expr(),
                     "datetime_trunc" => self.parse_datetime_trunc_fn_expr(),
+                    "current_time" => self.parse_current_time_fn_expr(),
                     "current_timestamp" => self.parse_current_timestamp_fn_expr(),
                     "timestamp_trunc" => self.parse_timestamp_trunc_fn_expr(),
                     "timestamp_diff" => self.parse_timestamp_diff_fn_expr(),
@@ -4816,7 +4873,9 @@ impl<'a> Parser<'a> {
                 let lower_ident = ident.to_lowercase();
                 if self.peek_next_i(1).kind == TokenType::LeftParen
                     || lower_ident == "current_date"
+                    || lower_ident == "current_datetime"
                     || lower_ident == "current_timestamp"
+                    || lower_ident == "current_time"
                 {
                     return self.parse_function_expr();
                 } else if self.peek_prev().kind != TokenType::Dot {

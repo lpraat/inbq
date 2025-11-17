@@ -17,7 +17,8 @@ use inbq::{
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
         CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
         ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
-        CrossJoinExpr, Cte, CurrentDateFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
+        CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
+        CurrentTimeFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
         DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
         DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
         ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
@@ -1953,6 +1954,28 @@ impl RsToPyObject for LastDayFunctionExpr {
     }
 }
 
+impl RsToPyObject for CurrentDatetimeFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CurrentDatetimeFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for CurrentTimeFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CurrentTimeFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -1997,6 +2020,30 @@ impl RsToPyObject for FunctionExpr {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::CurrentDate)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::CurrentDatetime(current_datetime_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    current_datetime_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::CurrentDatetime)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::CurrentTime(current_time_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    current_time_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::CurrentTime)?,
                     kwargs,
                 )
             }
