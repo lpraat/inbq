@@ -326,6 +326,9 @@ impl RsToPyObject for TokenType {
             TokenType::LessEqual => {
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::LessEqual)?, &[])
             }
+            TokenType::RightArrow => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::RightArrow)?, &[])
+            }
             TokenType::QuotedIdentifier(value) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
                 instantiate_py_class(
@@ -1408,6 +1411,7 @@ impl RsToPyObject for FunctionAggregate {
 impl RsToPyObject for GenericFunctionExprArg {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "expr", self.expr),
             kwarg!(py_ctx, "aggregate", self.aggregate),
         ];

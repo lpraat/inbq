@@ -828,6 +828,7 @@ pub struct GenericFunctionExpr {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericFunctionExprArg {
+    pub name: Option<Name>,
     pub expr: Expr,
     pub aggregate: Option<FunctionAggregate>,
 }
@@ -1378,6 +1379,7 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
+    RightArrow,
     QuotedIdentifier(String),
     Identifier(String),
     String(String),
@@ -1519,6 +1521,7 @@ impl TokenTypeVariant {
             TokenTypeVariant::GreaterEqual => ">=",
             TokenTypeVariant::Less => "<",
             TokenTypeVariant::LessEqual => "<=",
+            TokenTypeVariant::RightArrow => "=>",
             TokenTypeVariant::QuotedIdentifier => "QuotedIdentifier",
             TokenTypeVariant::Identifier => "Identifier",
             TokenTypeVariant::String => "String",

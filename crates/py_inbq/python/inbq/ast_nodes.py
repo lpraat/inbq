@@ -432,6 +432,7 @@ class AstNode:
             "GreaterEqual": "TokenType_GreaterEqual",
             "Less": "TokenType_Less",
             "LessEqual": "TokenType_LessEqual",
+            "RightArrow": "TokenType_RightArrow",
             "QuotedIdentifier": "TokenType_QuotedIdentifier",
             "Identifier": "TokenType_Identifier",
             "String": "TokenType_String",
@@ -1125,6 +1126,7 @@ class GenericFunctionExpr(AstNode):
 
 @dataclass
 class GenericFunctionExprArg(AstNode):
+    name: "Optional[Name]"
     expr: "Expr"
     aggregate: "Optional[FunctionAggregate]"
 
@@ -2907,6 +2909,10 @@ class TokenType_LessEqual(AstNode): ...
 
 
 @dataclass
+class TokenType_RightArrow(AstNode): ...
+
+
+@dataclass
 class TokenType_QuotedIdentifier(AstNode):
     vty: "str"
 
@@ -3675,6 +3681,7 @@ TokenType: TypeAlias = (
     | TokenType_GreaterEqual
     | TokenType_Less
     | TokenType_LessEqual
+    | TokenType_RightArrow
     | TokenType_QuotedIdentifier
     | TokenType_Identifier
     | TokenType_String

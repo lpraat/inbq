@@ -4028,6 +4028,7 @@ impl<'a> Parser<'a> {
         };
 
         let arg = GenericFunctionExprArg {
+            name: None,
             expr: arg_expr,
             aggregate,
         };
@@ -4457,7 +4458,7 @@ impl<'a> Parser<'a> {
     /// where:
     /// arg ->
     ///  ["DISTINCT"]
-    ///  expr
+    ///  (expr | name => expr)
     ///  [("IGNORE" | "RESPECT") "NULLS"]
     ///  ["HAVING ("MAX" | "MIN") expr]
     ///  ["ORDER" "BY" expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")])*]
@@ -4478,7 +4479,14 @@ impl<'a> Parser<'a> {
 
             let distinct = self.match_token_type(TokenTypeVariant::Distinct);
 
-            let arg_expr = self.parse_expr()?;
+            let (arg_name, arg_expr) = if self.peek_next_i(1).kind == TokenType::RightArrow {
+                // named arg
+                let name = self.consume_identifier_into_name()?;
+                self.consume(TokenTypeVariant::RightArrow)?;
+                (Some(name), self.parse_expr()?)
+            } else {
+                (None, self.parse_expr()?)
+            };
 
             let nulls =
                 if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
@@ -4582,6 +4590,7 @@ impl<'a> Parser<'a> {
             };
 
             arguments.push(GenericFunctionExprArg {
+                name: arg_name,
                 expr: arg_expr,
                 aggregate,
             });
