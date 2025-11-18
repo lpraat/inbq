@@ -160,6 +160,16 @@ SELECT "a"||"b"||"c"
 
 [[tests]]
 sql = """
+SELECT []
+"""
+
+[[tests]]
+sql = """
+select array<int64>[]
+"""
+
+[[tests]]
+sql = """
 SELECT * FROM Words WHERE value IN UNNEST(['Secure', 'Clarity']);
 """
 

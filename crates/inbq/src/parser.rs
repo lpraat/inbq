@@ -3265,7 +3265,7 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// array_expr -> "ARRAY" ([array_type] "[" expr ("," expr)* "]" | "(" query_expr ")")
+    /// array_expr -> "ARRAY" ([array_type] "[" [expr ("," expr)*] "]" | "(" query_expr ")")
     /// ```
     fn parse_array_expr(&mut self) -> anyhow::Result<Expr> {
         let mut array_type: Option<Type> = None;
@@ -3275,12 +3275,19 @@ impl<'a> Parser<'a> {
             array_type = Some(self.parse_array_type()?);
         }
         self.consume(TokenTypeVariant::LeftSquare)?;
-        let mut array_elements = vec![];
-        array_elements.push(self.parse_expr()?);
-        while self.match_token_type(TokenTypeVariant::Comma) {
-            array_elements.push(self.parse_expr()?);
-        }
-        self.consume(TokenTypeVariant::RightSquare)?;
+        let array_elements = if self.match_token_type(TokenTypeVariant::RightSquare) {
+            vec![]
+        } else {
+            let mut array_elements = vec![];
+            loop {
+                array_elements.push(self.parse_expr()?);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
+            }
+            self.consume(TokenTypeVariant::RightSquare)?;
+            array_elements
+        };
         Ok(Expr::Array(ArrayExpr {
             exprs: array_elements,
             r#type: array_type,
