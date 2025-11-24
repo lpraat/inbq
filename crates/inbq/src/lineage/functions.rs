@@ -1718,6 +1718,1302 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
+        // Debugging functions
+        "error" => Some(FunctionDefinition {
+            name: "error".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::Unknown,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in error function.", t);
+                    NodeType::Unknown
+                }
+                _ => {
+                    log::warn!("error expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        // DLP encryption functions
+        "dlp_deterministic_encrypt" => Some(FunctionDefinition {
+            name: "dlp_deterministic_encrypt".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::String, NodeType::String]
+                | [
+                    NodeType::Bytes,
+                    NodeType::String,
+                    NodeType::String,
+                    NodeType::String,
+                ] => NodeType::String,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in dlp_deterministic_encrypt function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::String
+                }
+                [t1, t2, t3, t4] => {
+                    log::warn!(
+                        "Found unexpected input types in dlp_deterministic_encrypt function: ({}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "dlp_deterministic_encrypt expects 3 or 4 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "dlp_deterministic_decrypt" => Some(FunctionDefinition {
+            name: "dlp_deterministic_decrypt".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::String, NodeType::String]
+                | [
+                    NodeType::Bytes,
+                    NodeType::String,
+                    NodeType::String,
+                    NodeType::String,
+                ] => NodeType::String,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in dlp_deterministic_decrypt function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::String
+                }
+                [t1, t2, t3, t4] => {
+                    log::warn!(
+                        "Found unexpected input types in dlp_deterministic_decrypt function: ({}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "dlp_deterministic_decrypt expects 3 or 4 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "dlp_key_chain" => Some(FunctionDefinition {
+            name: "dlp_key_chain".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Struct(StructNodeType {
+                        fields: vec![StructNodeFieldType::new(
+                            "key",
+                            tys[0].clone(),
+                            indices.to_vec(),
+                        )],
+                    }),
+                    input: vec![],
+                }));
+                match tys {
+                    [NodeType::String, NodeType::Bytes] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in dlp_key_chain function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("dlp_key_chain expects 2 arguments, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        // Geography Functions
+        "s2_cellidfrompoint" => Some(FunctionDefinition {
+            name: "s2_cellidfrompoint".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `level`
+                NodeType::Int64
+            }),
+        }),
+        "s2_coveringcellids" => Some(FunctionDefinition {
+            name: "s2_coveringcellids".to_owned(),
+            compute_return_type: Box::new(|_, indices| {
+                // TODO: contains named arguments `min_level`, `max_level`, `max_cells`
+                NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Int64,
+                    input: indices.to_vec(),
+                }))
+            }),
+        }),
+
+        "st_angle" => Some(FunctionDefinition {
+            name: "st_angle".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Geography,
+                    NodeType::Geography,
+                    NodeType::Geography,
+                ] => NodeType::Float64,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in st_angle function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("st_angle expects 3 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "st_area" => Some(FunctionDefinition {
+            name: "st_area".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `use_spheroid`
+                NodeType::Float64
+            }),
+        }),
+        "st_asbinary" => Some(FunctionDefinition {
+            name: "st_asbinary".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Bytes,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_asbinary function.", t);
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!("st_asbinary expects 1 argument, but got {}", tys.len());
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "st_asgeojson" => Some(FunctionDefinition {
+            name: "st_asgeojson".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_asgeojson function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("st_asgeojson expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "st_astext" => Some(FunctionDefinition {
+            name: "st_astext".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::String,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_astext function.", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("st_astext expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "st_azimuth" => Some(FunctionDefinition {
+            name: "st_azimuth".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Geography] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_azimuth function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("st_azimuth expects 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "st_boundary" => Some(FunctionDefinition {
+            name: "st_boundary".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_boundary function.", t);
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_boundary expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_boundingbox" => Some(FunctionDefinition {
+            name: "st_boundingbox".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Struct(StructNodeType {
+                    fields: vec![
+                        StructNodeFieldType::new("xmin", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("ymin", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("xmax", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("ymax", NodeType::Float64, indices.to_vec()),
+                    ],
+                });
+
+                match tys {
+                    [NodeType::Geography] => return_type,
+                    [t] => {
+                        log::warn!(
+                            "Found unexpected input type {} in st_boundingbox function.",
+                            t
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("st_boundingbox expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "st_buffer" => Some(FunctionDefinition {
+            name: "st_buffer".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `num_seg_quarter_circle`, `endcap`, `side`, `join`, `mitre_limit`
+                NodeType::Geography
+            }),
+        }),
+        "st_bufferwithtolerance" => Some(FunctionDefinition {
+            name: "st_bufferwithtolerance".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `num_seg_quarter_circle`, `endcap`, `side`, `join`, `mitre_limit`
+                NodeType::Geography
+            }),
+        }),
+        "st_centroid" => Some(FunctionDefinition {
+            name: "st_centroid".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_centroid function.", t);
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_centroid expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_centroid_agg" => Some(FunctionDefinition {
+            name: "st_centroid_agg".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_centroid_agg function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_centroid_agg expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_closestpoint" => Some(FunctionDefinition {
+            name: "st_closestpoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Geography] => NodeType::Geography,
+                [NodeType::Geography, NodeType::Geography, NodeType::Bytes] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_closestpoint function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in st_closestpoint function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_closestpoint expects 2 or 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_clusterdbscan" => Some(FunctionDefinition {
+            name: "st_clusterdbscan".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Float64, NodeType::Int64] => NodeType::Int64,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in st_clusterdbscan function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "st_clusterdbscan expects 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "st_contains" | "st_coveredby" | "st_covers" | "st_disjoint" | "st_equals"
+        | "st_intersects" | "st_touches" | "st_within" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: name.to_owned(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Geography, NodeType::Geography] => NodeType::Boolean,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        NodeType::Boolean
+                    }
+                    _ => {
+                        log::warn!("{} expects 2 arguments, but got {}", fn_name, tys.len());
+                        NodeType::Boolean
+                    }
+                }),
+            })
+        }
+        "st_convexhull" => Some(FunctionDefinition {
+            name: "st_convexhull".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] | [NodeType::Array(_)] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_convexhull function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_convexhull expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_difference" => Some(FunctionDefinition {
+            name: "st_difference".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Geography] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_difference function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_difference expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_dimension" => Some(FunctionDefinition {
+            name: "st_dimension".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_dimension function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("st_dimension expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "st_distance" => Some(FunctionDefinition {
+            name: "st_distance".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `use_spheroid`
+                NodeType::Float64
+            }),
+        }),
+        "st_dump" => Some(FunctionDefinition {
+            name: "st_dump".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Geography,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Geography] => return_type,
+                    [NodeType::Geography, NodeType::Int64] => return_type,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in st_dump function.", t);
+                        return_type
+                    }
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in st_dump function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("st_dump expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "st_dwithin" => Some(FunctionDefinition {
+            name: "st_dwithin".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `use_spheroid`
+                NodeType::Boolean
+            }),
+        }),
+        "st_endpoint" => Some(FunctionDefinition {
+            name: "st_endpoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_endpoint function.", t);
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_endpoint expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_extent" => Some(FunctionDefinition {
+            name: "st_extent".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Struct(StructNodeType {
+                    fields: vec![
+                        StructNodeFieldType::new("xmin", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("ymin", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("xmax", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("ymax", NodeType::Float64, indices.to_vec()),
+                    ],
+                });
+                match tys {
+                    [NodeType::Geography] => return_type,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in st_extent function.", t);
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("st_extent expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "st_exteriorring" => Some(FunctionDefinition {
+            name: "st_exteriorring".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_exteriorring function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_exteriorring expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_geogfrom" => Some(FunctionDefinition {
+            name: "st_geogfrom".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String | NodeType::Bytes] => NodeType::Geography,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_geogfrom function.", t);
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_geogfrom expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_geogfromgeojson" => Some(FunctionDefinition {
+            name: "st_geogfromgeojson".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `make_valid`
+                NodeType::Geography
+            }),
+        }),
+        "st_geogfromtext" => Some(FunctionDefinition {
+            name: "st_geogfromtext".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `oriented`, `planar`, `make_valid`
+                NodeType::Geography
+            }),
+        }),
+        "st_geogfromwkb" => Some(FunctionDefinition {
+            name: "st_geogfromwkb".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `oriented`, `planar`, `make_valid`
+                NodeType::Geography
+            }),
+        }),
+        "st_geogpoint" => Some(FunctionDefinition {
+            name: "st_geogpoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Float64, NodeType::Float64] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_geogpoint function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_geogpoint expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_geogpointfromgeohash" => Some(FunctionDefinition {
+            name: "st_geogpointfromgeohash".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_geogpointfromgeohash function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_geogpointfromgeohash expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_geohash" => Some(FunctionDefinition {
+            name: "st_geohash".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] | [NodeType::Geography, NodeType::Int64] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_geohash function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_geohash function.", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("st_geohash expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "st_geometrytype" => Some(FunctionDefinition {
+            name: "st_geometrytype".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_geometrytype function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("st_geometrytype expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "st_hausdorffdistance" => Some(FunctionDefinition {
+            name: "st_hausdorffdistance".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `directed`
+                NodeType::Float64
+            }),
+        }),
+        "st_hausdorffdwithin" => Some(FunctionDefinition {
+            name: "st_hausdorffdwithin".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `directed`
+                NodeType::Boolean
+            }),
+        }),
+        "st_interiorrings" => Some(FunctionDefinition {
+            name: "st_interiorrings".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Geography,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Geography] => return_type,
+                    [t] => {
+                        log::warn!(
+                            "Found unexpected input type {} in st_interiorrings function.",
+                            t
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("st_interiorrings expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "st_intersection" => Some(FunctionDefinition {
+            name: "st_intersection".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Geography] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_intersection function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_intersection expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_intersectsbox" => Some(FunctionDefinition {
+            name: "st_intersectsbox".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Geography,
+                    NodeType::Float64,
+                    NodeType::Float64,
+                    NodeType::Float64,
+                    NodeType::Float64,
+                ] => NodeType::Boolean,
+                [t1, t2, t3, t4, t5] => {
+                    log::warn!(
+                        "Found unexpected input types in st_intersectsbox function: ({}, {}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4,
+                        t5
+                    );
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!(
+                        "st_intersectsbox expects 5 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "st_isclosed" | "st_iscollection" | "st_isempty" | "st_isring" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: name.to_owned(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Geography] => NodeType::Boolean,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Boolean
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Boolean
+                    }
+                }),
+            })
+        }
+        "st_length" => Some(FunctionDefinition {
+            name: "st_length".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `use_spheroid`
+                NodeType::Float64
+            }),
+        }),
+        "st_lineinterpolatepoint" => Some(FunctionDefinition {
+            name: "st_lineinterpolatepoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Float64] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_lineinterpolatepoint function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_lineinterpolatepoint expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_linelocatepoint" => Some(FunctionDefinition {
+            name: "st_linelocatepoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Geography] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_linelocatepoint function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "st_linelocatepoint expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "st_linesubstring" => Some(FunctionDefinition {
+            name: "st_linesubstring".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Float64, NodeType::Float64] => NodeType::Geography,
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in st_linesubstring function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_linesubstring expects 3 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_makeline" => Some(FunctionDefinition {
+            name: "st_makeline".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_)] | [NodeType::Geography, NodeType::Geography] => {
+                    NodeType::Geography
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_makeline function.", t);
+                    NodeType::Geography
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_makeline function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_makeline expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_makepolygon" => Some(FunctionDefinition {
+            name: "st_makepolygon".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] | [NodeType::Geography, NodeType::Array(_)] => {
+                    NodeType::Geography
+                }
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_makepolygon function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_makepolygon function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_makepolygon expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_makepolygonoriented" => Some(FunctionDefinition {
+            name: "st_makepolygonoriented".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_)] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_makepolygonoriented function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!(
+                        "st_makepolygonoriented expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_maxdistance" => Some(FunctionDefinition {
+            name: "st_maxdistance".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named argument `use_spheroid`
+                NodeType::Float64
+            }),
+        }),
+        "st_npoints" | "st_numpoints" => Some(FunctionDefinition {
+            name: name.to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in point count function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "point count function expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "st_numgeometries" => Some(FunctionDefinition {
+            name: "st_numgeometries".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_numgeometries function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("st_numgeometries expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "st_perimeter" => Some(FunctionDefinition {
+            name: "st_perimeter".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] | [NodeType::Geography, NodeType::Boolean] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_perimeter function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_perimeter function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("st_perimeter expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "st_pointn" => Some(FunctionDefinition {
+            name: "st_pointn".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Int64] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_pointn function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_pointn expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_regionstats" => Some(FunctionDefinition {
+            name: "st_regionstats".to_owned(),
+            compute_return_type: Box::new(|_, indices| {
+                // TODO: contains named argument `band`, `include`, `options`
+                NodeType::Struct(StructNodeType {
+                    fields: vec![
+                        StructNodeFieldType::new("count", NodeType::Int64, indices.to_vec()),
+                        StructNodeFieldType::new("min", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("max", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("stdDev", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("sum", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("mean", NodeType::Float64, indices.to_vec()),
+                        StructNodeFieldType::new("area", NodeType::Float64, indices.to_vec()),
+                    ],
+                })
+            }),
+        }),
+        "st_simplify" => Some(FunctionDefinition {
+            name: "st_simplify".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Float64] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_simplify function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_simplify expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_snaptogrid" => Some(FunctionDefinition {
+            name: "st_snaptogrid".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography, NodeType::Float64] => NodeType::Geography,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_snaptogrid function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_snaptogrid expects 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_startpoint" => Some(FunctionDefinition {
+            name: "st_startpoint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_startpoint function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_startpoint expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_union" => Some(FunctionDefinition {
+            name: "st_union".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_)] | [NodeType::Geography, NodeType::Geography] => {
+                    NodeType::Geography
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in st_union function.", t);
+                    NodeType::Geography
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in st_union function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_union expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_union_agg" => Some(FunctionDefinition {
+            name: "st_union_agg".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Geography] => NodeType::Geography,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in st_union_agg function.",
+                        t
+                    );
+                    NodeType::Geography
+                }
+                _ => {
+                    log::warn!("st_union_agg expects 1 argument, but got {}", tys.len());
+                    NodeType::Geography
+                }
+            }),
+        }),
+        "st_x" | "st_y" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: name.to_owned(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Geography] => NodeType::Float64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        // Hash functions
+        "farm_fingerprint" => Some(FunctionDefinition {
+            name: "farm_fingerprint".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String | NodeType::Bytes] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in farm_fingerprint function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("farm_fingerprint expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "md5" | "sha1" | "sha256" | "sha512" => {
+            let name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: name.to_owned(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String | NodeType::Bytes] => NodeType::Bytes,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, name);
+                        NodeType::Bytes
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", name, tys.len());
+                        NodeType::Bytes
+                    }
+                }),
+            })
+        }
+        // HLL Functions
+        "hll_count.extract" => Some(FunctionDefinition {
+            name: "hll_count.extract".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in hll_count.extract function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "hll_count.extract expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "hll_count.init" => Some(FunctionDefinition {
+            name: "hll_count.init".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::String
+                    | NodeType::Bytes,
+                ] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in hll_count.init function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!("hll_count.init expects 1 argument, but got {}", tys.len());
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "hll_count.merge" => Some(FunctionDefinition {
+            name: "hll_count.merge".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in hll_count.merge function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("hll_count.merge expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "hll_count.merge_partial" => Some(FunctionDefinition {
+            name: "hll_count.merge_partial".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in hll_count.merge_partial function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "hll_count.merge_partial expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        // Interval functions
+        "make_interval" => Some(FunctionDefinition {
+            name: "make_interval".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `year`, `month`, `day`, `hour`, `minute`, `second`
+                NodeType::Interval
+            }),
+        }),
+        "justify_days" => Some(FunctionDefinition {
+            name: "justify_days".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Interval] => NodeType::Interval,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in justify_days function.",
+                        t
+                    );
+                    NodeType::Interval
+                }
+                _ => {
+                    log::warn!("justify_days expects 1 argument, but got {}", tys.len());
+                    NodeType::Interval
+                }
+            }),
+        }),
+        "justify_hours" => Some(FunctionDefinition {
+            name: "justify_hours".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Interval] => NodeType::Interval,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in justify_hours function.",
+                        t
+                    );
+                    NodeType::Interval
+                }
+                _ => {
+                    log::warn!("justify_hours expects 1 argument, but got {}", tys.len());
+                    NodeType::Interval
+                }
+            }),
+        }),
+        "justify_interval" => Some(FunctionDefinition {
+            name: "justify_interval".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Interval] => NodeType::Interval,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in justify_interval function.",
+                        t
+                    );
+                    NodeType::Interval
+                }
+                _ => {
+                    log::warn!("justify_interval expects 1 argument, but got {}", tys.len());
+                    NodeType::Interval
+                }
+            }),
+        }),
         _ => None,
     }
 }
