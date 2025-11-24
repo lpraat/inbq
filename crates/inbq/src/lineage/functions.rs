@@ -35,6 +35,30 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
+        // Generic functions
+        "string" => Some(FunctionDefinition {
+            name: "string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Timestamp] | [NodeType::Timestamp, NodeType::String] => NodeType::String,
+                [NodeType::Json] => NodeType::String,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in string function.", t);
+                    NodeType::String
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in string function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("string expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
         // AEAD encryption functions
         "aead.decrypt_bytes" => Some(FunctionDefinition {
             name: "aead.decrypt_bytes".to_owned(),
@@ -1528,34 +1552,6 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
-        "string" => Some(FunctionDefinition {
-            name: "string".to_owned(),
-            compute_return_type: Box::new(|tys, _| match tys {
-                [NodeType::Timestamp] | [NodeType::Timestamp, NodeType::String] => NodeType::String,
-                [t] => {
-                    log::warn!(
-                        "Found unexpected input type {} in string function for timestamp.",
-                        t
-                    );
-                    NodeType::String
-                }
-                [t1, t2] => {
-                    log::warn!(
-                        "Found unexpected input types in string function for timestamp: ({}, {})",
-                        t1,
-                        t2
-                    );
-                    NodeType::String
-                }
-                _ => {
-                    log::warn!(
-                        "string for timestamp expects 1 or 2 arguments, but got {}",
-                        tys.len()
-                    );
-                    NodeType::String
-                }
-            }),
-        }),
         "timestamp" => Some(FunctionDefinition {
             name: "timestamp".to_owned(),
             compute_return_type: Box::new(|tys, _| match tys {
@@ -3011,6 +3007,432 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 _ => {
                     log::warn!("justify_interval expects 1 argument, but got {}", tys.len());
                     NodeType::Interval
+                }
+            }),
+        }),
+        // JSON Functions
+        "bool" => Some(FunctionDefinition {
+            name: "bool".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::Boolean,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in bool function.", t);
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!("bool expects 1 argument, but got {}", tys.len());
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "float64" => Some(FunctionDefinition {
+            name: "float64".to_owned(),
+            // TODO: contains named arguments `wide_number_mode`
+            compute_return_type: Box::new(|_, _| NodeType::Float64),
+        }),
+        "int64" => Some(FunctionDefinition {
+            name: "int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in int64 function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("int64 expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "json_array" => Some(FunctionDefinition {
+            name: "json_array".to_owned(),
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_array_append" => Some(FunctionDefinition {
+            name: "json_array_append".to_owned(),
+            // TODO: contains named arguments `append_each_element`
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_array_insert" => Some(FunctionDefinition {
+            name: "json_array_insert".to_owned(),
+            // TODO: contains named arguments `insert_each_element`
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_extract" => Some(FunctionDefinition {
+            name: "json_extract".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json, NodeType::String] => NodeType::Json,
+                [NodeType::String, NodeType::String] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!("Unexpected types in json_extract: ({}, {})", t1, t2);
+                    if matches!(t1, NodeType::Json) {
+                        NodeType::Json
+                    } else {
+                        NodeType::String
+                    }
+                }
+                _ => {
+                    log::warn!("json_extract expects 2 arguments, but got {}", tys.len());
+                    NodeType::Json
+                }
+            }),
+        }),
+        "json_extract_array" => Some(FunctionDefinition {
+            name: "json_extract_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let make_array = |elem_type: NodeType| {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: elem_type,
+                        input: indices.to_vec(),
+                    }))
+                };
+
+                match tys {
+                    [NodeType::Json] | [NodeType::Json, NodeType::String] => {
+                        make_array(NodeType::Json)
+                    }
+                    [NodeType::String] | [NodeType::String, NodeType::String] => {
+                        make_array(NodeType::String)
+                    }
+                    [t1, t2] => {
+                        log::warn!(
+                            "Unexpected input types ({}, {}) in json_extract_array",
+                            t1,
+                            t2
+                        );
+                        if matches!(t1, NodeType::Json) {
+                            make_array(NodeType::Json)
+                        } else {
+                            make_array(NodeType::String)
+                        }
+                    }
+                    [t] => {
+                        log::warn!("Unexpected input type {} in json_extract_array", t);
+                        make_array(NodeType::String)
+                    }
+                    _ => {
+                        log::warn!(
+                            "json_extract_array expects 1 or 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        make_array(NodeType::String)
+                    }
+                }
+            }),
+        }),
+        "json_extract_scalar" => Some(FunctionDefinition {
+            name: "json_extract_scalar".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json | NodeType::String]
+                | [NodeType::Json | NodeType::String, NodeType::String] => NodeType::String,
+                [t, ..] => {
+                    log::warn!("Unexpected input type {} in json_extract_scalar", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "json_extract_scalar expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "json_extract_string_array" => Some(FunctionDefinition {
+            name: "json_extract_string_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::String,
+                    input: indices.to_vec(),
+                }));
+
+                match tys {
+                    [NodeType::Json] | [NodeType::Json, NodeType::String] => return_type,
+                    [NodeType::String] | [NodeType::String, NodeType::String] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Unexpected input types ({}, {}) in json_extract_string_array",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    [t] => {
+                        log::warn!("Unexpected input type {} in json_extract_string_array", t);
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "json_extract_string_array expects 1 or 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "json_flatten" => Some(FunctionDefinition {
+            name: "json_flatten".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Json,
+                    input: indices.to_vec(),
+                }));
+
+                match tys {
+                    [NodeType::Json] => NodeType::Json,
+                    [t] => {
+                        log::warn!("Unexpected input type {} in json_flatten", t);
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("json_flatten expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "json_keys" => Some(FunctionDefinition {
+            name: "json_keys".to_owned(),
+            compute_return_type: Box::new(|_, indices| {
+                // TODO: contains named arguments `max_depth`, `mode`
+                NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::String,
+                    input: indices.to_vec(),
+                }))
+            }),
+        }),
+        "json_object" => Some(FunctionDefinition {
+            name: "json_object".to_owned(),
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_query" => Some(FunctionDefinition {
+            name: "json_query".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json, NodeType::String] => NodeType::Json,
+                [NodeType::String, NodeType::String] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!("Unexpected types in json_query: ({}, {})", t1, t2);
+                    if matches!(t1, NodeType::Json) {
+                        NodeType::Json
+                    } else {
+                        NodeType::String
+                    }
+                }
+                _ => {
+                    log::warn!("json_query expects 2 arguments, but got {}", tys.len());
+                    NodeType::Json
+                }
+            }),
+        }),
+        "json_query_array" => Some(FunctionDefinition {
+            name: "json_query_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let make_array = |elem_type: NodeType| {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: elem_type,
+                        input: indices.to_vec(),
+                    }))
+                };
+
+                match tys {
+                    [NodeType::Json] | [NodeType::Json, NodeType::String] => {
+                        make_array(NodeType::Json)
+                    }
+                    [NodeType::String] | [NodeType::String, NodeType::String] => {
+                        make_array(NodeType::String)
+                    }
+                    [t1, t2] => {
+                        log::warn!(
+                            "Unexpected input types ({}, {}) in json_query_array",
+                            t1,
+                            t2
+                        );
+                        if matches!(t1, NodeType::Json) {
+                            make_array(NodeType::Json)
+                        } else {
+                            make_array(NodeType::String)
+                        }
+                    }
+                    [t] => {
+                        log::warn!("Unexpected input type {} in json_query_array", t);
+                        make_array(NodeType::String)
+                    }
+                    _ => {
+                        log::warn!(
+                            "json_query_array expects 1 or 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        make_array(NodeType::String)
+                    }
+                }
+            }),
+        }),
+        "json_remove" => Some(FunctionDefinition {
+            name: "json_remove".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json, ..] => NodeType::Json,
+                [t, ..] => {
+                    log::warn!("Unexpected input type {} in json_remove", t);
+                    NodeType::Json
+                }
+                _ => {
+                    log::warn!(
+                        "json_remove expects at least 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Json
+                }
+            }),
+        }),
+        "json_set" => Some(FunctionDefinition {
+            name: "json_set".to_owned(),
+            // TODO: contains named arguments `create_if_missing`
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_strip_nulls" => Some(FunctionDefinition {
+            name: "json_strip_nulls".to_owned(),
+            // TODO: contains named arguments `max_depth`, `mode`
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "json_type" => Some(FunctionDefinition {
+            name: "json_type".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::String,
+                [t] => {
+                    log::warn!("Unexpected input type {} in json_type", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("json_type expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "json_value" => Some(FunctionDefinition {
+            name: "json_value".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json | NodeType::String]
+                | [NodeType::Json | NodeType::String, NodeType::String] => NodeType::String,
+                [t, ..] => {
+                    log::warn!("Unexpected input type {} in json_value", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("json_value expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "json_value_array" => Some(FunctionDefinition {
+            name: "json_value_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::String,
+                    input: indices.to_vec(),
+                }));
+
+                match tys {
+                    [NodeType::Json] | [NodeType::Json, NodeType::String] => return_type,
+                    [NodeType::String] | [NodeType::String, NodeType::String] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Unexpected input types ({}, {}) in json_value_array",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    [t] => {
+                        log::warn!("Unexpected input type {} in json_value_array", t);
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "json_value_array expects 1 or 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "lax_bool" => Some(FunctionDefinition {
+            name: "lax_bool".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::Boolean,
+                [t] => {
+                    log::warn!("Unexpected input type {} in lax_bool", t);
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!("lax_bool expects 1 argument, but got {}", tys.len());
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "lax_float64" => Some(FunctionDefinition {
+            name: "lax_float64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::Float64,
+                [t] => {
+                    log::warn!("Unexpected input type {} in lax_float64", t);
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("lax_float64 expects 1 argument, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "lax_int64" => Some(FunctionDefinition {
+            name: "lax_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Unexpected input type {} in lax_int64", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("lax_int64 expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "lax_string" => Some(FunctionDefinition {
+            name: "lax_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Json] => NodeType::String,
+                [t] => {
+                    log::warn!("Unexpected input type {} in lax_string", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("lax_string expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "parse_json" => Some(FunctionDefinition {
+            name: "parse_json".to_owned(),
+            // TODO: contains named arguments `wide_number_mode`
+            compute_return_type: Box::new(|tys, _| NodeType::Json),
+        }),
+        "to_json" => Some(FunctionDefinition {
+            name: "to_json".to_owned(),
+            // TODO: contains named arguments `stringify_wide_numbers`
+            compute_return_type: Box::new(|_, _| NodeType::Json),
+        }),
+        "to_json_string" => Some(FunctionDefinition {
+            name: "to_json_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [_, NodeType::Boolean] | [_] => NodeType::String,
+                _ => {
+                    log::warn!(
+                        "to_json_string expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
                 }
             }),
         }),
