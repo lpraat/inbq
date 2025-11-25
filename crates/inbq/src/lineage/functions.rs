@@ -18,23 +18,6 @@ fn array_type_with_unkown_type() -> NodeType {
 
 pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> {
     match name.to_lowercase().as_str() {
-        "abs" => Some(FunctionDefinition {
-            name: "abs".to_owned(),
-            compute_return_type: Box::new(|tys, _| match tys {
-                [NodeType::Int64] => NodeType::Int64,
-                [NodeType::Numeric] => NodeType::Numeric,
-                [NodeType::BigNumeric] => NodeType::BigNumeric,
-                [NodeType::Float64] => NodeType::Float64,
-                [t] => {
-                    log::warn!("Found unexpected input type {} in abs function.", t);
-                    NodeType::Unknown
-                }
-                _ => {
-                    log::warn!("abs expects 1 argument, but got {}", tys.len());
-                    NodeType::Unknown
-                }
-            }),
-        }),
         // Generic functions
         "string" => Some(FunctionDefinition {
             name: "string".to_owned(),
@@ -3416,7 +3399,7 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         "parse_json" => Some(FunctionDefinition {
             name: "parse_json".to_owned(),
             // TODO: contains named arguments `wide_number_mode`
-            compute_return_type: Box::new(|tys, _| NodeType::Json),
+            compute_return_type: Box::new(|_, _| NodeType::Json),
         }),
         "to_json" => Some(FunctionDefinition {
             name: "to_json".to_owned(),
@@ -3433,6 +3416,683 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                         tys.len()
                     );
                     NodeType::String
+                }
+            }),
+        }),
+        // KLL Quantiles functions
+        "kll_quantiles.extract_int64" => Some(FunctionDefinition {
+            name: "kll_quantiles.extract_int64".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Int64,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Bytes, NodeType::Int64] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in kll_quantiles.extract_int64 function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "kll_quantiles.extract_int64 expects 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "kll_quantiles.extract_float64" => Some(FunctionDefinition {
+            name: "kll_quantiles.extract_float64".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Float64,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::Bytes, NodeType::Int64] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in kll_quantiles.extract_float64 function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "kll_quantiles.extract_float64 expects 2 arguments, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "kll_quantiles.extract_point_int64" => Some(FunctionDefinition {
+            name: "kll_quantiles.extract_point_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Float64] => NodeType::Int64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.extract_point_int64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.extract_point_int64 expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "kll_quantiles.extract_point_float64" => Some(FunctionDefinition {
+            name: "kll_quantiles.extract_point_float64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Float64] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.extract_point_float64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.extract_point_float64 expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "kll_quantiles.init_int64" => Some(FunctionDefinition {
+            name: "kll_quantiles.init_int64".to_owned(),
+            // TODO: contains named arguments `weight`
+            compute_return_type: Box::new(|_, _| NodeType::Bytes),
+        }),
+        "kll_quantiles.init_float64" => Some(FunctionDefinition {
+            name: "kll_quantiles.init_float64".to_owned(),
+            // TODO: contains named arguments `weight`
+            compute_return_type: Box::new(|_, _| NodeType::Bytes),
+        }),
+        "kll_quantiles.merge_int64" => Some(FunctionDefinition {
+            name: "kll_quantiles.merge_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Int64] => NodeType::Bytes,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.merge_int64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.merge_int64 expects 2 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "kll_quantiles.merge_float64" => Some(FunctionDefinition {
+            name: "kll_quantiles.merge_float64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Int64] => NodeType::Bytes,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.merge_float64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.merge_float64 expects 2 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "kll_quantiles.merge_partial" => Some(FunctionDefinition {
+            name: "kll_quantiles.merge_partial".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in kll_quantiles.merge_partial function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.merge_partial expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "kll_quantiles.merge_point_int64" => Some(FunctionDefinition {
+            name: "kll_quantiles.merge_point_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Float64] => NodeType::Int64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.merge_point_int64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.merge_point_int64 expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "kll_quantiles.merge_point_float64" => Some(FunctionDefinition {
+            name: "kll_quantiles.merge_point_float64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Float64] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in kll_quantiles.merge_point_float64 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "kll_quantiles.merge_point_float64 expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Float64
+                }
+            }),
+        }),
+        // Mathematical functions
+        "abs" => Some(FunctionDefinition {
+            name: "abs".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Int64,
+                [NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::Float64] => NodeType::Float64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in abs function.", t);
+                    NodeType::Unknown
+                }
+                _ => {
+                    log::warn!("abs expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "acos" | "acosh" | "asin" | "asinh" | "atan" | "atanh" | "cbrt" | "cos" | "cosh"
+        | "cot" | "coth" | "csc" | "csch" | "sec" | "sech" | "sin" | "sinh" | "tan" | "tanh" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [
+                        NodeType::Int64
+                        | NodeType::Float64
+                        | NodeType::Numeric
+                        | NodeType::BigNumeric,
+                    ] => NodeType::Float64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "atan2" => Some(FunctionDefinition {
+            name: "atan2".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                ] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in atan2 function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("atan2 expects 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "ceil" | "ceiling" | "floor" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Float64] => NodeType::Float64,
+                    [NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::Int64] => NodeType::Float64, // BigQuery promotes INT to FLOAT for these
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "cosine_distance" => Some(FunctionDefinition {
+            name: "cosine_distance".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_), NodeType::Array(_)] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in cosine_distance function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("cosine_distance expects 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "euclidean_distance" => Some(FunctionDefinition {
+            name: "euclidean_distance".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(_), NodeType::Array(_)] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in euclidean_distance function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!(
+                        "euclidean_distance expects 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "trunc" => Some(FunctionDefinition {
+            name: "trunc".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Float64] | [NodeType::Float64, NodeType::Int64] => NodeType::Float64,
+                [NodeType::Numeric] | [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                [NodeType::BigNumeric] | [NodeType::BigNumeric, NodeType::Int64] => {
+                    NodeType::BigNumeric
+                }
+                [NodeType::Int64] | [NodeType::Int64, NodeType::Int64] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in trunc function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in trunc function.", t);
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("trunc expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "div" => Some(FunctionDefinition {
+            name: "div".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64, NodeType::Int64] => NodeType::Int64,
+                [NodeType::Numeric, NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::Int64, NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                [NodeType::Int64, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
+                [NodeType::Numeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::BigNumeric, NodeType::Numeric] => NodeType::BigNumeric,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in div function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("div expects 2 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "exp" | "ln" | "log10" | "sqrt" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Int64 | NodeType::Float64] => NodeType::Float64,
+                    [NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "greatest" | "least" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| {
+                    tys.iter().fold(NodeType::Unknown, |acc, &e| {
+                        acc.common_supertype_with(e).unwrap_or(NodeType::Unknown)
+                    })
+                }),
+            })
+        }
+        "ieee_divide" => Some(FunctionDefinition {
+            name: "ieee_divide".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                ] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in ieee_divide function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("ieee_divide expects 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "is_inf" | "is_nan" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [
+                        NodeType::Float64
+                        | NodeType::Int64
+                        | NodeType::Numeric
+                        | NodeType::BigNumeric,
+                    ] => NodeType::Boolean,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Boolean
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Boolean
+                    }
+                }),
+            })
+        }
+        "log" => Some(FunctionDefinition {
+            name: "log".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                ] => NodeType::Float64,
+                [
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                    NodeType::Int64 | NodeType::Float64 | NodeType::Numeric | NodeType::BigNumeric,
+                ] => NodeType::Float64,
+                _ => {
+                    log::warn!("log expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "mod" => Some(FunctionDefinition {
+            name: "mod".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64, NodeType::Int64] => NodeType::Int64,
+                [NodeType::Numeric, NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::Int64, NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                [NodeType::Int64, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
+                [NodeType::Numeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::BigNumeric, NodeType::Numeric] => NodeType::BigNumeric,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in mod function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("mod expects 2 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "pow" | "power" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Int64, NodeType::Int64] => NodeType::Float64,
+                    [NodeType::Int64, NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::Int64, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::Int64, NodeType::Float64] => NodeType::Float64,
+                    [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                    [NodeType::Numeric, NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::Numeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::Numeric, NodeType::Float64] => NodeType::Float64,
+                    [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::Numeric] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::Float64] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::Int64] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::Numeric] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::BigNumeric] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::Float64] => NodeType::Float64,
+
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 2 arguments, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "rand" => Some(FunctionDefinition {
+            name: "rand".to_owned(),
+            compute_return_type: Box::new(|_, _| NodeType::Float64),
+        }),
+        "range_bucket" => Some(FunctionDefinition {
+            name: "range_bucket".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [_, NodeType::Array(_)] => NodeType::Int64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in range_bucket function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("range_bucket expects 2 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "round" => Some(FunctionDefinition {
+            name: "round".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64 | NodeType::Float64] => NodeType::Float64,
+                [NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric] => NodeType::BigNumeric,
+
+                [NodeType::Int64 | NodeType::Float64, NodeType::Int64] => NodeType::Float64,
+                [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
+
+                [
+                    NodeType::Int64 | NodeType::Float64,
+                    NodeType::Int64,
+                    NodeType::String,
+                ] => NodeType::Float64,
+                [NodeType::Numeric, NodeType::Int64, NodeType::String] => NodeType::Numeric,
+                [NodeType::BigNumeric, NodeType::Int64, NodeType::String] => NodeType::BigNumeric,
+
+                [t, ..] => {
+                    log::warn!(
+                        "Found unexpected input types in round function. First argument type: {}",
+                        t
+                    );
+                    match t {
+                        NodeType::Numeric => NodeType::Numeric,
+                        NodeType::BigNumeric => NodeType::BigNumeric,
+                        _ => NodeType::Float64,
+                    }
+                }
+                _ => {
+                    log::warn!("round expects 1, 2, or 3 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "safe_add" | "safe_subtract" | "safe_multiply" | "safe_divide" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    // Row 1: Left argument INT64
+                    [NodeType::Int64, NodeType::Int64] => NodeType::Int64,
+                    [NodeType::Int64, NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::Int64, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::Int64, NodeType::Float64] => NodeType::Float64,
+
+                    // Row 2: Left argument NUMERIC
+                    [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
+                    [NodeType::Numeric, NodeType::Numeric] => NodeType::Numeric,
+                    [NodeType::Numeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::Numeric, NodeType::Float64] => NodeType::Float64,
+
+                    // Row 3: Left argument BIGNUMERIC
+                    [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::Numeric] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::BigNumeric] => NodeType::BigNumeric,
+                    [NodeType::BigNumeric, NodeType::Float64] => NodeType::Float64,
+
+                    // Row 4: Left argument FLOAT64
+                    [NodeType::Float64, NodeType::Int64] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::Numeric] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::BigNumeric] => NodeType::Float64,
+                    [NodeType::Float64, NodeType::Float64] => NodeType::Float64,
+
+                    // Fallback / Error logging
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        // Default fallback, likely Float64 or Unknown
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 2 arguments, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "safe_negate" => Some(FunctionDefinition {
+            name: "safe_negate".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Int64,
+                [NodeType::Float64] => NodeType::Float64,
+                [NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric] => NodeType::BigNumeric,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in safe_negate function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("safe_negate expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "sign" => Some(FunctionDefinition {
+            name: "sign".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Int64,
+                [NodeType::Float64] => NodeType::Float64,
+                [NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric] => NodeType::BigNumeric,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in sign function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("sign expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
                 }
             }),
         }),
