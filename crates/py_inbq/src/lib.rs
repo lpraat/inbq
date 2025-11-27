@@ -1381,6 +1381,7 @@ impl RsToPyObject for FunctionAggregateOrderBy {
         let kwargs = &[
             kwarg!(py_ctx, "expr", self.expr),
             kwarg!(py_ctx, "sort_direction", self.sort_direction),
+            kwarg!(py_ctx, "nulls", self.nulls),
         ];
         instantiate_py_class(
             py_ctx,
@@ -1421,7 +1422,8 @@ impl RsToPyObject for WindowOrderByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "asc_desc", self.asc_desc),
+            kwarg!(py_ctx, "sort_direction", self.sort_direction),
+            kwarg!(py_ctx, "nulls", self.nulls),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowOrderByExpr)?, kwargs)
     }

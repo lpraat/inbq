@@ -1941,7 +1941,7 @@ impl<'a> Parser<'a> {
         loop {
             let expr = self.parse_expr()?;
 
-            let asc_desc = if self.match_token_type(TokenTypeVariant::Asc) {
+            let sort_direction = if self.match_token_type(TokenTypeVariant::Asc) {
                 Some(OrderBySortDirection::Asc)
             } else if self.match_token_type(TokenTypeVariant::Desc) {
                 Some(OrderBySortDirection::Desc)
@@ -1966,7 +1966,7 @@ impl<'a> Parser<'a> {
 
             order_by_exprs.push(OrderByExpr {
                 expr,
-                sort_direction: asc_desc,
+                sort_direction,
                 nulls,
             });
 
@@ -2821,7 +2821,7 @@ impl<'a> Parser<'a> {
     /// named_window_expr -> ((Identifier" | "QuotedIdentifier") |  [("Identifier" | "QuotedIdentifier")] [partition_by] [order_by] [frame])
     /// where:
     /// partition_by -> "PARTITION" "BY" expr ("," expr)*
-    /// order_by -> "ORDER" "BY" expr [("ASC" | "DESC")] ("," expr [("ASC" | "DESC")?])*
+    /// order_by -> "ORDER" "BY" expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")])*
     /// frame -> window_frame
     /// ```
     fn parse_named_window_expr(&mut self) -> anyhow::Result<NamedWindowExpr> {
@@ -2856,7 +2856,7 @@ impl<'a> Parser<'a> {
             loop {
                 let expr = self.parse_expr()?;
 
-                let asc_desc = if self.match_token_type(TokenTypeVariant::Asc) {
+                let sort_direction = if self.match_token_type(TokenTypeVariant::Asc) {
                     Some(OrderBySortDirection::Asc)
                 } else if self.match_token_type(TokenTypeVariant::Desc) {
                     Some(OrderBySortDirection::Desc)
@@ -2864,7 +2864,26 @@ impl<'a> Parser<'a> {
                     None
                 };
 
-                order_by_exprs.push(WindowOrderByExpr { expr, asc_desc });
+                let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
+                    let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
+                    match &tok.kind {
+                        TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                            Some(OrderByNulls::First)
+                        }
+                        TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                            Some(OrderByNulls::Last)
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    None
+                };
+
+                order_by_exprs.push(WindowOrderByExpr {
+                    expr,
+                    sort_direction,
+                    nulls,
+                });
 
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
@@ -3948,9 +3967,24 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
+                    let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
+                    match &tok.kind {
+                        TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                            Some(OrderByNulls::First)
+                        }
+                        TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                            Some(OrderByNulls::Last)
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    None
+                };
                 exprs.push(FunctionAggregateOrderBy {
                     expr: Box::new(expr),
                     sort_direction,
+                    nulls,
                 });
                 if !self.match_token_type(TokenTypeVariant::Comma) {
                     break;
@@ -4338,7 +4372,7 @@ impl<'a> Parser<'a> {
     ///  expr
     ///  [("IGNORE" | "RESPECT") "NULLS"]
     ///  ["HAVING ("MAX" | "MIN") expr]
-    ///  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
+    ///  ["ORDER" "BY" expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")])*]
     ///  ["LIMIT" "Number"]
     /// ```
     fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
@@ -4408,9 +4442,24 @@ impl<'a> Parser<'a> {
                     } else {
                         None
                     };
+                    let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
+                        let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
+                        match &tok.kind {
+                            TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                                Some(OrderByNulls::First)
+                            }
+                            TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                                Some(OrderByNulls::Last)
+                            }
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        None
+                    };
                     exprs.push(FunctionAggregateOrderBy {
                         expr: Box::new(expr),
                         sort_direction,
+                        nulls,
                     });
                     if !self.match_token_type(TokenTypeVariant::Comma) {
                         break;

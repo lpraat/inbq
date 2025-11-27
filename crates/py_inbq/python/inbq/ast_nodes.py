@@ -1117,6 +1117,7 @@ class FunctionAggregate(AstNode):
 class FunctionAggregateOrderBy(AstNode):
     expr: "Expr"
     sort_direction: "Optional[OrderBySortDirection]"
+    nulls: "Optional[OrderByNulls]"
 
 
 @dataclass
@@ -1400,7 +1401,8 @@ class Window(AstNode):
 @dataclass
 class WindowOrderByExpr(AstNode):
     expr: "Expr"
-    asc_desc: "Optional[OrderBySortDirection]"
+    sort_direction: "Optional[OrderBySortDirection]"
+    nulls: "Optional[OrderByNulls]"
 
 
 @dataclass

@@ -819,6 +819,7 @@ pub struct FunctionAggregate {
 pub struct FunctionAggregateOrderBy {
     pub expr: Box<Expr>,
     pub sort_direction: Option<OrderBySortDirection>,
+    pub nulls: Option<OrderByNulls>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1274,7 +1275,8 @@ pub struct Window {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowOrderByExpr {
     pub expr: Expr,
-    pub asc_desc: Option<OrderBySortDirection>,
+    pub sort_direction: Option<OrderBySortDirection>,
+    pub nulls: Option<OrderByNulls>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -290,6 +290,24 @@ ORDER BY x NULLS LAST;
 
 [[tests]]
 sql = """
+WITH Numbers AS
+ (SELECT 1 as x
+  UNION ALL SELECT 2
+  UNION ALL SELECT 5
+)
+SELECT x,
+  ROW_NUMBER() OVER (ORDER BY x ASC NULLS FIRST) AS row_num
+FROM Numbers
+"""
+
+[[tests]]
+sql = """
+SELECT STRING_AGG(fruit, " & " ORDER BY LENGTH(fruit) NULLS FIRST) AS string_agg
+FROM UNNEST(["apple", "pear", "banana", "pear"]) AS fruit;
+"""
+
+[[tests]]
+sql = """
 SELECT *
   FROM `bigquery-public-data.samples.shakespeare` AS s
   JOIN mydataset.names_by_year(1950) AS n
