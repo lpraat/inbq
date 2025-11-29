@@ -634,7 +634,32 @@ pub enum FunctionExpr {
 
     LastDay(LastDayFunctionExpr),
 
+    Left(LeftFunctionExpr),
     Right(RightFunctionExpr),
+
+    // String
+    Normalize(NormalizeFunctionExpr),
+    NormalizeAndCasefold(NormalizeAndCasefoldFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NormalizeFunctionExpr {
+    pub value: Expr,
+    pub mode: NormalizationMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NormalizeAndCasefoldFunctionExpr {
+    pub value: Expr,
+    pub mode: NormalizationMode,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum NormalizationMode {
+    NFC,
+    NFKC,
+    NFD,
+    NFKD,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,6 +753,12 @@ pub enum Granularity {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RightFunctionExpr {
+    pub value: Expr,
+    pub length: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeftFunctionExpr {
     pub value: Expr,
     pub length: Expr,
 }

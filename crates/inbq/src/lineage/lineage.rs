@@ -181,7 +181,7 @@ pub enum NodeType {
     Interval,
     Json,
     Numeric,
-    Range,
+    Range(Box<NodeType>),
     String,
     Time,
     Timestamp,
@@ -274,7 +274,7 @@ impl Display for NodeType {
             NodeType::Interval => write!(f, "INTERVAL"),
             NodeType::Json => write!(f, "JSON"),
             NodeType::Numeric => write!(f, "NUMERIC"),
-            NodeType::Range => write!(f, "RANGE"),
+            NodeType::Range(range_node_type) => write!(f, "RANGE<{}>", range_node_type),
             NodeType::String => write!(f, "STRING"),
             NodeType::Time => write!(f, "TIME"),
             NodeType::Timestamp => write!(f, "TIMESTAMP"),
@@ -1940,7 +1940,14 @@ impl LineageExtractor {
             Expr::BigNumeric(_) => {
                 self.allocate_expr_node("constant", NodeType::BigNumeric, vec![])
             }
-            Expr::Range(_) => self.allocate_expr_node("constant", NodeType::Range, vec![]),
+            Expr::Range(range_expr) => self.allocate_expr_node(
+                "constant",
+                NodeType::Range(Box::new(node_type_from_parser_type(
+                    &range_expr.r#type,
+                    &mut vec![],
+                ))),
+                vec![],
+            ),
             Expr::Date(_) => self.allocate_expr_node("constant", NodeType::Date, vec![]),
             Expr::Timestamp(_) => self.allocate_expr_node("constant", NodeType::Timestamp, vec![]),
             Expr::Datetime(_) => self.allocate_expr_node("constant", NodeType::Datetime, vec![]),
@@ -2186,6 +2193,34 @@ impl LineageExtractor {
                         if_type,
                         vec![cond_node_idx, true_result_node_idx, false_result_node_idx],
                     )
+                }
+                FunctionExpr::Normalize(normalize_function_expr) => {
+                    let node_idx = self.select_expr_col_expr_lin(
+                        &normalize_function_expr.value,
+                        expand_value_table,
+                    )?;
+                    self.allocate_expr_node("normalize", NodeType::String, vec![node_idx])
+                }
+                FunctionExpr::NormalizeAndCasefold(normalize_and_casefold_function_expr) => {
+                    let node_idx = self.select_expr_col_expr_lin(
+                        &normalize_and_casefold_function_expr.value,
+                        expand_value_table,
+                    )?;
+                    self.allocate_expr_node(
+                        "normalize_and_casefold",
+                        NodeType::String,
+                        vec![node_idx],
+                    )
+                }
+                FunctionExpr::Left(left_function_expr) => {
+                    let value_idx = self
+                        .select_expr_col_expr_lin(&left_function_expr.value, expand_value_table)?;
+                    let len_idx = self
+                        .select_expr_col_expr_lin(&left_function_expr.length, expand_value_table)?;
+
+                    let value = &self.context.arena_lineage_nodes[value_idx];
+
+                    self.allocate_expr_node("left", value.r#type.clone(), vec![value_idx, len_idx])
                 }
                 FunctionExpr::Right(right_function_expr) => {
                     let value_idx = self
@@ -2966,6 +3001,10 @@ impl LineageExtractor {
             )?,
             FromExpr::TableFunction(_) => {
                 // TODO
+                // also:
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/range-functions#range_sessionize
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/federated_query_functions#external_query
                 return Err(anyhow!(
                     "Cannot extract lineage from a table function call (still a todo)."
                 ));
@@ -4295,7 +4334,9 @@ fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) 
         Type::Interval => NodeType::Interval,
         Type::Json => NodeType::Json,
         Type::Numeric => NodeType::Numeric,
-        Type::Range { r#type: _ } => NodeType::Range,
+        Type::Range { r#type: ty } => {
+            NodeType::Range(Box::new(node_type_from_parser_type(ty, types_vec)))
+        }
         Type::String => NodeType::String,
         Type::Struct { fields } => NodeType::Struct(StructNodeType {
             fields: fields
@@ -4344,7 +4385,9 @@ fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> N
             precision: _,
             scale: _,
         } => NodeType::Numeric,
-        ParameterizedType::Range { r#type: _ } => NodeType::Range,
+        ParameterizedType::Range { r#type: ty } => {
+            NodeType::Range(Box::new(node_type_from_parser_parameterized_type(ty)))
+        }
         ParameterizedType::String { max_length: _ } => NodeType::String,
         ParameterizedType::Struct { fields } => NodeType::Struct(StructNodeType {
             fields: fields

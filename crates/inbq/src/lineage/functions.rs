@@ -4020,31 +4020,26 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
             Some(FunctionDefinition {
                 name: fn_name.clone(),
                 compute_return_type: Box::new(move |tys, _| match tys {
-                    // Row 1: Left argument INT64
                     [NodeType::Int64, NodeType::Int64] => NodeType::Int64,
                     [NodeType::Int64, NodeType::Numeric] => NodeType::Numeric,
                     [NodeType::Int64, NodeType::BigNumeric] => NodeType::BigNumeric,
                     [NodeType::Int64, NodeType::Float64] => NodeType::Float64,
 
-                    // Row 2: Left argument NUMERIC
                     [NodeType::Numeric, NodeType::Int64] => NodeType::Numeric,
                     [NodeType::Numeric, NodeType::Numeric] => NodeType::Numeric,
                     [NodeType::Numeric, NodeType::BigNumeric] => NodeType::BigNumeric,
                     [NodeType::Numeric, NodeType::Float64] => NodeType::Float64,
 
-                    // Row 3: Left argument BIGNUMERIC
                     [NodeType::BigNumeric, NodeType::Int64] => NodeType::BigNumeric,
                     [NodeType::BigNumeric, NodeType::Numeric] => NodeType::BigNumeric,
                     [NodeType::BigNumeric, NodeType::BigNumeric] => NodeType::BigNumeric,
                     [NodeType::BigNumeric, NodeType::Float64] => NodeType::Float64,
 
-                    // Row 4: Left argument FLOAT64
                     [NodeType::Float64, NodeType::Int64] => NodeType::Float64,
                     [NodeType::Float64, NodeType::Numeric] => NodeType::Float64,
                     [NodeType::Float64, NodeType::BigNumeric] => NodeType::Float64,
                     [NodeType::Float64, NodeType::Float64] => NodeType::Float64,
 
-                    // Fallback / Error logging
                     [t1, t2] => {
                         log::warn!(
                             "Found unexpected input types in {} function: ({}, {})",
@@ -4052,7 +4047,6 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                             t1,
                             t2
                         );
-                        // Default fallback, likely Float64 or Unknown
                         NodeType::Float64
                     }
                     _ => {
@@ -4093,6 +4087,1365 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 _ => {
                     log::warn!("sign expects 1 argument, but got {}", tys.len());
                     NodeType::Int64
+                }
+            }),
+        }),
+        // Navigation functions
+        "first_value" => Some(FunctionDefinition {
+            name: "first_value".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t] => (*t).clone(),
+                _ => {
+                    log::warn!("first_value expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "last_value" => Some(FunctionDefinition {
+            name: "last_value".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t] => (*t).clone(),
+                _ => {
+                    log::warn!("last_value expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "lag" => Some(FunctionDefinition {
+            name: "lag".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t] => (*t).clone(),
+                [t, NodeType::Int64] => (*t).clone(),
+                [t, NodeType::Int64, _] => (*t).clone(),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in lag function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    (*t1).clone()
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in lag function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    (*t1).clone()
+                }
+                _ => {
+                    log::warn!("lag expects 1, 2 or 3 arguments, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "lead" => Some(FunctionDefinition {
+            name: "lead".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t] => (*t).clone(),
+                [t, NodeType::Int64] => (*t).clone(),
+                [t, NodeType::Int64, _] => (*t).clone(),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in lead function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    (*t1).clone()
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in lead function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    (*t1).clone()
+                }
+                _ => {
+                    log::warn!("lead expects 1, 2 or 3 arguments, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "nth_value" => Some(FunctionDefinition {
+            name: "nth_value".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t, NodeType::Int64] => (*t).clone(),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in nth_value function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    (*t1).clone()
+                }
+                _ => {
+                    log::warn!("nth_value expects 2 arguments, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "percentile_cont" => Some(FunctionDefinition {
+            name: "percentile_cont".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Numeric, NodeType::Float64] => NodeType::Numeric,
+                [NodeType::Float64, NodeType::Numeric] => NodeType::Numeric,
+                [NodeType::BigNumeric, NodeType::Float64] => NodeType::BigNumeric,
+                [NodeType::Float64, NodeType::BigNumeric] => NodeType::BigNumeric,
+                [NodeType::Float64, NodeType::Float64] => NodeType::Float64,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in percentile_cont function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Float64
+                }
+                _ => {
+                    log::warn!("percentile_cont expects 2 arguments, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "percentile_disc" => Some(FunctionDefinition {
+            name: "percentile_disc".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t, NodeType::Float64] => (*t).clone(),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in percentile_disc function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    (*t1).clone()
+                }
+                _ => {
+                    log::warn!("percentile_disc expects 2 arguments, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        // Net functions
+        "net.host" => Some(FunctionDefinition {
+            name: "net.host".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::String,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in net.host function.", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("net.host expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "net.ip_from_string" => Some(FunctionDefinition {
+            name: "net.ip_from_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.ip_from_string function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "net.ip_from_string expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "net.ip_net_mask" => Some(FunctionDefinition {
+            name: "net.ip_net_mask".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64, NodeType::Int64] => NodeType::Bytes,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in net.ip_net_mask function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!("net.ip_net_mask expects 2 arguments, but got {}", tys.len());
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "net.ip_to_string" => Some(FunctionDefinition {
+            name: "net.ip_to_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.ip_to_string function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("net.ip_to_string expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "net.ip_trunc" => Some(FunctionDefinition {
+            name: "net.ip_trunc".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes, NodeType::Int64] => NodeType::Bytes,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in net.ip_trunc function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!("net.ip_trunc expects 2 arguments, but got {}", tys.len());
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "net.ipv4_from_int64" => Some(FunctionDefinition {
+            name: "net.ipv4_from_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.ipv4_from_int64 function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "net.ipv4_from_int64 expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "net.ipv4_to_int64" => Some(FunctionDefinition {
+            name: "net.ipv4_to_int64".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::Int64,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.ipv4_to_int64 function.",
+                        t
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "net.ipv4_to_int64 expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "net.public_suffix" => Some(FunctionDefinition {
+            name: "net.public_suffix".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.public_suffix function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "net.public_suffix expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "net.reg_domain" => Some(FunctionDefinition {
+            name: "net.reg_domain".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.reg_domain function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("net.reg_domain expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "net.safe_ip_from_string" => Some(FunctionDefinition {
+            name: "net.safe_ip_from_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in net.safe_ip_from_string function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "net.safe_ip_from_string expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        // Numbering functions
+        "cume_dist" => Some(FunctionDefinition {
+            name: "cume_dist".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::Float64,
+                _ => {
+                    log::warn!("cume_dist expects 0 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "dense_rank" => Some(FunctionDefinition {
+            name: "dense_rank".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::Int64,
+                _ => {
+                    log::warn!("dense_rank expects 0 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "ntile" => Some(FunctionDefinition {
+            name: "ntile".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::Int64,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in ntile function.", t);
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("ntile expects 1 argument, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "percent_rank" => Some(FunctionDefinition {
+            name: "percent_rank".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::Float64,
+                _ => {
+                    log::warn!("percent_rank expects 0 arguments, but got {}", tys.len());
+                    NodeType::Float64
+                }
+            }),
+        }),
+        "rank" => Some(FunctionDefinition {
+            name: "rank".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::Int64,
+                _ => {
+                    log::warn!("rank expects 0 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "row_number" => Some(FunctionDefinition {
+            name: "row_number".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::Int64,
+                _ => {
+                    log::warn!("row_number expects 0 arguments, but got {}", tys.len());
+                    NodeType::Int64
+                }
+            }),
+        }),
+        // ObjectRef functions
+        "obj.fetch_metadata" => Some(FunctionDefinition {
+            name: "obj.fetch_metadata".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Struct(StructNodeType {
+                    fields: vec![
+                        StructNodeFieldType::new("uri", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("version", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("authorizer", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("details", NodeType::Json, indices.to_vec()),
+                    ],
+                });
+                match tys {
+                    [NodeType::Unknown] => return_type,
+                    [t] => {
+                        log::warn!(
+                            "Found unexpected input type {} in obj.fetch_metadata function (expected ObjectRef/Unknown).",
+                            t
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!(
+                            "obj.fetch_metadata expects 1 argument, but got {}",
+                            tys.len()
+                        );
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "obj.get_access_url" => Some(FunctionDefinition {
+            name: "obj.get_access_url".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Unknown] => NodeType::Json,
+                [NodeType::Unknown, NodeType::Int64] => NodeType::Json,
+                [NodeType::Unknown, NodeType::Interval] => NodeType::Json,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in obj.get_access_url function (expected ObjectRef/Unknown).",
+                        t
+                    );
+                    NodeType::Json
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in obj.get_access_url function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Json
+                }
+                _ => {
+                    log::warn!(
+                        "obj.get_access_url expects 1 or 2 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Json
+                }
+            }),
+        }),
+        "obj.make_ref" => Some(FunctionDefinition {
+            name: "obj.make_ref".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Struct(StructNodeType {
+                    fields: vec![
+                        StructNodeFieldType::new("uri", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("version", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("authorizer", NodeType::String, indices.to_vec()),
+                        StructNodeFieldType::new("details", NodeType::Json, indices.to_vec()),
+                    ],
+                });
+                match tys {
+                    [NodeType::String, NodeType::String] => return_type,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in obj.make_ref function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("obj.make_ref expects 2 arguments, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        // Range functions
+        "generate_range_array" => Some(FunctionDefinition {
+            name: "generate_range_array".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let make_array = |range_type: NodeType| {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: range_type,
+                        input: indices.to_vec(),
+                    }))
+                };
+
+                match tys {
+                    [t @ NodeType::Range(_), NodeType::Interval] => make_array((*t).clone()),
+                    [
+                        t @ NodeType::Range(_),
+                        NodeType::Interval,
+                        NodeType::Boolean,
+                    ] => make_array((*t).clone()),
+
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in generate_range_array function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        make_array(NodeType::Range(Box::new(NodeType::Unknown)))
+                    }
+                    [t1, t2, t3] => {
+                        log::warn!(
+                            "Found unexpected input types in generate_range_array function: ({}, {}, {})",
+                            t1,
+                            t2,
+                            t3
+                        );
+                        make_array(NodeType::Range(Box::new(NodeType::Unknown)))
+                    }
+                    _ => {
+                        log::warn!(
+                            "generate_range_array expects 2 or 3 arguments, but got {}",
+                            tys.len()
+                        );
+                        make_array(NodeType::Range(Box::new(NodeType::Unknown)))
+                    }
+                }
+            }),
+        }),
+        "range" => Some(FunctionDefinition {
+            name: "range".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [
+                    t1 @ (NodeType::Date | NodeType::Datetime | NodeType::Timestamp),
+                    t2,
+                ] if t1 == t2 => NodeType::Range(Box::new((*t1).clone())),
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in range function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Range(Box::new(NodeType::Unknown))
+                }
+                _ => {
+                    log::warn!("range expects 2 arguments, but got {}", tys.len());
+                    NodeType::Range(Box::new(NodeType::Unknown))
+                }
+            }),
+        }),
+        "range_contains" => Some(FunctionDefinition {
+            name: "range_contains".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                // RANGE_CONTAINS(outer_range, inner_range)
+                [NodeType::Range(inner1), NodeType::Range(inner2)] if inner1 == inner2 => {
+                    NodeType::Boolean
+                }
+                // RANGE_CONTAINS(range_to_search, value_to_find)
+                [NodeType::Range(inner_type), val_type] if inner_type.as_ref() == *val_type => {
+                    NodeType::Boolean
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in range_contains function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!("range_contains expects 2 arguments, but got {}", tys.len());
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "range_end" => Some(FunctionDefinition {
+            name: "range_end".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Range(inner_type)] => *inner_type.clone(),
+                [t] => {
+                    log::warn!("Found unexpected input type {} in range_end function.", t);
+                    NodeType::Unknown
+                }
+                _ => {
+                    log::warn!("range_end expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        "range_intersect" => Some(FunctionDefinition {
+            name: "range_intersect".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t1 @ NodeType::Range(inner1), NodeType::Range(inner2)] if inner1 == inner2 => {
+                    (*t1).clone()
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in range_intersect function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Range(Box::new(NodeType::Unknown))
+                }
+                _ => {
+                    log::warn!("range_intersect expects 2 arguments, but got {}", tys.len());
+                    NodeType::Range(Box::new(NodeType::Unknown))
+                }
+            }),
+        }),
+        "range_overlaps" => Some(FunctionDefinition {
+            name: "range_overlaps".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Range(inner1), NodeType::Range(inner2)] if inner1 == inner2 => {
+                    NodeType::Boolean
+                }
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in range_overlaps function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!("range_overlaps expects 2 arguments, but got {}", tys.len());
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "range_sessionize" => Some(FunctionDefinition {
+            name: "range_sessionize".to_owned(),
+            compute_return_type: Box::new(|tys, _| {
+                // RANGE_SESSIONIZE is a Table-Valued Function (TVF).
+                // It produces a table, which is not strictly a scalar NodeType.
+                // Returning Unknown is usually the safest fallback for TVFs in scalar contexts.
+                if tys.len() < 2 {
+                    log::warn!("range_sessionize expects at least 2 arguments");
+                }
+                NodeType::Unknown
+            }),
+        }),
+        "range_start" => Some(FunctionDefinition {
+            name: "range_start".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Range(inner_type)] => *inner_type.clone(),
+                [t] => {
+                    log::warn!("Found unexpected input type {} in range_start function.", t);
+                    NodeType::Unknown
+                }
+                _ => {
+                    log::warn!("range_start expects 1 argument, but got {}", tys.len());
+                    NodeType::Unknown
+                }
+            }),
+        }),
+        // Search functions
+        "search" => Some(FunctionDefinition {
+            name: "search".to_owned(),
+            compute_return_type: Box::new(|_, _| {
+                // TODO: contains named arguments `json_scope`, `analyzer`, `analyzer_options`
+                NodeType::Boolean
+            }),
+        }),
+        // Security functions
+        "session_user" => Some(FunctionDefinition {
+            name: "session_user".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::String,
+                _ => {
+                    log::warn!("session_user expects 0 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+
+        // Statistical Aggregate functions
+        "corr" | "covar_pop" | "covar_samp" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [
+                        NodeType::Int64
+                        | NodeType::Float64
+                        | NodeType::Numeric
+                        | NodeType::BigNumeric,
+                        NodeType::Int64
+                        | NodeType::Float64
+                        | NodeType::Numeric
+                        | NodeType::BigNumeric,
+                    ] => NodeType::Float64,
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 2 arguments, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        "stddev" | "stddev_pop" | "stddev_samp" | "var_pop" | "var_samp" | "variance" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [
+                        NodeType::Int64
+                        | NodeType::Float64
+                        | NodeType::Numeric
+                        | NodeType::BigNumeric,
+                    ] => NodeType::Float64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Float64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Float64
+                    }
+                }),
+            })
+        }
+        // String functions
+        "ascii" | "unicode" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String] => NodeType::Int64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Int64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Int64
+                    }
+                }),
+            })
+        }
+        "byte_length" | "length" | "octet_length" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String | NodeType::Bytes] => NodeType::Int64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Int64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Int64
+                    }
+                }),
+            })
+        }
+        "char_length" | "character_length" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String] => NodeType::Int64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Int64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Int64
+                    }
+                }),
+            })
+        }
+        "chr" => Some(FunctionDefinition {
+            name: "chr".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Int64] => NodeType::String,
+                [t] => {
+                    log::warn!("Found unexpected input type {} in chr function.", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("chr expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "code_points_to_bytes" => Some(FunctionDefinition {
+            name: "code_points_to_bytes".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(arr_ty)] if arr_ty.r#type == NodeType::Int64 => NodeType::Bytes,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in code_points_to_bytes function.",
+                        t
+                    );
+                    NodeType::Bytes
+                }
+                _ => {
+                    log::warn!(
+                        "code_points_to_bytes expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Bytes
+                }
+            }),
+        }),
+        "code_points_to_string" => Some(FunctionDefinition {
+            name: "code_points_to_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Array(arr_ty)] if arr_ty.r#type == NodeType::Int64 => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in code_points_to_string function.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!(
+                        "code_points_to_string expects 1 argument, but got {}",
+                        tys.len()
+                    );
+                    NodeType::String
+                }
+            }),
+        }),
+        "collate" => Some(FunctionDefinition {
+            name: "collate".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in collate function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("collate expects 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "contains_substr" => Some(FunctionDefinition {
+            name: "contains_substr".to_owned(),
+            compute_return_type: Box::new(|tys, _| {
+                // TODO: contains named arguments `json_scope`
+                NodeType::Boolean
+            }),
+        }),
+        "edit_distance" => Some(FunctionDefinition {
+            name: "edit_distance".to_owned(),
+            compute_return_type: Box::new(|tys, _| {
+                // TODO: contains named arguments `max_distance`
+                NodeType::Boolean
+            }),
+        }),
+        "ends_with" | "starts_with" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String, NodeType::String] | [NodeType::Bytes, NodeType::Bytes] => {
+                        NodeType::Boolean
+                    }
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        NodeType::Boolean
+                    }
+                    _ => {
+                        log::warn!("{} expects 2 arguments, but got {}", fn_name, tys.len());
+                        NodeType::Boolean
+                    }
+                }),
+            })
+        }
+        "format" => Some(FunctionDefinition {
+            name: "format".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys.first() {
+                Some(NodeType::String) => NodeType::String,
+                Some(t) => {
+                    log::warn!("First argument of format must be String, found {}", t);
+                    NodeType::String
+                }
+                None => {
+                    log::warn!("format expects at least 1 argument");
+                    NodeType::String
+                }
+            }),
+        }),
+        "from_base32" | "from_base64" | "from_hex" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::String] => NodeType::Bytes,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Bytes
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Bytes
+                    }
+                }),
+            })
+        }
+        "initcap" => Some(FunctionDefinition {
+            name: "initcap".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] | [NodeType::String, NodeType::String] => NodeType::String,
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in initcap function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::String
+                }
+                [t] => {
+                    log::warn!("Found unexpected input type {} in initcap function.", t);
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("initcap expects 1 or 2 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "instr" => Some(FunctionDefinition {
+            name: "instr".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String]
+                | [NodeType::String, NodeType::String, NodeType::Int64]
+                | [
+                    NodeType::String,
+                    NodeType::String,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ] => NodeType::Int64,
+                [NodeType::Bytes, NodeType::Bytes]
+                | [NodeType::Bytes, NodeType::Bytes, NodeType::Int64]
+                | [
+                    NodeType::Bytes,
+                    NodeType::Bytes,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ] => NodeType::Int64,
+                _ => {
+                    log::warn!("instr expects 2, 3, or 4 arguments of matching String/Bytes types");
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "lower" | "upper" | "reverse" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [t @ NodeType::String] | [t @ NodeType::Bytes] => (*t).clone(),
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::String
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "lpad" | "rpad" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [t @ NodeType::String, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::String, NodeType::Int64, NodeType::String] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Int64, NodeType::Bytes] => (*t).clone(),
+                    _ => {
+                        log::warn!("Unexpected arguments in {} function", fn_name);
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "ltrim" | "rtrim" | "trim" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [t @ NodeType::String] => (*t).clone(),
+                    [t @ NodeType::String, NodeType::String] => (*t).clone(),
+                    [t @ NodeType::Bytes] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Bytes] => (*t).clone(),
+                    _ => {
+                        log::warn!("Unexpected arguments in {} function", fn_name);
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "regexp_contains" => Some(FunctionDefinition {
+            name: "regexp_contains".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] | [NodeType::Bytes, NodeType::Bytes] => {
+                    NodeType::Boolean
+                }
+                _ => {
+                    log::warn!("regexp_contains expects matching String or Bytes arguments");
+                    NodeType::Boolean
+                }
+            }),
+        }),
+        "regexp_extract" | "regexp_substr" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [t @ NodeType::String, NodeType::String] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Bytes] => (*t).clone(),
+
+                    [t @ NodeType::String, NodeType::String, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Bytes, NodeType::Int64] => (*t).clone(),
+
+                    [
+                        t @ NodeType::String,
+                        NodeType::String,
+                        NodeType::Int64,
+                        NodeType::Int64,
+                    ] => (*t).clone(),
+                    [
+                        t @ NodeType::Bytes,
+                        NodeType::Bytes,
+                        NodeType::Int64,
+                        NodeType::Int64,
+                    ] => (*t).clone(),
+
+                    // Error handling
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {})",
+                            fn_name,
+                            t1,
+                            t2
+                        );
+                        if matches!(t1, NodeType::Bytes) {
+                            NodeType::Bytes
+                        } else {
+                            NodeType::String
+                        }
+                    }
+                    [t1, t2, t3] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {}, {})",
+                            fn_name,
+                            t1,
+                            t2,
+                            t3
+                        );
+                        if matches!(t1, NodeType::Bytes) {
+                            NodeType::Bytes
+                        } else {
+                            NodeType::String
+                        }
+                    }
+                    [t1, t2, t3, t4] => {
+                        log::warn!(
+                            "Found unexpected input types in {} function: ({}, {}, {}, {})",
+                            fn_name,
+                            t1,
+                            t2,
+                            t3,
+                            t4
+                        );
+                        if matches!(t1, NodeType::Bytes) {
+                            NodeType::Bytes
+                        } else {
+                            NodeType::String
+                        }
+                    }
+                    _ => {
+                        log::warn!(
+                            "{} expects 2, 3, or 4 arguments, but got {}",
+                            fn_name,
+                            tys.len()
+                        );
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "regexp_extract_all" => Some(FunctionDefinition {
+            name: "regexp_extract_all".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let make_array = |inner: NodeType| {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: inner,
+                        input: indices.to_vec(),
+                    }))
+                };
+                match tys {
+                    [NodeType::String, NodeType::String] => make_array(NodeType::String),
+                    [NodeType::Bytes, NodeType::Bytes] => make_array(NodeType::Bytes),
+                    _ => {
+                        log::warn!("regexp_extract_all expects matching String or Bytes arguments");
+                        make_array(NodeType::String)
+                    }
+                }
+            }),
+        }),
+        "regexp_instr" => Some(FunctionDefinition {
+            name: "regexp_instr".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] | [NodeType::Bytes, NodeType::Bytes] => {
+                    NodeType::Int64
+                }
+
+                [NodeType::String, NodeType::String, NodeType::Int64]
+                | [NodeType::Bytes, NodeType::Bytes, NodeType::Int64] => NodeType::Int64,
+
+                [
+                    NodeType::String,
+                    NodeType::String,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ]
+                | [
+                    NodeType::Bytes,
+                    NodeType::Bytes,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ] => NodeType::Int64,
+
+                [
+                    NodeType::String,
+                    NodeType::String,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ]
+                | [
+                    NodeType::Bytes,
+                    NodeType::Bytes,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                    NodeType::Int64,
+                ] => NodeType::Int64,
+
+                [t1, t2] => {
+                    log::warn!(
+                        "Found unexpected input types in regexp_instr function: ({}, {})",
+                        t1,
+                        t2
+                    );
+                    NodeType::Int64
+                }
+                [t1, t2, t3] => {
+                    log::warn!(
+                        "Found unexpected input types in regexp_instr function: ({}, {}, {})",
+                        t1,
+                        t2,
+                        t3
+                    );
+                    NodeType::Int64
+                }
+                [t1, t2, t3, t4] => {
+                    log::warn!(
+                        "Found unexpected input types in regexp_instr function: ({}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4
+                    );
+                    NodeType::Int64
+                }
+                [t1, t2, t3, t4, t5] => {
+                    log::warn!(
+                        "Found unexpected input types in regexp_instr function: ({}, {}, {}, {}, {})",
+                        t1,
+                        t2,
+                        t3,
+                        t4,
+                        t5
+                    );
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!(
+                        "regexp_instr expects 2 to 5 arguments, but got {}",
+                        tys.len()
+                    );
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "regexp_replace" => Some(FunctionDefinition {
+            name: "regexp_replace".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t @ NodeType::String, NodeType::String, NodeType::String] => (*t).clone(),
+                [t @ NodeType::Bytes, NodeType::Bytes, NodeType::Bytes] => (*t).clone(),
+                _ => {
+                    log::warn!("regexp_replace expects 3 matching String or Bytes arguments");
+                    NodeType::String
+                }
+            }),
+        }),
+        "repeat" => Some(FunctionDefinition {
+            name: "repeat".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t @ NodeType::String, NodeType::Int64] => (*t).clone(),
+                [t @ NodeType::Bytes, NodeType::Int64] => (*t).clone(),
+                _ => {
+                    log::warn!("repeat expects (String/Bytes, Int64)");
+                    NodeType::String
+                }
+            }),
+        }),
+        "replace" => Some(FunctionDefinition {
+            name: "replace".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [t @ NodeType::String, NodeType::String, NodeType::String] => (*t).clone(),
+                [t @ NodeType::Bytes, NodeType::Bytes, NodeType::Bytes] => (*t).clone(),
+                _ => {
+                    log::warn!("replace expects 3 matching String or Bytes arguments");
+                    NodeType::String
+                }
+            }),
+        }),
+        "safe_convert_bytes_to_string" => Some(FunctionDefinition {
+            name: "safe_convert_bytes_to_string".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::Bytes] => NodeType::String,
+                [t] => {
+                    log::warn!(
+                        "Found unexpected input type {} in safe_convert_bytes_to_string.",
+                        t
+                    );
+                    NodeType::String
+                }
+                _ => {
+                    log::warn!("safe_convert_bytes_to_string expects 1 argument");
+                    NodeType::String
+                }
+            }),
+        }),
+        "soundex" => Some(FunctionDefinition {
+            name: "soundex".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String] => NodeType::String,
+                _ => {
+                    log::warn!("soundex expects 1 String argument");
+                    NodeType::String
+                }
+            }),
+        }),
+        "split" => Some(FunctionDefinition {
+            name: "split".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let make_array = |inner: NodeType| {
+                    NodeType::Array(Box::new(ArrayNodeType {
+                        r#type: inner,
+                        input: indices.to_vec(),
+                    }))
+                };
+                match tys {
+                    [NodeType::String] | [NodeType::String, NodeType::String] => {
+                        make_array(NodeType::String)
+                    }
+                    [NodeType::Bytes] | [NodeType::Bytes, NodeType::Bytes] => {
+                        make_array(NodeType::Bytes)
+                    }
+                    _ => {
+                        log::warn!("split expects String or Bytes arguments");
+                        make_array(NodeType::String)
+                    }
+                }
+            }),
+        }),
+        "strpos" => Some(FunctionDefinition {
+            name: "strpos".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String] | [NodeType::Bytes, NodeType::Bytes] => {
+                    NodeType::Int64
+                }
+                _ => {
+                    log::warn!("strpos expects 2 matching String or Bytes arguments");
+                    NodeType::Int64
+                }
+            }),
+        }),
+        "substr" | "substring" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [t @ NodeType::String, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::String, NodeType::Int64, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Int64] => (*t).clone(),
+                    [t @ NodeType::Bytes, NodeType::Int64, NodeType::Int64] => (*t).clone(),
+                    _ => {
+                        log::warn!("Unexpected arguments in {} function", fn_name);
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "to_base32" | "to_base64" | "to_hex" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Bytes] => NodeType::String,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::String
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::String
+                    }
+                }),
+            })
+        }
+        "to_code_points" => Some(FunctionDefinition {
+            name: "to_code_points".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Int64,
+                    input: indices.to_vec(),
+                }));
+                match tys {
+                    [NodeType::String] | [NodeType::Bytes] => return_type,
+                    _ => {
+                        log::warn!("to_code_points expects 1 String or Bytes argument");
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "translate" => Some(FunctionDefinition {
+            name: "translate".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [NodeType::String, NodeType::String, NodeType::String] => NodeType::String,
+                _ => {
+                    log::warn!("translate expects 3 String arguments");
+                    NodeType::String
                 }
             }),
         }),
