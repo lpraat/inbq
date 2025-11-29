@@ -5449,6 +5449,126 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
+        // Text analysis functions
+        "text_analyze" => Some(FunctionDefinition {
+            name: "text_analyze".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                // TODO: contains named arguments `analyzer`, `analyzer_options`
+                NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::String,
+                    input: indices.to_vec(),
+                }))
+            }),
+        }),
+        "bag_of_words" => Some(FunctionDefinition {
+            name: "bag_of_words".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Struct(StructNodeType {
+                        fields: vec![
+                            StructNodeFieldType::new("term", NodeType::String, indices.to_vec()),
+                            StructNodeFieldType::new("count", NodeType::Int64, indices.to_vec()),
+                        ],
+                    }),
+                    input: indices.to_vec(),
+                }));
+
+                match tys {
+                    [NodeType::Array(arr_ty)] if arr_ty.r#type == NodeType::String => return_type,
+                    [t] => {
+                        log::warn!(
+                            "Found unexpected input type {} in bag_of_words function.",
+                            t
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("bag_of_words expects 1 argument, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        "tf_idf" => Some(FunctionDefinition {
+            name: "tf_idf".to_owned(),
+            compute_return_type: Box::new(|tys, indices| {
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Struct(StructNodeType {
+                        fields: vec![
+                            StructNodeFieldType::new("term", NodeType::String, indices.to_vec()),
+                            StructNodeFieldType::new("tf_idf", NodeType::Float64, indices.to_vec()),
+                        ],
+                    }),
+                    input: indices.to_vec(),
+                }));
+
+                match tys {
+                    [NodeType::Array(arr_ty)] if arr_ty.r#type == NodeType::String => return_type,
+
+                    [NodeType::Array(arr_ty), NodeType::Int64]
+                        if arr_ty.r#type == NodeType::String =>
+                    {
+                        return_type
+                    }
+
+                    [NodeType::Array(arr_ty), NodeType::Int64, NodeType::Float64]
+                        if arr_ty.r#type == NodeType::String =>
+                    {
+                        return_type
+                    }
+
+                    [t] => {
+                        log::warn!(
+                            "Found unexpected input type {} in tf_idf function (expected ARRAY<STRING>).",
+                            t
+                        );
+                        return_type
+                    }
+                    [t1, t2] => {
+                        log::warn!(
+                            "Found unexpected input types in tf_idf function: ({}, {})",
+                            t1,
+                            t2
+                        );
+                        return_type
+                    }
+                    [t1, t2, t3] => {
+                        log::warn!(
+                            "Found unexpected input types in tf_idf function: ({}, {}, {})",
+                            t1,
+                            t2,
+                            t3
+                        );
+                        return_type
+                    }
+                    _ => {
+                        log::warn!("tf_idf expects 1, 2 or 3 arguments, but got {}", tys.len());
+                        return_type
+                    }
+                }
+            }),
+        }),
+        // Utility functions
+        "generate_uuid" => Some(FunctionDefinition {
+            name: "generate_uuid".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [] => NodeType::String,
+                _ => {
+                    log::warn!("generate_uuid expects 0 arguments, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
+        "typeof" => Some(FunctionDefinition {
+            name: "typeof".to_owned(),
+            compute_return_type: Box::new(|tys, _| match tys {
+                [_] => NodeType::String,
+                _ => {
+                    log::warn!("typeof expects 1 argument, but got {}", tys.len());
+                    NodeType::String
+                }
+            }),
+        }),
         _ => None,
     }
 }
