@@ -209,7 +209,16 @@ class AstNode:
             "TimeDiff": "FunctionExpr_TimeDiff",
             "TimeTrunc": "FunctionExpr_TimeTrunc",
             "LastDay": "FunctionExpr_LastDay",
+            "Left": "FunctionExpr_Left",
             "Right": "FunctionExpr_Right",
+            "Normalize": "FunctionExpr_Normalize",
+            "NormalizeAndCasefold": "FunctionExpr_NormalizeAndCasefold",
+        },
+        "NormalizationMode": {
+            "NFC": "NormalizationMode_NFC",
+            "NFKC": "NormalizationMode_NFKC",
+            "NFD": "NormalizationMode_NFD",
+            "NFKD": "NormalizationMode_NFKD",
         },
         "Granularity": {
             "MicroSecond": "Granularity_MicroSecond",
@@ -988,6 +997,18 @@ class RangeExpr(AstNode):
 
 
 @dataclass
+class NormalizeFunctionExpr(AstNode):
+    value: "Expr"
+    mode: "NormalizationMode"
+
+
+@dataclass
+class NormalizeAndCasefoldFunctionExpr(AstNode):
+    value: "Expr"
+    mode: "NormalizationMode"
+
+
+@dataclass
 class CurrentDatetimeFunctionExpr(AstNode):
     timezone: "Optional[Expr]"
 
@@ -1059,6 +1080,12 @@ class TimeDiffFunctionExpr(AstNode):
 
 @dataclass
 class RightFunctionExpr(AstNode):
+    value: "Expr"
+    length: "Expr"
+
+
+@dataclass
+class LeftFunctionExpr(AstNode):
     value: "Expr"
     length: "Expr"
 
@@ -2199,8 +2226,39 @@ class FunctionExpr_LastDay(AstNode):
 
 
 @dataclass
+class FunctionExpr_Left(AstNode):
+    vty: "LeftFunctionExpr"
+
+
+@dataclass
 class FunctionExpr_Right(AstNode):
     vty: "RightFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_Normalize(AstNode):
+    vty: "NormalizeFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_NormalizeAndCasefold(AstNode):
+    vty: "NormalizeAndCasefoldFunctionExpr"
+
+
+@dataclass
+class NormalizationMode_NFC(AstNode): ...
+
+
+@dataclass
+class NormalizationMode_NFKC(AstNode): ...
+
+
+@dataclass
+class NormalizationMode_NFD(AstNode): ...
+
+
+@dataclass
+class NormalizationMode_NFKD(AstNode): ...
 
 
 @dataclass
@@ -3507,7 +3565,16 @@ FunctionExpr: TypeAlias = (
     | FunctionExpr_TimeDiff
     | FunctionExpr_TimeTrunc
     | FunctionExpr_LastDay
+    | FunctionExpr_Left
     | FunctionExpr_Right
+    | FunctionExpr_Normalize
+    | FunctionExpr_NormalizeAndCasefold
+)
+NormalizationMode: TypeAlias = (
+    NormalizationMode_NFC
+    | NormalizationMode_NFKC
+    | NormalizationMode_NFD
+    | NormalizationMode_NFKD
 )
 Granularity: TypeAlias = (
     Granularity_MicroSecond

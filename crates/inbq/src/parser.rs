@@ -18,14 +18,14 @@ use crate::ast::{
     GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
     GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
     IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
-    LastDayFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-    MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-    NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-    ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
-    PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-    QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-    RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-    SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+    LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge,
+    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow,
+    NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
+    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
+    RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
+    SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
@@ -4168,6 +4168,22 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// left -> "LEFT" "(" expr "," expr ")"
+    /// ```
+    fn parse_left_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume(TokenTypeVariant::Left)?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let value = self.parse_expr()?;
+        self.consume(TokenTypeVariant::Comma)?;
+        let length = self.parse_expr()?;
+        self.consume(TokenTypeVariant::RightParen)?;
+        Ok(Expr::Function(Box::new(FunctionExpr::Left(
+            LeftFunctionExpr { value, length },
+        ))))
+    }
+
+    /// Rule:
+    /// ```text
     /// right -> "RIGHT" "(" expr "," expr ")"
     /// ```
     fn parse_right_fn_expr(&mut self) -> anyhow::Result<Expr> {
@@ -4875,6 +4891,7 @@ impl<'a> Parser<'a> {
             TokenType::Range => self.parse_range_expr()?,
             TokenType::Interval => self.parse_interval_expr()?,
             TokenType::If => self.parse_if_fn_expr()?,
+            TokenType::Left => self.parse_left_fn_expr()?,
             TokenType::Right => self.parse_right_fn_expr()?,
             TokenType::Extract => self.parse_extract_fn_expr()?,
             TokenType::With => self.parse_with_primary_expr()?,

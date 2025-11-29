@@ -29,16 +29,17 @@ use inbq::{
         Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr,
         Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
         IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr,
-        LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
-        MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte,
-        Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType,
-        PathName, PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced,
-        Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
-        QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement,
-        RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr,
-        SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue, SetQueryOperator,
-        SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot, Statement,
-        StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
+        LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
+        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
+        NonRecursiveCte, NormalizationMode, NormalizeAndCasefoldFunctionExpr,
+        NormalizeFunctionExpr, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
+        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
+        PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
+        QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
+        RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
+        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+        SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
+        Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
         StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
         TableFunctionExpr, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
         TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement,
@@ -1759,6 +1760,16 @@ impl RsToPyObject for ExtractFunctionExpr {
     }
 }
 
+impl RsToPyObject for LeftFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "value", self.value),
+            kwarg!(py_ctx, "length", self.length),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LeftFunctionExpr)?, kwargs)
+    }
+}
+
 impl RsToPyObject for RightFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
@@ -1980,6 +1991,57 @@ impl RsToPyObject for CurrentTimeFunctionExpr {
     }
 }
 
+impl RsToPyObject for NormalizationMode {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            NormalizationMode::NFC => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NormalizationMode::NFC)?, &[])
+            }
+            NormalizationMode::NFKC => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, NormalizationMode::NFKC)?,
+                &[],
+            ),
+            NormalizationMode::NFD => {
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NormalizationMode::NFD)?, &[])
+            }
+            NormalizationMode::NFKD => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, NormalizationMode::NFKD)?,
+                &[],
+            ),
+        }
+    }
+}
+
+impl RsToPyObject for NormalizeFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "value", self.value),
+            kwarg!(py_ctx, "mode", self.mode),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, NormalizeFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for NormalizeAndCasefoldFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "value", self.value),
+            kwarg!(py_ctx, "mode", self.mode),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, NormalizeAndCasefoldFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2062,6 +2124,30 @@ impl RsToPyObject for FunctionExpr {
                     get_ast_class!(py_ctx, FunctionExpr::Extract)?,
                     kwargs,
                 )
+            }
+            FunctionExpr::Normalize(normalize_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, normalize_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Normalize)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::NormalizeAndCasefold(normalize_and_casefold_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    normalize_and_casefold_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::NormalizeAndCasefold)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::Left(left_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, left_function_expr)];
+                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::Left)?, kwargs)
             }
             FunctionExpr::Right(right_function_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, right_function_expr)];

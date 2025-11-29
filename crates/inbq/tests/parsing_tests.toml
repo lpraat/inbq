@@ -757,6 +757,26 @@ SELECT b'apple' AS example, RIGHT(b'apple', 3) AS right_example
 
 [[tests]]
 sql = """
+SELECT LEFT('banana', 3) AS results
+"""
+
+[[tests]]
+sql = """
+SELECT LEFT(b'\\xab\\xcd\\xef\\xaa\\xbb', 3) AS results
+"""
+
+[[tests]]
+sql = """
+SELECT NORMALIZE('Raha Mahan', NFKC) AS normalized_name
+"""
+
+[[tests]]
+sql = """
+SELECT NORMALIZE_AND_CASEFOLD('The Red Barn') AS normalized_with_case_folding
+"""
+
+[[tests]]
+sql = """
 INSERT dataset.Inventory (product, quantity)
 VALUES('top load washer', 10),
       ('front load washer', 20),
