@@ -3004,7 +3004,9 @@ impl LineageExtractor {
                 // also:
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/range-functions#range_sessionize
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/vectorindex_functions
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/federated_query_functions#external_query
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/table-functions-built-in#external_object_transform
                 return Err(anyhow!(
                     "Cannot extract lineage from a table function call (still a todo)."
                 ));
