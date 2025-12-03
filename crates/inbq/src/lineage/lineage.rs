@@ -8,7 +8,8 @@ use crate::{
         MergeStatement, MergeUpdate, ParameterizedType, QuantifiedLikeExprPattern, QueryExpr,
         QueryStatement, QuotedIdentifier, SelectAllExpr, SelectColAllExpr, SelectColExpr,
         SelectExpr, SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement,
-        SetVariable, Statement, StatementsBlock, StructExpr, Type, UpdateStatement, When, With,
+        SetVariable, Statement, StatementsBlock, StructExpr, Type, UnaryOperator, UpdateStatement,
+        When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -1957,8 +1958,22 @@ impl LineageExtractor {
             Expr::Unary(unary_expr) => {
                 let node_idx =
                     self.select_expr_col_expr_lin(&unary_expr.right, expand_value_table)?;
-                let node = &self.context.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node("unary", node.r#type.clone(), vec![node_idx])
+                let node_type = match unary_expr.operator {
+                    UnaryOperator::Plus | UnaryOperator::Minus => {
+                        let node = &self.context.arena_lineage_nodes[node_idx];
+                        node.r#type.clone()
+                    }
+                    UnaryOperator::BitwiseNot
+                    | UnaryOperator::IsNull
+                    | UnaryOperator::IsNotNull
+                    | UnaryOperator::IsTrue
+                    | UnaryOperator::IsNotTrue
+                    | UnaryOperator::IsFalse
+                    | UnaryOperator::IsNotFalse
+                    | UnaryOperator::Not => NodeType::Boolean,
+                };
+
+                self.allocate_expr_node("unary", node_type, vec![node_idx])
             }
             Expr::Grouping(grouping_expr) => {
                 let node_idx =
@@ -2032,13 +2047,14 @@ impl LineageExtractor {
                 self.allocate_expr_node("exists_subquery", node.r#type.clone(), vec![node_idx])
             }
             Expr::Case(case_expr) => {
-                let mut super_type = NodeType::Unknown;
+                let mut when_super_type = NodeType::Unknown;
+                let mut result_super_type = NodeType::Unknown;
                 let mut input = vec![];
 
                 if let Some(case) = &case_expr.case {
                     let node_idx = self.select_expr_col_expr_lin(case, expand_value_table)?;
                     let node = &self.context.arena_lineage_nodes[node_idx];
-                    super_type = super_type.common_supertype_with(&node.r#type).unwrap();
+                    when_super_type = when_super_type.common_supertype_with(&node.r#type).unwrap();
                     input.push(node_idx);
                 }
 
@@ -2047,12 +2063,12 @@ impl LineageExtractor {
                         self.select_expr_col_expr_lin(&when_then.when, expand_value_table)?;
                     let when_node = &self.context.arena_lineage_nodes[when_idx];
                     if let Some(new_super_type) =
-                        super_type.common_supertype_with(&when_node.r#type)
+                        when_super_type.common_supertype_with(&when_node.r#type)
                     {
-                        super_type = new_super_type;
+                        when_super_type = new_super_type;
                     } else {
                         return Err(anyhow!(self.common_supertype_error_msg(
-                            &super_type,
+                            &when_super_type,
                             &when_node.r#type,
                             "case",
                             expr
@@ -2064,12 +2080,12 @@ impl LineageExtractor {
                         self.select_expr_col_expr_lin(&when_then.then, expand_value_table)?;
                     let then_node = &self.context.arena_lineage_nodes[then_idx];
                     if let Some(new_super_type) =
-                        super_type.common_supertype_with(&then_node.r#type)
+                        result_super_type.common_supertype_with(&then_node.r#type)
                     {
-                        super_type = new_super_type;
+                        result_super_type = new_super_type;
                     } else {
                         return Err(anyhow!(self.common_supertype_error_msg(
-                            &super_type,
+                            &result_super_type,
                             &then_node.r#type,
                             "case",
                             expr
@@ -2082,12 +2098,12 @@ impl LineageExtractor {
                     let else_idx = self.select_expr_col_expr_lin(else_expr, expand_value_table)?;
                     let else_node = &self.context.arena_lineage_nodes[else_idx];
                     if let Some(new_super_type) =
-                        super_type.common_supertype_with(&else_node.r#type)
+                        result_super_type.common_supertype_with(&else_node.r#type)
                     {
-                        super_type = new_super_type;
+                        result_super_type = new_super_type;
                     } else {
                         return Err(anyhow!(self.common_supertype_error_msg(
-                            &super_type,
+                            &result_super_type,
                             &else_node.r#type,
                             "case",
                             expr
@@ -2096,7 +2112,7 @@ impl LineageExtractor {
                     input.push(else_idx);
                 }
 
-                self.allocate_expr_node("case", super_type, input)
+                self.allocate_expr_node("case", result_super_type, input)
             }
             Expr::GenericFunction(function_expr) => self.generic_function_expr_lin(
                 function_expr.name.as_str(),
