@@ -3064,7 +3064,7 @@ impl LineageExtractor {
                     .lineage_nodes
                     .iter()
                     .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
-                    .find(|(n, _)| n.name.string() == col_name)
+                    .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
                     .ok_or(anyhow!(
                         "Cannot find column {:?} in table {:?}.",
                         col_name,
@@ -3076,7 +3076,7 @@ impl LineageExtractor {
                     .lineage_nodes
                     .iter()
                     .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
-                    .find(|(n, _)| n.name.string() == col_name)
+                    .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
                     .ok_or(anyhow!(
                         "Cannot find column {:?} in table {:?}.",
                         col_name,
@@ -3657,7 +3657,7 @@ impl LineageExtractor {
         let target_columns = if let Some(columns) = &insert_statement.columns {
             let mut filtered_columns = vec![];
             for col in columns {
-                let col_name = col.as_str().to_owned();
+                let col_name = col.as_str().to_lowercase();
                 let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
                     "Cannot find column {} in table {}",
                     col_name,
