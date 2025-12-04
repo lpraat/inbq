@@ -4938,14 +4938,14 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         }),
         "contains_substr" => Some(FunctionDefinition {
             name: "contains_substr".to_owned(),
-            compute_return_type: Box::new(|tys, _| {
+            compute_return_type: Box::new(|_, _| {
                 // TODO: contains named arguments `json_scope`
                 NodeType::Boolean
             }),
         }),
         "edit_distance" => Some(FunctionDefinition {
             name: "edit_distance".to_owned(),
-            compute_return_type: Box::new(|tys, _| {
+            compute_return_type: Box::new(|_, _| {
                 // TODO: contains named arguments `max_distance`
                 NodeType::Boolean
             }),
@@ -5452,7 +5452,7 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         // Text analysis functions
         "text_analyze" => Some(FunctionDefinition {
             name: "text_analyze".to_owned(),
-            compute_return_type: Box::new(|tys, indices| {
+            compute_return_type: Box::new(|_, indices| {
                 // TODO: contains named arguments `analyzer`, `analyzer_options`
                 NodeType::Array(Box::new(ArrayNodeType {
                     r#type: NodeType::String,

@@ -2498,6 +2498,7 @@ impl LineageExtractor {
                     .map(|c| c.as_str().to_lowercase())
                     .collect::<HashSet<String>>()
             });
+
         for (col_name, sources) in self
             .context
             .curr_columns_stack()
@@ -2508,59 +2509,35 @@ impl LineageExtractor {
                 continue;
             }
 
-            if sources.len() > 1
-                && !sources.iter().any(|el| {
-                    self.context
-                        .curr_stack()
-                        .unwrap()
-                        .get(&self.context.arena_objects[el.arena_index].name)
-                        .map(|el| &self.context.arena_objects[el.arena_index])
-                        .is_some_and(|x| matches!(x.kind, ContextObjectKind::UsingTable))
-                })
-            {
-                return Err(anyhow!(
-                    "Column {} is ambiguous. It is contained in more than one table: {:?}.",
-                    col_name,
-                    sources
-                        .iter()
-                        .map(
-                            |source_idx| self.context.arena_objects[source_idx.arena_index]
-                                .name
-                                .clone()
-                        )
-                        .collect::<Vec<String>>()
+            let source_indices = if let Some(using_idx) = sources.iter().find(|&idx| {
+                matches!(
+                    &self.context.arena_objects[idx.arena_index].kind,
+                    ContextObjectKind::UsingTable
+                )
+            }) {
+                vec![using_idx.arena_index]
+            } else {
+                sources.iter().map(|idx| idx.arena_index).collect()
+            };
+
+            for source_idx in source_indices {
+                let source = &self.context.arena_objects[source_idx];
+                let col_in_table_idx = source
+                    .lineage_nodes
+                    .iter()
+                    .map(|&n_idx| (&self.context.arena_lineage_nodes[n_idx], n_idx))
+                    .filter(|(n, _)| n.name.string().eq_ignore_ascii_case(col_name))
+                    .collect::<Vec<_>>()[0]
+                    .1;
+                new_lineage_nodes.push((
+                    NodeName::Defined(format!("{}", col_name.clone())),
+                    self.context.arena_lineage_nodes[col_in_table_idx]
+                        .r#type
+                        .clone(),
+                    anon_obj_idx,
+                    vec![col_in_table_idx],
                 ));
             }
-            let col_source_idx = if sources.len() > 1 {
-                // Pick the last using_table
-                *sources.last().unwrap()
-            } else {
-                sources[0]
-            };
-            let table = self
-                .context
-                .curr_stack()
-                .unwrap()
-                .get(&self.context.arena_objects[col_source_idx.arena_index].name)
-                .map(|idx| &self.context.arena_objects[idx.arena_index])
-                .unwrap();
-
-            let col_in_table_idx = table
-                .lineage_nodes
-                .iter()
-                .map(|&n_idx| (&self.context.arena_lineage_nodes[n_idx], n_idx))
-                .filter(|(n, _)| n.name.string().eq_ignore_ascii_case(col_name))
-                .collect::<Vec<_>>()[0]
-                .1;
-
-            new_lineage_nodes.push((
-                NodeName::Defined(col_name.clone()),
-                self.context.arena_lineage_nodes[col_in_table_idx]
-                    .r#type
-                    .clone(),
-                anon_obj_idx,
-                vec![col_in_table_idx],
-            ));
         }
 
         for tup in new_lineage_nodes {
@@ -2595,7 +2572,7 @@ impl LineageExtractor {
         let mut new_lineage_nodes = vec![];
         for node_idx in node.input.clone() {
             let node = &mut self.context.arena_lineage_nodes[node_idx];
-            if except_columns.contains(node.name.string()) {
+            if except_columns.contains(&node.name.string().to_lowercase()) {
                 continue;
             }
 
