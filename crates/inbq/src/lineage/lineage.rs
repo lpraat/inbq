@@ -1477,9 +1477,10 @@ impl LineageExtractor {
 
                     _ => {
                         return Err(anyhow!(
-                            "Found unexpected binary expr with left: {:?} and right {:?}.",
+                            "Found unexpected binary expr with left: {:?} and right {:?} with op {:?}.",
                             left,
-                            right
+                            right,
+                            op
                         ));
                     }
                 }
@@ -2328,7 +2329,7 @@ impl LineageExtractor {
                     )?;
                     self.allocate_expr_node(
                         "timestamp_diff",
-                        NodeType::Timestamp,
+                        NodeType::Int64,
                         vec![start_timestamp_idx, end_timestamp_idx],
                     )
                 }
@@ -2343,7 +2344,7 @@ impl LineageExtractor {
                     )?;
                     self.allocate_expr_node(
                         "time_diff",
-                        NodeType::Time,
+                        NodeType::Int64,
                         vec![start_time_idx, end_time_idx],
                     )
                 }
