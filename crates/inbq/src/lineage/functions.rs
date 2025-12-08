@@ -42,6 +42,24 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
                 }
             }),
         }),
+        // Position functions
+        "offset" | "safe_offset" | "ordinal" => {
+            let fn_name = name.to_lowercase();
+            Some(FunctionDefinition {
+                name: fn_name.clone(),
+                compute_return_type: Box::new(move |tys, _| match tys {
+                    [NodeType::Int64] => NodeType::Int64,
+                    [t] => {
+                        log::warn!("Found unexpected input type {} in {} function.", t, fn_name);
+                        NodeType::Int64
+                    }
+                    _ => {
+                        log::warn!("{} expects 1 argument, but got {}", fn_name, tys.len());
+                        NodeType::Int64
+                    }
+                }),
+            })
+        }
         // AEAD encryption functions
         "aead.decrypt_bytes" => Some(FunctionDefinition {
             name: "aead.decrypt_bytes".to_owned(),

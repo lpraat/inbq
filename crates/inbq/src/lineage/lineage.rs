@@ -1161,6 +1161,7 @@ impl LineageExtractor {
         &mut self,
         access_path: &AccessPath,
         nested_node_idx: ArenaIndex,
+        input: &[ArenaIndex],
     ) -> ArenaIndex {
         let path_len = access_path.path.len();
         if matches!(access_path.path[path_len - 1], AccessOp::FieldStar) {
@@ -1170,7 +1171,15 @@ impl LineageExtractor {
             self.context.output.push(node_idx);
             node_idx
         } else {
-            nested_node_idx
+            let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
+            let node_idx = self.allocate_expr_node(
+                "nested",
+                nested_node.r#type.clone(),
+                vec![nested_node_idx],
+            );
+            let node = &mut self.context.arena_lineage_nodes[node_idx];
+            node.input.extend_from_slice(input);
+            node_idx
         }
     }
 
@@ -1181,6 +1190,8 @@ impl LineageExtractor {
             let left = &*b.left;
             let right = &*b.right;
             let op = &b.operator;
+
+            // TODO: add field element access in structs via literal integer positions
 
             if matches!(op, BinaryOperator::FieldAccess) || matches!(op, BinaryOperator::ArrayIndex)
             {
@@ -1215,7 +1226,11 @@ impl LineageExtractor {
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 let node = &self.context.arena_lineage_nodes[col_or_node_idx];
                                 let nested_node_idx = node.access(&access_path)?;
-                                return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                                return Ok(self.nested_node_lin(
+                                    &access_path,
+                                    nested_node_idx,
+                                    &[],
+                                ));
                             }
                         } else {
                             let col_or_var_source_idx = if self.get_table(left_ident).ok().is_some()
@@ -1232,7 +1247,7 @@ impl LineageExtractor {
                             access_path.path.reverse();
                             let node = &self.context.arena_lineage_nodes[col_or_var_source_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                         }
                     }
                     (Expr::Binary(left), right) => {
@@ -1289,7 +1304,7 @@ impl LineageExtractor {
                         self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
                     (Expr::Array(array_expr), _) => {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
@@ -1299,7 +1314,12 @@ impl LineageExtractor {
                         self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        let index_node_idx = self.select_expr_col_expr_lin(right, false)?;
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            &[index_node_idx],
+                        ));
                     }
                     (
                         Expr::Identifier(Identifier { name: ident })
@@ -1329,7 +1349,7 @@ impl LineageExtractor {
 
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                         }
                     }
                     (
@@ -1344,7 +1364,7 @@ impl LineageExtractor {
                         self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
                     (Expr::Struct(struct_expr), Expr::Star) => {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
@@ -1355,7 +1375,7 @@ impl LineageExtractor {
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
                     (
                         Expr::Identifier(Identifier { name: ident })
@@ -1378,7 +1398,7 @@ impl LineageExtractor {
                                 path: vec![AccessOp::FieldStar],
                             };
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                         }
                     }
                     (
@@ -1394,7 +1414,7 @@ impl LineageExtractor {
                             path: vec![AccessOp::Index],
                         };
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
                     (
                         Expr::QueryNamedParameter(_)
@@ -1418,7 +1438,7 @@ impl LineageExtractor {
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         debug_assert!(matches!(node.r#type, NodeType::Struct(_)));
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
                     (
                         Expr::QueryNamedParameter(_)
@@ -1439,9 +1459,50 @@ impl LineageExtractor {
                         let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx));
+                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
+                    (
+                        Expr::QueryNamedParameter(_)
+                        | Expr::QueryPositionalParameter
+                        | Expr::SystemVariable(_)
+                        | Expr::Query(_)
+                        | Expr::Grouping(_)
+                        | Expr::Function(_)
+                        | Expr::GenericFunction(_),
+                        Expr::QueryNamedParameter(_)
+                        | Expr::QueryPositionalParameter
+                        | Expr::SystemVariable(_)
+                        | Expr::Query(_)
+                        | Expr::Grouping(_)
+                        | Expr::Function(_)
+                        | Expr::GenericFunction(_),
+                    ) => {
+                        // select (select [1,2,3])[fn()]
+                        debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
+                        let access_path = AccessPath {
+                            path: vec![AccessOp::Index],
+                        };
+                        let node_idx = self.select_expr_col_expr_lin(left, false)?;
+                        let node = &self.context.arena_lineage_nodes[node_idx];
+                        let nested_node_idx = node.access(&access_path)?;
 
+                        let index_node_idx = self.select_expr_col_expr_lin(right, false)?;
+                        let index_node = &self.context.arena_lineage_nodes[index_node_idx];
+
+                        if !matches!(index_node.r#type, NodeType::Int64) {
+                            return Err(anyhow!(
+                                "Found unexpected type `{}` in indexing expr `{:?}`. Must be `{}`.",
+                                index_node.r#type,
+                                right,
+                                NodeType::Int64
+                            ));
+                        }
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            &[node_idx, index_node_idx],
+                        ));
+                    }
                     (
                         Expr::Identifier(Identifier { name: ident })
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),

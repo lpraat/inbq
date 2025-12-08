@@ -1544,3 +1544,66 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+SELECT SPLIT(letter_group, ' ')[offset((select min(idx) from proj.dat.letters))] as split_index
+FROM proj.dat.letters;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.letters"
+kind.table.columns = [
+    { name = "letter_group", dtype = "string" },
+    { name = "idx", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "split_index", dtype = "string" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+split_index = ["proj.dat.letters->letter_group", "proj.dat.letters->idx"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+SELECT [
+    (select min(idx1) from proj.dat.indices),
+    (select min(idx2) from proj.dat.indices)
+][(select min(idx3) from proj.dat.indices)]
+"""
+[[tests.schema_objects]]
+name = "proj.dat.indices"
+kind.table.columns = [
+    { name = "idx1", dtype = "int64" },
+    { name = "idx2", dtype = "int64" },
+    { name = "idx3", dtype = "int64"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "idx", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+idx = ["proj.dat.indices->idx1", "proj.dat.indices->idx2", "proj.dat.indices->idx3"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+SELECT (select [1,2,3])[(select min(idx3) from proj.dat.indices)]
+"""
+[[tests.schema_objects]]
+name = "proj.dat.indices"
+kind.table.columns = [
+    { name = "idx1", dtype = "int64" },
+    { name = "idx2", dtype = "int64" },
+    { name = "idx3", dtype = "int64"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "idx", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+idx = ["proj.dat.indices->idx3"]
