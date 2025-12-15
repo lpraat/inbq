@@ -349,7 +349,7 @@ with tmp as (
     from proj.dat.t1
 ),
 tmp2 as (
-    select a, b, `c`
+    select A, b, `c`
     from proj.dat.t2
 )
 select
@@ -1607,3 +1607,33 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 idx = ["proj.dat.indices->idx3"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out_table
+with tmp as (
+    select *
+    from proj.dat.t1, proj.dat.t2
+)
+select c1+c2
+from tmp
+"""
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "c1", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t2"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "c2", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "c", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+c = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
