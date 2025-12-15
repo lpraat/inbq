@@ -206,6 +206,82 @@ impl NodeType {
         )
     }
 
+    pub(crate) fn can_be_cast_to(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (
+                NodeType::Int64,
+                NodeType::Boolean
+                    | NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::Float64
+            ) | (
+                NodeType::Numeric,
+                NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::Float64
+                    | NodeType::String
+            ) | (
+                NodeType::BigNumeric,
+                NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::Float64
+                    | NodeType::String
+            ) | (
+                NodeType::Float64,
+                NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::Float64
+                    | NodeType::String
+            ) | (
+                NodeType::Boolean,
+                NodeType::Boolean | NodeType::Int64 | NodeType::String
+            ) | (
+                NodeType::String,
+                NodeType::Boolean
+                    | NodeType::Int64
+                    | NodeType::Numeric
+                    | NodeType::BigNumeric
+                    | NodeType::Float64
+                    | NodeType::String
+                    | NodeType::Bytes
+                    | NodeType::Date
+                    | NodeType::Datetime
+                    | NodeType::Time
+                    | NodeType::Timestamp
+                    | NodeType::Range(_)
+            ) | (NodeType::Bytes, NodeType::String | NodeType::Bytes)
+                | (
+                    NodeType::Date,
+                    NodeType::String | NodeType::Date | NodeType::Datetime | NodeType::Timestamp
+                )
+                | (
+                    NodeType::Datetime,
+                    NodeType::String
+                        | NodeType::Date
+                        | NodeType::Datetime
+                        | NodeType::Time
+                        | NodeType::Timestamp
+                )
+                | (NodeType::Time, NodeType::String | NodeType::Time)
+                | (
+                    NodeType::Timestamp,
+                    NodeType::String
+                        | NodeType::Date
+                        | NodeType::Datetime
+                        | NodeType::Time
+                        | NodeType::Timestamp
+                )
+                | (NodeType::Array(_), NodeType::Array(_))
+                | (NodeType::Struct(_), NodeType::Struct(_))
+                | (NodeType::Range(_), NodeType::Range(_) | NodeType::String)
+        )
+    }
+
     pub(crate) fn common_supertype_with(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (NodeType::Int64, NodeType::Numeric) => Some(NodeType::Numeric),
@@ -2183,36 +2259,63 @@ impl LineageExtractor {
             )?,
             Expr::Function(function_expr) => match function_expr.as_ref() {
                 FunctionExpr::Concat(concat_fn_expr) => {
-                    let mut super_type = NodeType::Unknown;
+                    let mut return_type = NodeType::Unknown;
                     let mut input = vec![];
                     for expr in &concat_fn_expr.values {
                         let node_idx = self.select_expr_col_expr_lin(expr, expand_value_table)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        if let Some(new_super_type) = super_type.common_supertype_with(&node.r#type)
-                        {
-                            super_type = new_super_type
-                        } else {
-                            return Err(anyhow!(self.common_supertype_error_msg(
-                                &super_type,
-                                &node.r#type,
-                                "concat",
-                                expr
-                            )));
-                        }
                         input.push(node_idx);
-                    }
 
-                    if !matches!(super_type, NodeType::Bytes | NodeType::String) {
-                        return Err(anyhow!(
-                            "Found unexpected return type `{}` in concat function {:?}. Return type must be {} or {}.",
-                            super_type,
-                            concat_fn_expr,
-                            NodeType::Bytes,
-                            NodeType::String
-                        ));
+                        if return_type == NodeType::Unknown {
+                            #[allow(clippy::collapsible_if)]
+                            if !matches!(node.r#type, NodeType::String | NodeType::Bytes) {
+                                if node.r#type.can_be_cast_to(&NodeType::String) {
+                                    return_type = NodeType::String;
+                                } else if node.r#type.can_be_cast_to(&NodeType::Bytes) {
+                                    return_type = NodeType::Bytes;
+                                } else {
+                                    return Err(anyhow!(
+                                        "Found unexpected type `{}` in concat function that cannot be casted neither to `{}` nor to `{}`.",
+                                        node.r#type,
+                                        NodeType::String,
+                                        NodeType::Bytes
+                                    ));
+                                }
+                            } else {
+                                return_type = node.r#type.clone();
+                            }
+                        } else if node.r#type != return_type {
+                            if return_type == NodeType::String
+                                && !(node.r#type.can_be_cast_to(&NodeType::String))
+                            {
+                                return Err(anyhow!(
+                                    "Found unexpected type `{}` in concat function that cannot be casted to the return type `{}`.",
+                                    node.r#type,
+                                    NodeType::String
+                                ));
+                            }
+                            if return_type == NodeType::Bytes
+                                && !(node.r#type.can_be_cast_to(&NodeType::Bytes))
+                            {
+                                return Err(anyhow!(
+                                    "Found unexpected type `{}` in concat function that cannot be casted to the return type `{}`.",
+                                    node.r#type,
+                                    NodeType::Bytes
+                                ));
+                            }
+                            if (return_type == NodeType::String && node.r#type == NodeType::Bytes)
+                                || (return_type == NodeType::Bytes
+                                    && node.r#type == NodeType::String)
+                            {
+                                return Err(anyhow!(
+                                    "Concat type changed from `{}` to `{}`.",
+                                    return_type,
+                                    node.r#type
+                                ));
+                            }
+                        }
                     }
-
-                    self.allocate_expr_node("fn_concat", super_type, input)
+                    self.allocate_expr_node("fn_concat", return_type, input)
                 }
                 FunctionExpr::Cast(cast_fn_expr) => {
                     let node_idx =
