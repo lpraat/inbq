@@ -2,15 +2,11 @@
 A library for parsing BigQuery queries and extracting schema-aware, column-level lineage. Written in Rust, with Python bindings.
 
 ### Features
-- Parse BigQuery queries into well-structured ASTs with clear, easy-to-navigate nodes.
-- Extract schema-aware column-level lineage.
-- Support for both single and multi-statement queries and procedural language constructs.
+- Parse BigQuery queries into well-structured ASTs with easy-to-navigate nodes.
+- Extract schema-aware, column-level lineage.
+- Trace data flow through nested structs and arrays.
+- Support both single and multi-statement queries and procedural language constructs.
 - Built for speed and efficiency, with lightweight Python bindings that add minimal overhead.
-
-### Work in Progress
-- Full lineage tracing through nested structs and arrays (currently partially supported)
-- DDL syntax parsing
-
 
 ## Python
 ### Install
