@@ -216,6 +216,7 @@ impl NodeType {
                     | NodeType::Numeric
                     | NodeType::BigNumeric
                     | NodeType::Float64
+                    | NodeType::String
             ) | (
                 NodeType::Numeric,
                 NodeType::Int64
@@ -295,6 +296,17 @@ impl NodeType {
             (NodeType::Float64, NodeType::BigNumeric) => Some(NodeType::Float64),
             (NodeType::BigNumeric, NodeType::Float64) => Some(NodeType::Float64),
 
+            // todo: this should be valid only if date/datetime/time/timestamp is an expr and string is a literal
+            // https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/conversion_rules#supertypes_and_literals
+            (NodeType::Timestamp, NodeType::String) => Some(NodeType::Timestamp),
+            (NodeType::String, NodeType::Timestamp) => Some(NodeType::Timestamp),
+            (NodeType::Date, NodeType::String) => Some(NodeType::Date),
+            (NodeType::String, NodeType::Date) => Some(NodeType::Date),
+            (NodeType::Datetime, NodeType::String) => Some(NodeType::Datetime),
+            (NodeType::String, NodeType::Datetime) => Some(NodeType::Datetime),
+            (NodeType::Time, NodeType::String) => Some(NodeType::Time),
+            (NodeType::String, NodeType::Time) => Some(NodeType::Time),
+
             // array<f64> and array<int64> are not coerceable to a common supertype
             // but struct<x f64> and struct<x int64> are
             // select if(true, struct(1.5 as x), struct(1 as x)).x -> ok
@@ -311,6 +323,13 @@ impl NodeType {
             //         None
             //     }
             // }
+            (a @ NodeType::Array(_), NodeType::Array(t)) if t.r#type == NodeType::Unknown => {
+                Some(a.clone())
+            }
+            (NodeType::Array(t), a @ NodeType::Array(_)) if t.r#type == NodeType::Unknown => {
+                Some(a.clone())
+            }
+
             (NodeType::Struct(s1), NodeType::Struct(s2)) => {
                 let mut fields = vec![];
                 for (f1, f2) in s1.fields.iter().zip(&s2.fields) {
@@ -1484,11 +1503,10 @@ impl LineageExtractor {
                     ) => {
                         // array[]
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
+                        access_path.path.push(AccessOp::Index);
+                        access_path.path.reverse();
                         let col_or_var_idx = self.get_col_or_var(ident)?;
                         let node = &self.context.arena_lineage_nodes[col_or_var_idx];
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Index],
-                        };
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
@@ -1507,9 +1525,8 @@ impl LineageExtractor {
                         // select (select struct(1 as a, 2 as b)).a
                         // todo: handle named/positional parameters and sysvars from schema
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Field(ident.clone())],
-                        };
+                        access_path.path.push(AccessOp::Field(ident.clone()));
+                        access_path.path.reverse();
                         let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         debug_assert!(matches!(node.r#type, NodeType::Struct(_)));
@@ -1529,9 +1546,8 @@ impl LineageExtractor {
                         // select (select [1,2,3])[0]
                         // todo: handle named/positional parameters and sysvars from schema
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Index],
-                        };
+                        access_path.path.push(AccessOp::Index);
+                        access_path.path.reverse();
                         let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
@@ -1555,9 +1571,9 @@ impl LineageExtractor {
                     ) => {
                         // select (select [1,2,3])[fn()]
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
-                        let access_path = AccessPath {
-                            path: vec![AccessOp::Index],
-                        };
+                        access_path.path.push(AccessOp::Index);
+                        access_path.path.reverse();
+
                         let node_idx = self.select_expr_col_expr_lin(left, false)?;
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
@@ -2275,7 +2291,7 @@ impl LineageExtractor {
                                     return_type = NodeType::Bytes;
                                 } else {
                                     return Err(anyhow!(
-                                        "Found unexpected type `{}` in concat function that cannot be casted neither to `{}` nor to `{}`.",
+                                        "Found unexpected type `{}` in concat function that cannot be cast neither to `{}` nor to `{}`.",
                                         node.r#type,
                                         NodeType::String,
                                         NodeType::Bytes
@@ -2289,7 +2305,7 @@ impl LineageExtractor {
                                 && !(node.r#type.can_be_cast_to(&NodeType::String))
                             {
                                 return Err(anyhow!(
-                                    "Found unexpected type `{}` in concat function that cannot be casted to the return type `{}`.",
+                                    "Found unexpected type `{}` in concat function that cannot be cast to the return type `{}`.",
                                     node.r#type,
                                     NodeType::String
                                 ));
@@ -2298,7 +2314,7 @@ impl LineageExtractor {
                                 && !(node.r#type.can_be_cast_to(&NodeType::Bytes))
                             {
                                 return Err(anyhow!(
-                                    "Found unexpected type `{}` in concat function that cannot be casted to the return type `{}`.",
+                                    "Found unexpected type `{}` in concat function that cannot be cast to the return type `{}`.",
                                     node.r#type,
                                     NodeType::Bytes
                                 ));
@@ -2316,6 +2332,28 @@ impl LineageExtractor {
                         }
                     }
                     self.allocate_expr_node("fn_concat", return_type, input)
+                }
+                FunctionExpr::Coalesce(coalesce_fn_expr) => {
+                    let mut input = vec![];
+                    let mut return_type = NodeType::Unknown;
+                    for coalesce_expr in &coalesce_fn_expr.exprs {
+                        let node_idx =
+                            self.select_expr_col_expr_lin(coalesce_expr, expand_value_table)?;
+                        input.push(node_idx);
+                        let node = &self.context.arena_lineage_nodes[node_idx];
+
+                        if let Some(super_type) = node.r#type.common_supertype_with(&return_type) {
+                            return_type = super_type;
+                        } else {
+                            return Err(anyhow!(self.common_supertype_error_msg(
+                                &return_type,
+                                &node.r#type,
+                                "coalesce",
+                                expr
+                            )));
+                        }
+                    }
+                    self.allocate_expr_node("coalesce", return_type, input)
                 }
                 FunctionExpr::Cast(cast_fn_expr) => {
                     let node_idx =

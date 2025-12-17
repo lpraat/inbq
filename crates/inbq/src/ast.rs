@@ -606,6 +606,7 @@ pub enum FunctionExpr {
     // https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-all
     Array(ArrayFunctionExpr),
     ArrayAgg(ArrayAggFunctionExpr),
+    Coalesce(CoalesceFunctionExpr),
     Concat(ConcatFunctionExpr),
     Cast(CastFunctionExpr),
     SafeCast(SafeCastFunctionExpr),
@@ -640,6 +641,11 @@ pub enum FunctionExpr {
     // String
     Normalize(NormalizeFunctionExpr),
     NormalizeAndCasefold(NormalizeAndCasefoldFunctionExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoalesceFunctionExpr {
+    pub exprs: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

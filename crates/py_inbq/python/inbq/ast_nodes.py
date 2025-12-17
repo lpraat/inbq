@@ -191,6 +191,7 @@ class AstNode:
         "FunctionExpr": {
             "Array": "FunctionExpr_Array",
             "ArrayAgg": "FunctionExpr_ArrayAgg",
+            "Coalesce": "FunctionExpr_Coalesce",
             "Concat": "FunctionExpr_Concat",
             "Cast": "FunctionExpr_Cast",
             "SafeCast": "FunctionExpr_SafeCast",
@@ -994,6 +995,11 @@ class WhenThen(AstNode):
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
+
+
+@dataclass
+class CoalesceFunctionExpr(AstNode):
+    exprs: "list[Expr]"
 
 
 @dataclass
@@ -2134,6 +2140,11 @@ class FunctionExpr_Array(AstNode):
 @dataclass
 class FunctionExpr_ArrayAgg(AstNode):
     vty: "ArrayAggFunctionExpr"
+
+
+@dataclass
+class FunctionExpr_Coalesce(AstNode):
+    vty: "CoalesceFunctionExpr"
 
 
 @dataclass
@@ -3547,6 +3558,7 @@ IntervalPart: TypeAlias = (
 FunctionExpr: TypeAlias = (
     FunctionExpr_Array
     | FunctionExpr_ArrayAgg
+    | FunctionExpr_Coalesce
     | FunctionExpr_Concat
     | FunctionExpr_Cast
     | FunctionExpr_SafeCast

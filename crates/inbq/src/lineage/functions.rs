@@ -745,12 +745,15 @@ pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> 
         "approx_top_count" => Some(FunctionDefinition {
             name: "approx_top_count".to_owned(),
             compute_return_type: Box::new(|tys, indices| {
-                let return_type = NodeType::Struct(StructNodeType {
-                    fields: vec![
-                        StructNodeFieldType::new("value", tys[0].clone(), vec![indices[0]]),
-                        StructNodeFieldType::new("count", NodeType::Int64, indices.to_vec()),
-                    ],
-                });
+                let return_type = NodeType::Array(Box::new(ArrayNodeType {
+                    r#type: NodeType::Struct(StructNodeType {
+                        fields: vec![
+                            StructNodeFieldType::new("value", tys[0].clone(), vec![indices[0]]),
+                            StructNodeFieldType::new("count", NodeType::Int64, indices.to_vec()),
+                        ],
+                    }),
+                    input: indices.to_vec(),
+                }));
 
                 match tys {
                     [t, NodeType::Int64] if t.is_groupable() => return_type,

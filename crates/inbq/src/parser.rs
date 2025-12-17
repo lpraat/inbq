@@ -5,9 +5,9 @@ use strum::IntoDiscriminant;
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-    CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
-    ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
-    CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
+    CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
+    ColumnToUnpivot, ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement,
+    CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
     CurrentTimeFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
     DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
     ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
@@ -4441,11 +4441,33 @@ impl<'a> Parser<'a> {
         ))))
     }
 
+    /// Rule:
+    /// ```text
+    /// coalesce -> "COALESCE" "(" expr ("," expr)* ")"
+    /// ```
+    fn parse_coalesce_fn_expr(&mut self) -> anyhow::Result<Expr> {
+        self.consume_identifier()?;
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut exprs = vec![];
+        loop {
+            exprs.push(self.parse_expr()?);
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        Ok(Expr::Function(Box::new(FunctionExpr::Coalesce(
+            CoalesceFunctionExpr { exprs },
+        ))))
+    }
+
     fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
         match &self.peek().kind {
             TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
                 match ident.to_lowercase().as_str() {
                     "concat" => self.parse_concat_fn_expr(),
+                    "coalesce" => self.parse_coalesce_fn_expr(),
                     "safe_cast" => self.parse_safe_cast_fn_expr(),
                     "array_agg" => self.parse_array_agg_fn_expr(),
                     "current_date" => self.parse_current_date_fn_expr(),

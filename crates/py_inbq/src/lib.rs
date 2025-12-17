@@ -15,12 +15,12 @@ use inbq::{
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-        CastFunctionExpr, CastFunctionFormat, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
-        ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement, CreateViewStatement,
-        CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
-        CurrentTimeFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr,
-        DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement,
-        DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
+        CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema,
+        ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr, CreateSchemaStatement,
+        CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+        CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr, DateDiffFunctionExpr,
+        DateTruncFunctionExpr, DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption,
+        DeclareVarStatement, DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
         ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
         ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
         FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
@@ -2042,6 +2042,17 @@ impl RsToPyObject for NormalizeAndCasefoldFunctionExpr {
     }
 }
 
+impl RsToPyObject for CoalesceFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "exprs", self.exprs)];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CoalesceFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -2062,6 +2073,14 @@ impl RsToPyObject for FunctionExpr {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::Concat)?,
+                    kwargs,
+                )
+            }
+            FunctionExpr::Coalesce(coalesce_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, coalesce_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Coalesce)?,
                     kwargs,
                 )
             }
