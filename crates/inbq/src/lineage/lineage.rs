@@ -399,6 +399,24 @@ pub struct StructNodeType {
     pub fields: Vec<StructNodeFieldType>,
 }
 
+impl StructNodeType {
+    /// `struct<a float64, s struct<x int64, ss struct<z int64, w int64>, y string>`
+    /// -> `a, x, z, w, ss, y, s`
+    fn flatten_fields(&self) -> Vec<StructNodeFieldType> {
+        let mut nodes = vec![];
+        for field in &self.fields {
+            if let NodeType::Struct(struct_node_type) = &field.r#type {
+                let sub_nodes = struct_node_type.flatten_fields();
+                nodes.extend(sub_nodes);
+                nodes.push(field.clone());
+            } else {
+                nodes.push(field.clone());
+            }
+        }
+        nodes
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructNodeFieldType {
     pub name: String,
@@ -490,7 +508,7 @@ struct Context {
     stack_depth: u16,
     vars: IndexMap<String, ArenaIndex>,
     lineage_stack: Vec<ArenaIndex>,
-    struct_node_field_types_stack: Vec<StructNodeFieldType>,
+    typed_struct_fields: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
     last_select_statement: Option<String>,
 }
@@ -511,7 +529,7 @@ impl Context {
         self.stack_depth = 0;
         self.vars.clear();
         self.lineage_stack.clear();
-        self.struct_node_field_types_stack.clear();
+        self.typed_struct_fields.clear();
         self.output.clear();
         self.last_select_statement = None;
     }
@@ -1804,23 +1822,30 @@ impl LineageExtractor {
         Ok(node_idx)
     }
 
-    fn add_struct_node_field_types_from_type(&mut self, typ: &Type) {
-        let mut node_types = vec![];
-        node_type_from_parser_type(typ, &mut node_types);
-        let mut struct_node_field_types = vec![];
-        node_types.iter().for_each(|node_type| {
-            if let NodeType::Struct(struct_node_type) = node_type {
-                struct_node_field_types.extend(struct_node_type.fields.clone());
+    fn add_typed_struct_fields_to_context(&mut self, typ: &Type) {
+        let struct_node_type = node_type_from_parser_type(typ, &mut vec![]);
+
+        match struct_node_type {
+            NodeType::Struct(struct_node_type) => {
+                let mut fields = struct_node_type.flatten_fields();
+                fields.reverse();
+                self.context.typed_struct_fields = fields;
             }
-        });
-        struct_node_field_types.reverse();
-        self.context.struct_node_field_types_stack = struct_node_field_types;
+            NodeType::Array(array_ty) => {
+                if let NodeType::Struct(struct_node_type) = array_ty.r#type {
+                    let mut fields = struct_node_type.flatten_fields();
+                    fields.reverse();
+                    self.context.typed_struct_fields = fields;
+                }
+            }
+            _ => {}
+        }
     }
 
     fn struct_expr_lin(&mut self, struct_expr: &StructExpr) -> anyhow::Result<ArenaIndex> {
         if let Some(typ) = &struct_expr.r#type {
             // Typed struct syntax
-            self.add_struct_node_field_types_from_type(typ);
+            self.add_typed_struct_fields_to_context(typ);
         };
 
         let mut fields = vec![];
@@ -1838,7 +1863,7 @@ impl LineageExtractor {
 
             input.push(node_field_idx);
 
-            let struct_node_field_type = self.context.struct_node_field_types_stack.pop();
+            let struct_node_field_type = self.context.typed_struct_fields.pop();
 
             let field_name = if let Some(name) = name.as_ref() {
                 name
@@ -1888,7 +1913,7 @@ impl LineageExtractor {
     fn array_expr_lin(&mut self, array_expr: &ArrayExpr) -> anyhow::Result<ArenaIndex> {
         if let Some(typ) = &array_expr.r#type {
             // Typed struct syntax
-            self.add_struct_node_field_types_from_type(typ);
+            self.add_typed_struct_fields_to_context(typ);
         }
 
         let mut input = vec![];
@@ -2733,7 +2758,7 @@ impl LineageExtractor {
                     .collect::<Vec<_>>()[0]
                     .1;
                 new_lineage_nodes.push((
-                    NodeName::Defined(format!("{}", col_name.clone())),
+                    NodeName::Defined(col_name.clone()),
                     self.context.arena_lineage_nodes[col_in_table_idx]
                         .r#type
                         .clone(),
