@@ -507,7 +507,6 @@ struct Context {
     joined_ambiguous_columns_stack: Vec<HashSet<String>>,
     stack_depth: u16,
     vars: IndexMap<String, ArenaIndex>,
-    lineage_stack: Vec<ArenaIndex>,
     typed_struct_fields: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
     last_select_statement: Option<String>,
@@ -528,7 +527,6 @@ impl Context {
         self.joined_ambiguous_columns_stack.clear();
         self.stack_depth = 0;
         self.vars.clear();
-        self.lineage_stack.clear();
         self.typed_struct_fields.clear();
         self.output.clear();
         self.last_select_statement = None;
@@ -1486,7 +1484,6 @@ impl LineageExtractor {
                         let node_idx = self.struct_expr_lin(struct_expr)?;
                         self.context.output.push(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
-                        self.context.lineage_stack.pop();
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
                     }
@@ -2017,7 +2014,6 @@ impl LineageExtractor {
         self.context.add_nested_nodes(node_idx);
         let obj = &mut self.context.arena_objects[obj_idx];
         obj.lineage_nodes.push(node_idx);
-        self.context.lineage_stack.push(node_idx);
         self.context.output.push(node_idx);
         node_idx
     }
@@ -2772,7 +2768,6 @@ impl LineageExtractor {
             let lineage_node_idx = self
                 .context
                 .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3);
-            self.context.lineage_stack.push(lineage_node_idx);
             lineage_nodes.push(lineage_node_idx);
             self.context.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -2860,7 +2855,6 @@ impl LineageExtractor {
         self.context
             .add_nested_nodes_from_input_nodes(pending_node_idx, &[node_idx]);
 
-        self.context.lineage_stack.push(pending_node_idx);
         lineage_nodes.push(pending_node_idx);
         Ok(())
     }
@@ -3614,10 +3608,6 @@ impl LineageExtractor {
         let set_obj = &mut self.context.arena_objects[set_obj_idx];
         set_obj.lineage_nodes = set_nodes;
 
-        set_obj
-            .lineage_nodes
-            .iter()
-            .for_each(|node| self.context.lineage_stack.push(*node));
         self.context
             .update_output_lineage_with_object_nodes(set_obj_idx);
 
