@@ -9,6 +9,7 @@ struct LineageTest {
     sql: String,
     schema_objects: Vec<SchemaObject>,
     ready_lineage: HashMap<String, HashMap<String, Vec<String>>>,
+    used_columns: HashMap<String, HashMap<String, Vec<String>>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -51,6 +52,7 @@ fn test_lineage() {
         let target_ready_lineage = test.ready_lineage;
         let ready_lineage = lineage.lineage;
 
+        // Test ready lineage
         let mut ready_lineage_map: IndexMap<String, IndexMap<String, Vec<String>>> =
             IndexMap::new();
         for obj in ready_lineage.objects {
@@ -71,7 +73,12 @@ fn test_lineage() {
             );
         }
 
-        assert!(ready_lineage_map.keys().eq(target_ready_lineage.keys()));
+        assert!(
+            ready_lineage_map.len() == target_ready_lineage.len()
+                && ready_lineage_map
+                    .keys()
+                    .all(|k| target_ready_lineage.contains_key(k))
+        );
         for (obj, nodes) in &ready_lineage_map {
             assert_eq!(
                 nodes.keys().collect::<HashSet<_>>(),
@@ -83,6 +90,46 @@ fn test_lineage() {
                     .iter()
                     .collect::<HashSet<_>>();
                 assert_eq!(inputs, target_inputs);
+            }
+        }
+
+        // Test used columns
+        let target_used_columns = test.used_columns;
+        let used_columns = lineage.used_columns;
+
+        let mut used_columns_map: IndexMap<String, IndexMap<String, Vec<String>>> = IndexMap::new();
+        for obj in used_columns.objects {
+            used_columns_map.insert(
+                obj.name,
+                obj.nodes
+                    .into_iter()
+                    .map(|node| (node.name, node.used_in))
+                    .collect(),
+            );
+        }
+
+        println!("Used columns: {:?}", used_columns_map);
+        println!("Target used columns: {:?}", target_used_columns);
+
+        assert!(
+            used_columns_map.len() == target_used_columns.len()
+                && used_columns_map
+                    .keys()
+                    .all(|k| target_used_columns.contains_key(k))
+        );
+        for (obj, nodes) in &used_columns_map {
+            assert_eq!(
+                nodes.keys().collect::<HashSet<_>>(),
+                target_used_columns[obj].keys().collect::<HashSet<_>>()
+            );
+            for (used_node, used_in) in nodes {
+                let mut target_used_columns = target_used_columns[obj][used_node].to_vec();
+                target_used_columns.sort();
+
+                let mut used_in = used_in.clone();
+                used_in.sort();
+
+                assert_eq!(used_in, target_used_columns);
             }
         }
     }

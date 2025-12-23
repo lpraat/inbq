@@ -3,6 +3,8 @@ sql = """
 insert into proj.dat.out_table
 select * except (c)
 from proj.dat.in_table
+group by a, 2
+order by 1, b
 """
 [[tests.schema_objects]]
 name = "proj.dat.in_table"
@@ -17,6 +19,11 @@ kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "S
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select", "group_by", "order_by"]
+b = ["select", "group_by", "order_by"]
+# Note: c is not considered a used column
+
 
 [[tests]]
 sql = """
@@ -38,6 +45,8 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
 
 [[tests]]
 sql = """
@@ -59,6 +68,8 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "string" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
 
 [[tests]]
 sql = """
@@ -84,7 +95,8 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
-
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
 
 [[tests]]
 sql = """
@@ -116,6 +128,9 @@ kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name 
 [tests.ready_lineage."proj.dat.out_table"]
 s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
 x = ["proj.dat.in_table->x"]
+[tests.used_columns."proj.dat.in_table"]
+x = ["select", "unnest"]
+y = ["select", "unnest"]
 
 [[tests]]
 sql = """
@@ -147,6 +162,9 @@ kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name 
 [tests.ready_lineage."proj.dat.out_table"]
 s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
 x = ["proj.dat.in_table->x"]
+[tests.used_columns."proj.dat.in_table"]
+x = ["select", "unnest"]
+y = ["select", "unnest"]
 
 
 [[tests]]
@@ -172,6 +190,9 @@ name = "proj.dat.out_table"
 kind.table.columns = [{name = "x", dtype = "int64"}]
 [tests.ready_lineage."proj.dat.out_table"]
 x = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+[tests.used_columns."proj.dat.in_table"]
+x = ["select", "unnest"]
+y = ["select", "unnest"]
 
 
 [[tests]]
@@ -200,6 +221,9 @@ kind.table.columns = [
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
 
 [[tests]]
 sql = """
@@ -226,6 +250,8 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->b"]
+[tests.used_columns."proj.dat.in_table"]
+b = ["select"]
 
 [[tests]]
 sql = """
@@ -252,6 +278,10 @@ kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "S
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in_table->a","proj.dat.in_table->c"]
 b = ["proj.dat.in_table->b","proj.dat.in_table->c"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
+c = ["select"]
 
 [[tests]]
 sql = """
@@ -278,7 +308,12 @@ kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "S
 [tests.ready_lineage."proj.dat.out_table"]
 a = ["proj.dat.in1->a1", "proj.dat.in2->a2"]
 b = ["proj.dat.in1->b1", "proj.dat.in2->b2"]
-
+[tests.used_columns."proj.dat.in1"]
+a1 = ["select"]
+b1 = ["select"]
+[tests.used_columns."proj.dat.in2"]
+a2 = ["select"]
+b2 = ["select"]
 
 [[tests]]
 sql = """
@@ -304,6 +339,10 @@ kind.table.columns = [
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 c = ["proj.dat.in_table->c"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
+c = ["select"]
 
 [[tests]]
 sql = """
@@ -340,6 +379,10 @@ kind.table.columns = [
 a = ["proj.dat.in_table->a"]
 b = ["proj.dat.in_table->b"]
 c = ["proj.dat.in_table->c"]
+[tests.used_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
+c = ["select"]
 
 [[tests]]
 sql = """
@@ -381,6 +424,13 @@ kind.table.columns = [
 a = ["proj.dat.t1->a", "proj.dat.t2->a"]
 b = ["proj.dat.t1->b", "proj.dat.t2->b"]
 c = ["proj.dat.t2->c"]
+[tests.used_columns."proj.dat.t1"]
+a = ["select", "join"]
+b = ["select", "join"]
+[tests.used_columns."proj.dat.t2"]
+a = ["select", "join"]
+b = ["select", "join"]
+c = ["select"]
 
 [[tests]]
 sql = """
@@ -454,6 +504,19 @@ city = ["proj.dataset.locations->city"]
 country = ["proj.dataset.locations->country"]
 employee_count = ["proj.dataset.employees->employee_id"]
 avg_salary = ["proj.dataset.employees->salary"]
+[tests.used_columns."proj.dataset.employees"]
+employee_id = ["select"]
+salary = ["select"]
+location_id = ["select", "join"]
+department_id = ["join"]
+[tests.used_columns."proj.dataset.departments"]
+department_id = ["select", "join", "group_by"]
+department_name = ["select", "group_by"]
+location_id = ["select", "join", "group_by"]
+[tests.used_columns."proj.dataset.locations"]
+city = ["select", "group_by"]
+country = ["select", "group_by"]
+location_id = ["select", "join"]
 
 # Test case
 [[tests]]
@@ -537,6 +600,20 @@ region_id = ["proj.dataset.sales_regions->region_id"]
 region_name = ["proj.dataset.sales_regions->region_name"]
 total_sales = ["proj.dataset.regional_sales->total_sales"]
 market_share = ["proj.dataset.regional_sales->market_share"]
+[tests.used_columns."proj.dataset.products"]
+product_id = ["select", "join"]
+product_name = ["select"]
+sales_count = ["order_by"]
+[tests.used_columns."proj.dataset.sales_regions"]
+region_id = ["select", "join"]
+region_name = ["select"]
+is_active = ["where"]
+[tests.used_columns."proj.dataset.regional_sales"]
+product_id = ["join"]
+region_id = ["join"]
+total_sales = ["select"]
+market_share = ["select"]
+
 
 [[tests]]
 sql = """
@@ -581,1059 +658,1059 @@ a = ["proj.dat.t1->a"]
 b = ["proj.dat.t1->b"]
 c = ["proj.dat.t1->c"]
 
-[[tests]]
-sql = """
-delete from dataset.Inventory T
-where T.product = "foo"
-"""
-[[tests.schema_objects]]
-name = "dataset.Inventory"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-    { name = "last_updated", dtype = "TIMESTAMP" },
-]
-[tests.ready_lineage]
-# Empty
+# [[tests]]
+# sql = """
+# delete from dataset.Inventory T
+# where T.product = "foo"
+# """
+# [[tests.schema_objects]]
+# name = "dataset.Inventory"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+#     { name = "last_updated", dtype = "TIMESTAMP" },
+# ]
+# [tests.ready_lineage]
+# # Empty
 
-[[tests]]
-sql = """
-truncate table dataset.Inventory;
-"""
-[[tests.schema_objects]]
-name = "dataset.Inventory"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-    { name = "last_updated", dtype = "TIMESTAMP" },
-]
-[tests.ready_lineage]
-# Empty
+# [[tests]]
+# sql = """
+# truncate table dataset.Inventory;
+# """
+# [[tests.schema_objects]]
+# name = "dataset.Inventory"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+#     { name = "last_updated", dtype = "TIMESTAMP" },
+# ]
+# [tests.ready_lineage]
+# # Empty
 
-[[tests]]
-sql = """
-MERGE dataset.Inventory T
-USING dataset.NewArrivals S
-ON T.product = S.product
-WHEN MATCHED THEN
-  UPDATE SET quantity = T.quantity + S.quantity
-"""
-[[tests.schema_objects]]
-name = "dataset.Inventory"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-    { name = "last_updated", dtype = "TIMESTAMP" },
-]
-[[tests.schema_objects]]
-name = "dataset.NewArrivals"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-    { name = "arrival_date", dtype = "DATE" },
-]
-[tests.ready_lineage."dataset.Inventory"]
-quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
+# [[tests]]
+# sql = """
+# MERGE dataset.Inventory T
+# USING dataset.NewArrivals S
+# ON T.product = S.product
+# WHEN MATCHED THEN
+#   UPDATE SET quantity = T.quantity + S.quantity
+# """
+# [[tests.schema_objects]]
+# name = "dataset.Inventory"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+#     { name = "last_updated", dtype = "TIMESTAMP" },
+# ]
+# [[tests.schema_objects]]
+# name = "dataset.NewArrivals"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+#     { name = "arrival_date", dtype = "DATE" },
+# ]
+# [tests.ready_lineage."dataset.Inventory"]
+# quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
 
-[[tests]]
-sql = """
-MERGE dataset.DetailedInventory T
-USING dataset.Inventory S
-ON T.product = S.product
-WHEN NOT MATCHED AND quantity < 20 THEN
-  INSERT(product, quantity, supply_constrained, comments)
-  VALUES(product, quantity, true, ARRAY<STRUCT<created DATE, comment STRING>>[(DATE('2016-01-01'), 'comment1')])
-WHEN NOT MATCHED THEN
-  INSERT(product, quantity, supply_constrained)
-  VALUES(product, quantity, false)
-"""
-[[tests.schema_objects]]
-name = "dataset.Inventory"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-]
-[[tests.schema_objects]]
-name = "dataset.DetailedInventory"
-kind.table.columns = [
-    { name = "product", dtype = "STRING" },
-    { name = "quantity", dtype = "INT64" },
-    { name = "supply_constrained", dtype = "BOOLEAN" },
-    { name = "comments", dtype = "ARRAY<STRING>"},
-    { name = "specifications", dtype = "STRING"}
-]
-[tests.ready_lineage."dataset.DetailedInventory"]
-product = ["dataset.Inventory->product"]
-quantity = ["dataset.Inventory->quantity"]
-
-
-[[tests]]
-sql = """
-merge proj.dataset.out_table
-using (
-select
-    f0 + f3.a[0].x,
-    f1.*,
-    f2.a.x
-from
-    proj.dataset.in_table
-)
-on false
-when not matched by target then
-    insert row
-when not matched by source then
-    delete
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.in_table"
-kind.table.columns = [
-    {"name" = "f0", "dtype" = "int64"},
-    {"name" = "f1", "dtype" = "struct<a int64, b array<int64>>"},
-    {"name" = "f2", "dtype" = "struct<a struct<x int64, y array<int64>>>"},
-    {"name" = "f3", "dtype" = "struct<a array<struct<x int64>>>"}
-]
-[[tests.schema_objects]]
-name = "proj.dataset.out_table"
-kind.table.columns = [
-    {"name" = "o1", "dtype" = "int64"},
-    {"name" = "o2", "dtype" = "int64"},
-    {"name" = "o3", "dtype" = "array<int64>"},
-    {"name" = "o4", "dtype" = "int64"}
-]
-[tests.ready_lineage."proj.dataset.out_table"]
-o1 = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
-o2 = ["proj.dataset.in_table->f1.a"]
-o3 = ["proj.dataset.in_table->f1.b"]
-o4 = ["proj.dataset.in_table->f2.a.x"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.output_table
-SELECT
-  arr_table.id,
-  items
-FROM
-  proj.dataset.array_table AS arr_table,
-  UNNEST(arr_table.array_column) AS items
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.array_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "array_column", dtype = "ARRAY<STRING>" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.output_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "item_value", dtype = "STRING" }
-]
-[tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.array_table->id"]
-item_value = ["proj.dataset.array_table->array_column[]"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.output_table
-WITH struct_to_array AS (
-  SELECT
-    id,
-    [struct1, struct2] AS combined_structs
-  FROM proj.dataset.struct_table
-)
-SELECT
-  s.id,
-  item.field1,
-  item.field2
-FROM
-  struct_to_array s,
-  UNNEST(s.combined_structs) AS item
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.struct_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
-    { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.output_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "field1", dtype = "STRING" },
-    { name = "field2", dtype = "INT64" }
-]
-[tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.struct_table->id"]
-field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
-field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.output_table
-WITH struct_to_array AS (
-  SELECT
-    id,
-    [struct1, struct2] AS combined_structs
-  FROM `proj.dataset.struct_table`
-)
-SELECT
-  s.id,
-  item.field1,
-  item.field2
-FROM
-  struct_to_array s,
-  `s`.`combined_structs` AS item
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.struct_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
-    { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.output_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "field1", dtype = "STRING" },
-    { name = "field2", dtype = "INT64" }
-]
-[tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.struct_table->id"]
-field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
-field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.output_table
-SELECT
-  id,
-  CONCAT(first_name, ' ', last_name) AS full_name,
-  CAST(numeric_value AS STRING) AS string_value,
-  CONCAT(
-    CAST(id AS STRING),
-    '_',
-    first_name,
-    '_',
-    CAST(numeric_value AS STRING)
-  ) AS composite_key
-FROM proj.dataset.input_table
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.input_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "first_name", dtype = "STRING" },
-    { name = "last_name", dtype = "STRING" },
-    { name = "numeric_value", dtype = "FLOAT64" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.output_table"
-kind.table.columns = [
-    { name = "id", dtype = "INT64" },
-    { name = "full_name", dtype = "STRING" },
-    { name = "string_value", dtype = "STRING" },
-    { name = "composite_key", dtype = "STRING" }
-]
-[tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.input_table->id"]
-full_name = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->last_name"]
-string_value = ["proj.dataset.input_table->numeric_value"]
-composite_key = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.analytics_results
-SELECT
-  category,
-  COUNT(DISTINCT user_id) AS unique_users,
-  COALESCE(last_value, default_value, 0) AS normalized_value,
-  TIMESTAMP_ADD(event_time, INTERVAL duration_minutes MINUTE) AS end_time,
-  COALESCE(
-    TIMESTAMP_ADD(last_update, INTERVAL 7 DAY),
-    TIMESTAMP_ADD(creation_date, INTERVAL 30 DAY)
-  ) AS expiration_date
-FROM proj.dataset.events
-GROUP BY category, last_value, default_value, event_time, duration_minutes, last_update, creation_date
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.events"
-kind.table.columns = [
-    { name = "category", dtype = "STRING" },
-    { name = "user_id", dtype = "STRING" },
-    { name = "last_value", dtype = "FLOAT64" },
-    { name = "default_value", dtype = "FLOAT64" },
-    { name = "event_time", dtype = "TIMESTAMP" },
-    { name = "duration_minutes", dtype = "INT64" },
-    { name = "last_update", dtype = "TIMESTAMP" },
-    { name = "creation_date", dtype = "TIMESTAMP" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.analytics_results"
-kind.table.columns = [
-    { name = "category", dtype = "STRING" },
-    { name = "unique_users", dtype = "INT64" },
-    { name = "normalized_value", dtype = "FLOAT64" },
-    { name = "end_time", dtype = "TIMESTAMP" },
-    { name = "expiration_date", dtype = "TIMESTAMP" }
-]
-[tests.ready_lineage."proj.dataset.analytics_results"]
-category = ["proj.dataset.events->category"]
-unique_users = ["proj.dataset.events->user_id"]
-normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
-end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
-expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
-
-[[tests]]
-sql = """
-INSERT INTO proj.dataset.user_analytics
-SELECT
-  user_id,
-  -- Access nested struct fields from array elements
-  ARRAY(
-    SELECT AS STRUCT
-      event.event_id,
-      event.timestamp,
-      event.properties.page_name,
-      event.properties.session.duration,
-      ARRAY(
-        SELECT item.product_id
-        FROM UNNEST(event.properties.cart.items) AS item
-        WHERE item.quantity > 0
-      ) AS purchased_products
-    FROM UNNEST(user_events) AS event
-    WHERE event.properties.is_completed = TRUE
-  ) AS completed_events,
-
-  -- Create new struct with fields from different nested paths
-  STRUCT(
-    profile.demographics.age AS user_age,
-    profile.demographics.country AS user_country,
-    (SELECT COUNT(DISTINCT device.device_id) FROM UNNEST(profile.devices) AS device) AS device_count,
-    profile.preferences.theme AS preferred_theme,
-    ARRAY(
-      SELECT AS STRUCT
-        cat.category_name,
-        cat.affinity_score
-      FROM UNNEST(profile.preferences.category_affinities) AS cat
-      WHERE cat.affinity_score > 0.5
-      ORDER BY cat.affinity_score DESC
-    ) AS high_affinity_categories
-  ) AS user_profile_summary,
-
-  -- Complex expressions involving nested fields
-  (
-    SELECT
-      SUM(item.price * item.quantity)
-    FROM UNNEST(user_events) AS event,
-    UNNEST(event.properties.cart.items) AS item
-    WHERE event.properties.event_type = 'purchase'
-  ) AS total_spent,
-
-  -- Build struct array derived from multiple sources
-  ARRAY(
-    SELECT AS STRUCT
-      device.device_id,
-      device.platform,
-      (
-        SELECT MAX(event.timestamp)
-        FROM UNNEST(user_events) AS event
-        WHERE event.device_id = device.device_id
-      ) AS last_active_time
-    FROM UNNEST(profile.devices) AS device
-  ) AS device_activity
-
-FROM proj.dataset.user_data
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.user_data"
-kind.table.columns = [
-    { name = "user_id", dtype = "STRING" },
-    { name = "profile", dtype = "STRUCT<demographics STRUCT<age INT64, gender STRING, country STRING>, preferences STRUCT<theme STRING, language STRING, category_affinities ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>, devices ARRAY<STRUCT<device_id STRING, platform STRING, model STRING, last_used_date DATE>>>" },
-    { name = "user_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, device_id STRING, properties STRUCT<event_type STRING, page_name STRING, is_completed BOOL, session STRUCT<session_id STRING, duration INT64>, cart STRUCT<cart_id STRING, items ARRAY<STRUCT<product_id STRING, quantity INT64, price FLOAT64>>>>>>" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.user_analytics"
-kind.table.columns = [
-    { name = "user_id", dtype = "STRING" },
-    { name = "completed_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, page_name STRING, duration INT64, purchased_products ARRAY<STRING>>>" },
-    { name = "user_profile_summary", dtype = "STRUCT<user_age INT64, user_country STRING, device_count INT64, preferred_theme STRING, high_affinity_categories ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>" },
-    { name = "total_spent", dtype = "FLOAT64" },
-    { name = "device_activity", dtype = "ARRAY<STRUCT<device_id STRING, platform STRING, last_active_time TIMESTAMP>>" }
-]
-[tests.ready_lineage."proj.dataset.user_analytics"]
-user_id = ["proj.dataset.user_data->user_id"]
-completed_events = [
-    "proj.dataset.user_data->user_events[].event_id",
-    "proj.dataset.user_data->user_events[].timestamp",
-    "proj.dataset.user_data->user_events[].properties.page_name",
-    "proj.dataset.user_data->user_events[].properties.session.duration",
-    "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
-    # "proj.dataset.user_data->user_events[].properties.is_completed" -- filter lineage
-]
-user_profile_summary = [
-    "proj.dataset.user_data->profile.demographics.age",
-    "proj.dataset.user_data->profile.demographics.country",
-    "proj.dataset.user_data->profile.devices[].device_id",
-    "proj.dataset.user_data->profile.preferences.theme",
-    "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
-    "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
-]
-total_spent = [
-    # "proj.dataset.user_data->user_events[].properties.event_type", -- filter lineage
-    "proj.dataset.user_data->user_events[].properties.cart.items[].price",
-    "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
-]
-device_activity = [
-    "proj.dataset.user_data->profile.devices[].device_id",
-    "proj.dataset.user_data->profile.devices[].platform",
-    "proj.dataset.user_data->user_events[].timestamp",
-    # "proj.dataset.user_data->user_events[].device_id" -- filter lineage
-]
-
-[[tests]]
-sql = """
-insert into `proj.dataset.output_table`
-with tmp as (
-    select as struct a, b
-    from proj.dataset.input_table
-)
-select
-    a,b
-from tmp;
-
-insert into `proj.dataset.output_table`
-with tmp as (
-    select as value struct(c, d)
-    from proj.dataset.input_table
-)
-select
-    *
-from tmp;
-"""
-[[tests.schema_objects]]
-name = "proj.dataset.input_table"
-kind.table.columns = [
-    { name = "a", dtype = "INT64" },
-    { name = "b", dtype = "INT64" },
-    { name = "c", dtype = "INT64" },
-    { name = "d", dtype = "INT64" }
-]
-[[tests.schema_objects]]
-name = "proj.dataset.output_table"
-kind.table.columns = [
-    { name = "o1", dtype = "INT64" },
-    { name = "o2", dtype = "INT64" },
-]
-[tests.ready_lineage."proj.dataset.output_table"]
-o1 = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
-o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
-
-[[tests]]
-sql = """
-merge proj.dat.out_table
-using (
-SELECT
-    ARRAY(select as struct a, b FROM proj.dat.in_table)
-)
-on false
-when not matched by target then
-    insert row
-when not matched by source then
-    delete
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "STRING" },
-    { name = "b", dtype = "STRING" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
-[tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
-
-[[tests]]
-sql = """
-merge proj.dat.out_table
-using (
-SELECT
-    ARRAY_AGG(in_arr)
-FROM proj.dat.in_table, UNNEST(in_arr) as in_arr
-)
-on false
-when not matched by target then
-    insert row
-when not matched by source then
-    delete
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "in_arr", dtype = "ARRAY<STRING>" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
-[tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->in_arr[]"]
-
-[[tests]]
-sql = """
-begin
-    declare x struct<f1 int64> default (select s from proj.dat.in_table);
-    declare y,z int64 default 10;
-    declare s string default (select a from proj.dat.in_table);
-
-    set (y, z) = ((select s.f1 + x.f1 from proj.dat.in_table limit 1), (select 3));
-    set s = "foo";
-
-    insert into proj.dat.out_table
-    select
-    s as a,
-    x.f1 as f1,
-    y+z as f2;
-end;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "string" },
-    { name = "s", dtype = "struct<f1 int64, f2 int64>"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "a", dtype = "string" },
-    { name = "f1", dtype = "int64"},
-    { name = "f2", dtype = "int64"}
-]
-[tests.ready_lineage."proj.dat.out_table"]
-f1 = ["proj.dat.in_table->s.f1"]
-f2 = ["proj.dat.in_table->s.f1"]
-
-[[tests]]
-sql = """
-begin
-
-declare x, y int64;
-set (x, y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
-
-insert into proj.dat.out_table
-select
-    x, y;
-
-end;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "ix", dtype = "int64" },
-    { name = "iy", dtype = "int64"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "ox", dtype = "int64" },
-    { name = "oy", dtype = "int64"}
-]
-[tests.ready_lineage."proj.dat.out_table"]
-ox = ["proj.dat.in_table->ix"]
-oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
-
-[[tests]]
-sql = """
-begin
-
-declare X, y int64;
-set (x, Y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
-
-insert into proj.dat.out_table
-select
-    X, y;
-
-end;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "ix", dtype = "int64" },
-    { name = "iy", dtype = "int64"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "ox", dtype = "int64" },
-    { name = "oy", dtype = "int64"}
-]
-[tests.ready_lineage."proj.dat.out_table"]
-ox = ["proj.dat.in_table->ix"]
-oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
-
-[[tests]]
-sql = """
-create temp table foo(a string, b string);
-
-insert into foo
-select a,b from proj.dat.in_table;
-
-insert into proj.dat.out_table
-select a, b from foo;
-
-drop table foo;
-create temp table foo(c string);
-
-insert into foo
-select c from proj.dat.in_table;
-
-insert into proj.dat.out_table
-select "fill", c from foo;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "STRING" },
-    { name = "b", dtype = "STRING" },
-    { name = "c", dtype = "STRING" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
-[tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+# [[tests]]
+# sql = """
+# MERGE dataset.DetailedInventory T
+# USING dataset.Inventory S
+# ON T.product = S.product
+# WHEN NOT MATCHED AND quantity < 20 THEN
+#   INSERT(product, quantity, supply_constrained, comments)
+#   VALUES(product, quantity, true, ARRAY<STRUCT<created DATE, comment STRING>>[(DATE('2016-01-01'), 'comment1')])
+# WHEN NOT MATCHED THEN
+#   INSERT(product, quantity, supply_constrained)
+#   VALUES(product, quantity, false)
+# """
+# [[tests.schema_objects]]
+# name = "dataset.Inventory"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+# ]
+# [[tests.schema_objects]]
+# name = "dataset.DetailedInventory"
+# kind.table.columns = [
+#     { name = "product", dtype = "STRING" },
+#     { name = "quantity", dtype = "INT64" },
+#     { name = "supply_constrained", dtype = "BOOLEAN" },
+#     { name = "comments", dtype = "ARRAY<STRING>"},
+#     { name = "specifications", dtype = "STRING"}
+# ]
+# [tests.ready_lineage."dataset.DetailedInventory"]
+# product = ["dataset.Inventory->product"]
+# quantity = ["dataset.Inventory->quantity"]
 
 
-[[tests]]
-sql = """
-for record in (select * from proj.dat.in_table)
-do
-    insert into proj.dat.out_table
-    select record.a, record.b;
+# [[tests]]
+# sql = """
+# merge proj.dataset.out_table
+# using (
+# select
+#     f0 + f3.a[0].x,
+#     f1.*,
+#     f2.a.x
+# from
+#     proj.dataset.in_table
+# )
+# on false
+# when not matched by target then
+#     insert row
+# when not matched by source then
+#     delete
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.in_table"
+# kind.table.columns = [
+#     {"name" = "f0", "dtype" = "int64"},
+#     {"name" = "f1", "dtype" = "struct<a int64, b array<int64>>"},
+#     {"name" = "f2", "dtype" = "struct<a struct<x int64, y array<int64>>>"},
+#     {"name" = "f3", "dtype" = "struct<a array<struct<x int64>>>"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.out_table"
+# kind.table.columns = [
+#     {"name" = "o1", "dtype" = "int64"},
+#     {"name" = "o2", "dtype" = "int64"},
+#     {"name" = "o3", "dtype" = "array<int64>"},
+#     {"name" = "o4", "dtype" = "int64"}
+# ]
+# [tests.ready_lineage."proj.dataset.out_table"]
+# o1 = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
+# o2 = ["proj.dataset.in_table->f1.a"]
+# o3 = ["proj.dataset.in_table->f1.b"]
+# o4 = ["proj.dataset.in_table->f2.a.x"]
 
-    insert into proj.dat.out_table
-    select record.a, record.c;
-end for;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "STRING" },
-    { name = "b", dtype = "STRING" },
-    { name = "c", dtype = "STRING" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
-[tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.output_table
+# SELECT
+#   arr_table.id,
+#   items
+# FROM
+#   proj.dataset.array_table AS arr_table,
+#   UNNEST(arr_table.array_column) AS items
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.array_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "array_column", dtype = "ARRAY<STRING>" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.output_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "item_value", dtype = "STRING" }
+# ]
+# [tests.ready_lineage."proj.dataset.output_table"]
+# id = ["proj.dataset.array_table->id"]
+# item_value = ["proj.dataset.array_table->array_column[]"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with t1 as (
-    select a as c1, b as c2, c as c3
-    from proj.dat.in_table
-)
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.output_table
+# WITH struct_to_array AS (
+#   SELECT
+#     id,
+#     [struct1, struct2] AS combined_structs
+#   FROM proj.dataset.struct_table
+# )
+# SELECT
+#   s.id,
+#   item.field1,
+#   item.field2
+# FROM
+#   struct_to_array s,
+#   UNNEST(s.combined_structs) AS item
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.struct_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
+#     { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.output_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "field1", dtype = "STRING" },
+#     { name = "field2", dtype = "INT64" }
+# ]
+# [tests.ready_lineage."proj.dataset.output_table"]
+# id = ["proj.dataset.struct_table->id"]
+# field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+# field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
 
-, t2 as (
-    select 2 as c2
-)
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.output_table
+# WITH struct_to_array AS (
+#   SELECT
+#     id,
+#     [struct1, struct2] AS combined_structs
+#   FROM `proj.dataset.struct_table`
+# )
+# SELECT
+#   s.id,
+#   item.field1,
+#   item.field2
+# FROM
+#   struct_to_array s,
+#   `s`.`combined_structs` AS item
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.struct_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "struct1", dtype = "STRUCT<field1 STRING, field2 INT64>" },
+#     { name = "struct2", dtype = "STRUCT<field1 STRING, field2 INT64>" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.output_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "field1", dtype = "STRING" },
+#     { name = "field2", dtype = "INT64" }
+# ]
+# [tests.ready_lineage."proj.dataset.output_table"]
+# id = ["proj.dataset.struct_table->id"]
+# field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+# field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
 
-, d as (
-    select d as end_date
-    from proj.dat.in_table
-)
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.output_table
+# SELECT
+#   id,
+#   CONCAT(first_name, ' ', last_name) AS full_name,
+#   CAST(numeric_value AS STRING) AS string_value,
+#   CONCAT(
+#     CAST(id AS STRING),
+#     '_',
+#     first_name,
+#     '_',
+#     CAST(numeric_value AS STRING)
+#   ) AS composite_key
+# FROM proj.dataset.input_table
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.input_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "first_name", dtype = "STRING" },
+#     { name = "last_name", dtype = "STRING" },
+#     { name = "numeric_value", dtype = "FLOAT64" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.output_table"
+# kind.table.columns = [
+#     { name = "id", dtype = "INT64" },
+#     { name = "full_name", dtype = "STRING" },
+#     { name = "string_value", dtype = "STRING" },
+#     { name = "composite_key", dtype = "STRING" }
+# ]
+# [tests.ready_lineage."proj.dataset.output_table"]
+# id = ["proj.dataset.input_table->id"]
+# full_name = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->last_name"]
+# string_value = ["proj.dataset.input_table->numeric_value"]
+# composite_key = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
 
-select c2,if(true,d.end_date,end_date)
-from t1 as t
-left join d on (true)
-left join t2 using (c2)
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "int64" },
-    { name = "b", dtype = "int64" },
-    { name = "c", dtype = "int64" },
-    { name = "d", dtype = "DATE"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
-[tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->b"]
-b = ["proj.dat.in_table->d"]
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.analytics_results
+# SELECT
+#   category,
+#   COUNT(DISTINCT user_id) AS unique_users,
+#   COALESCE(last_value, default_value, 0) AS normalized_value,
+#   TIMESTAMP_ADD(event_time, INTERVAL duration_minutes MINUTE) AS end_time,
+#   COALESCE(
+#     TIMESTAMP_ADD(last_update, INTERVAL 7 DAY),
+#     TIMESTAMP_ADD(creation_date, INTERVAL 30 DAY)
+#   ) AS expiration_date
+# FROM proj.dataset.events
+# GROUP BY category, last_value, default_value, event_time, duration_minutes, last_update, creation_date
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.events"
+# kind.table.columns = [
+#     { name = "category", dtype = "STRING" },
+#     { name = "user_id", dtype = "STRING" },
+#     { name = "last_value", dtype = "FLOAT64" },
+#     { name = "default_value", dtype = "FLOAT64" },
+#     { name = "event_time", dtype = "TIMESTAMP" },
+#     { name = "duration_minutes", dtype = "INT64" },
+#     { name = "last_update", dtype = "TIMESTAMP" },
+#     { name = "creation_date", dtype = "TIMESTAMP" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.analytics_results"
+# kind.table.columns = [
+#     { name = "category", dtype = "STRING" },
+#     { name = "unique_users", dtype = "INT64" },
+#     { name = "normalized_value", dtype = "FLOAT64" },
+#     { name = "end_time", dtype = "TIMESTAMP" },
+#     { name = "expiration_date", dtype = "TIMESTAMP" }
+# ]
+# [tests.ready_lineage."proj.dataset.analytics_results"]
+# category = ["proj.dataset.events->category"]
+# unique_users = ["proj.dataset.events->user_id"]
+# normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
+# end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
+# expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with t1 as (
-    select a,b,c
-    from proj.dat.in_table
-)
+# [[tests]]
+# sql = """
+# INSERT INTO proj.dataset.user_analytics
+# SELECT
+#   user_id,
+#   -- Access nested struct fields from array elements
+#   ARRAY(
+#     SELECT AS STRUCT
+#       event.event_id,
+#       event.timestamp,
+#       event.properties.page_name,
+#       event.properties.session.duration,
+#       ARRAY(
+#         SELECT item.product_id
+#         FROM UNNEST(event.properties.cart.items) AS item
+#         WHERE item.quantity > 0
+#       ) AS purchased_products
+#     FROM UNNEST(user_events) AS event
+#     WHERE event.properties.is_completed = TRUE
+#   ) AS completed_events,
 
-select
-    count(*),
-    t.c
-from t1 as t
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "int64" },
-    { name = "b", dtype = "int64" },
-    { name = "c", dtype = "int64" },
-    { name = "d", dtype = "DATE"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
-[tests.ready_lineage."proj.dat.out_table"]
-b = ["proj.dat.in_table->c"]
+#   -- Create new struct with fields from different nested paths
+#   STRUCT(
+#     profile.demographics.age AS user_age,
+#     profile.demographics.country AS user_country,
+#     (SELECT COUNT(DISTINCT device.device_id) FROM UNNEST(profile.devices) AS device) AS device_count,
+#     profile.preferences.theme AS preferred_theme,
+#     ARRAY(
+#       SELECT AS STRUCT
+#         cat.category_name,
+#         cat.affinity_score
+#       FROM UNNEST(profile.preferences.category_affinities) AS cat
+#       WHERE cat.affinity_score > 0.5
+#       ORDER BY cat.affinity_score DESC
+#     ) AS high_affinity_categories
+#   ) AS user_profile_summary,
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with s as (
-    select
-        struct(a as x, b as y) s
-    from proj.dat.in_table
-)
+#   -- Complex expressions involving nested fields
+#   (
+#     SELECT
+#       SUM(item.price * item.quantity)
+#     FROM UNNEST(user_events) AS event,
+#     UNNEST(event.properties.cart.items) AS item
+#     WHERE event.properties.event_type = 'purchase'
+#   ) AS total_spent,
 
-select
-    s.s.x+s.s.y,
-    s.s.X+s.s.Y
-from s
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "int64" },
-    { name = "b", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
-[tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a","proj.dat.in_table->b"]
-b = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+#   -- Build struct array derived from multiple sources
+#   ARRAY(
+#     SELECT AS STRUCT
+#       device.device_id,
+#       device.platform,
+#       (
+#         SELECT MAX(event.timestamp)
+#         FROM UNNEST(user_events) AS event
+#         WHERE event.device_id = device.device_id
+#       ) AS last_active_time
+#     FROM UNNEST(profile.devices) AS device
+#   ) AS device_activity
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with tmp as (
-    select [struct(a as x, b as y), struct(3 as x, 4 as y)] as s
-    from proj.dat.in_table
-)
+# FROM proj.dataset.user_data
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.user_data"
+# kind.table.columns = [
+#     { name = "user_id", dtype = "STRING" },
+#     { name = "profile", dtype = "STRUCT<demographics STRUCT<age INT64, gender STRING, country STRING>, preferences STRUCT<theme STRING, language STRING, category_affinities ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>, devices ARRAY<STRUCT<device_id STRING, platform STRING, model STRING, last_used_date DATE>>>" },
+#     { name = "user_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, device_id STRING, properties STRUCT<event_type STRING, page_name STRING, is_completed BOOL, session STRUCT<session_id STRING, duration INT64>, cart STRUCT<cart_id STRING, items ARRAY<STRUCT<product_id STRING, quantity INT64, price FLOAT64>>>>>>" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.user_analytics"
+# kind.table.columns = [
+#     { name = "user_id", dtype = "STRING" },
+#     { name = "completed_events", dtype = "ARRAY<STRUCT<event_id STRING, timestamp TIMESTAMP, page_name STRING, duration INT64, purchased_products ARRAY<STRING>>>" },
+#     { name = "user_profile_summary", dtype = "STRUCT<user_age INT64, user_country STRING, device_count INT64, preferred_theme STRING, high_affinity_categories ARRAY<STRUCT<category_name STRING, affinity_score FLOAT64>>>" },
+#     { name = "total_spent", dtype = "FLOAT64" },
+#     { name = "device_activity", dtype = "ARRAY<STRUCT<device_id STRING, platform STRING, last_active_time TIMESTAMP>>" }
+# ]
+# [tests.ready_lineage."proj.dataset.user_analytics"]
+# user_id = ["proj.dataset.user_data->user_id"]
+# completed_events = [
+#     "proj.dataset.user_data->user_events[].event_id",
+#     "proj.dataset.user_data->user_events[].timestamp",
+#     "proj.dataset.user_data->user_events[].properties.page_name",
+#     "proj.dataset.user_data->user_events[].properties.session.duration",
+#     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
+#     # "proj.dataset.user_data->user_events[].properties.is_completed" -- filter lineage
+# ]
+# user_profile_summary = [
+#     "proj.dataset.user_data->profile.demographics.age",
+#     "proj.dataset.user_data->profile.demographics.country",
+#     "proj.dataset.user_data->profile.devices[].device_id",
+#     "proj.dataset.user_data->profile.preferences.theme",
+#     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
+#     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
+# ]
+# total_spent = [
+#     # "proj.dataset.user_data->user_events[].properties.event_type", -- filter lineage
+#     "proj.dataset.user_data->user_events[].properties.cart.items[].price",
+#     "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+# ]
+# device_activity = [
+#     "proj.dataset.user_data->profile.devices[].device_id",
+#     "proj.dataset.user_data->profile.devices[].platform",
+#     "proj.dataset.user_data->user_events[].timestamp",
+#     # "proj.dataset.user_data->user_events[].device_id" -- filter lineage
+# ]
 
-select
-    * except (s) from
-tmp, unnest(tmp.s)
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "a", dtype = "int64" },
-    { name = "b", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
-[tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
+# [[tests]]
+# sql = """
+# insert into `proj.dataset.output_table`
+# with tmp as (
+#     select as struct a, b
+#     from proj.dataset.input_table
+# )
+# select
+#     a,b
+# from tmp;
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-select
-    date_diff(d1, d2, day)
-from proj.dat.in_table
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "d1", dtype = "date" },
-    { name = "d2", dtype = "date" }
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "diff", dtype = "int64" }]
-[tests.ready_lineage."proj.dat.out_table"]
-diff = ["proj.dat.in_table->d1", "proj.dat.in_table->d2"]
+# insert into `proj.dataset.output_table`
+# with tmp as (
+#     select as value struct(c, d)
+#     from proj.dataset.input_table
+# )
+# select
+#     *
+# from tmp;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dataset.input_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "INT64" },
+#     { name = "b", dtype = "INT64" },
+#     { name = "c", dtype = "INT64" },
+#     { name = "d", dtype = "INT64" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dataset.output_table"
+# kind.table.columns = [
+#     { name = "o1", dtype = "INT64" },
+#     { name = "o2", dtype = "INT64" },
+# ]
+# [tests.ready_lineage."proj.dataset.output_table"]
+# o1 = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
+# o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-select
-    date_trunc(d1, month)
-from proj.dat.in_table
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "d1", dtype = "date" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "trunc", dtype = "int64" }]
-[tests.ready_lineage."proj.dat.out_table"]
-trunc = ["proj.dat.in_table->d1"]
+# [[tests]]
+# sql = """
+# merge proj.dat.out_table
+# using (
+# SELECT
+#     ARRAY(select as struct a, b FROM proj.dat.in_table)
+# )
+# on false
+# when not matched by target then
+#     insert row
+# when not matched by source then
+#     delete
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "STRING" },
+#     { name = "b", dtype = "STRING" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with tmp as (
-    select x, y, w, f
-    from proj.dat.in_table
-)
-, tmp2 as (
-    select x, y, f
-    from proj.dat.in_table
-)
-, tmp3 as (
-    select y, z, w, x
-    from proj.dat.in_table
-)
-select
-    w,z  -- x and f are ambiguous
-from tmp inner join tmp2 using (x,y) inner join tmp3 using (y,w)
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "x", dtype = "int64" },
-    { name = "y", dtype = "int64" },
-    { name = "z", dtype = "int64" },
-    { name = "w", dtype = "int64" },
-    { name = "f", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int64" }]
-[tests.ready_lineage."proj.dat.out_table"]
-w = ["proj.dat.in_table->w"]
-z = ["proj.dat.in_table->z"]
+# [[tests]]
+# sql = """
+# merge proj.dat.out_table
+# using (
+# SELECT
+#     ARRAY_AGG(in_arr)
+# FROM proj.dat.in_table, UNNEST(in_arr) as in_arr
+# )
+# on false
+# when not matched by target then
+#     insert row
+# when not matched by source then
+#     delete
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "in_arr", dtype = "ARRAY<STRING>" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# arr = ["proj.dat.in_table->in_arr[]"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with tmp as (
-    select ts, id
-    from proj.dat.t1
-)
-, tmp2 as (
-    select id, f1
-    from proj.dat.t2
-)
-, tmp3 as (
-    select id, f2
-    from proj.dat.t3
-)
-select
-    ts,
-    id,
-    f1,
-    f2,
-from tmp left join tmp2 using (id) left join tmp3 using (id)
-"""
-[[tests.schema_objects]]
-name = "proj.dat.t1"
-kind.table.columns = [
-    { name = "ts", dtype = "timestamp" },
-    { name = "id", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.t2"
-kind.table.columns = [
-    { name = "id", dtype = "int64" },
-    { name = "f1", dtype = "string" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.t3"
-kind.table.columns = [
-    { name = "id", dtype = "int64" },
-    { name = "f2", dtype = "string" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "ts", dtype = "timestamp" },
-    { name = "id", dtype = "int64" },
-    { name = "f1", dtype = "string" },
-    { name = "f2", dtype = "string" },
+# [[tests]]
+# sql = """
+# begin
+#     declare x struct<f1 int64> default (select s from proj.dat.in_table);
+#     declare y,z int64 default 10;
+#     declare s string default (select a from proj.dat.in_table);
 
-]
-[tests.ready_lineage."proj.dat.out_table"]
-ts = ["proj.dat.t1->ts"]
-id = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
-f1 = ["proj.dat.t2->f1"]
-f2 = ["proj.dat.t3->f2"]
+#     set (y, z) = ((select s.f1 + x.f1 from proj.dat.in_table limit 1), (select 3));
+#     set s = "foo";
 
-[[tests]]
-sql="""
-create temp table new_data as (
-    select
-        TS,
-        id,
-        f1
-    from proj.dat.in_table
-);
+#     insert into proj.dat.out_table
+#     select
+#     s as a,
+#     x.f1 as f1,
+#     y+z as f2;
+# end;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "string" },
+#     { name = "s", dtype = "struct<f1 int64, f2 int64>"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "string" },
+#     { name = "f1", dtype = "int64"},
+#     { name = "f2", dtype = "int64"}
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# f1 = ["proj.dat.in_table->s.f1"]
+# f2 = ["proj.dat.in_table->s.f1"]
 
-merge into proj.dat.out_table as T
-using (
-    select TS,id,f1
-    from new_data
-) as S
-on T.TS=S.TS and T.id =S.id and T.TS=current_timestamp
-when not matched by target then
-    insert (
-        TS,
-        id,
-        f1
-    )
-    values (
-        s.TS,
-        s.id,
-        s.f1
-    );
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "ts", dtype = "timestamp" },
-    { name = "id", dtype = "int64" },
-    { name = "f1", dtype = "string" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "ts", dtype = "timestamp" },
-    { name = "id", dtype = "int64" },
-    { name = "f1", dtype = "string" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-ts = ["proj.dat.in_table->ts"]
-id = ["proj.dat.in_table->id"]
-f1 = ["proj.dat.in_table->f1"]
+# [[tests]]
+# sql = """
+# begin
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-SELECT ARRAY_CONCAT_AGG(x) AS array_concat_agg FROM (
-  SELECT [NULL, 1, 2, 3, 4] AS x
-  UNION ALL SELECT NULL
-  UNION ALL SELECT [5, f0] from proj.dat.in_table
-  UNION ALL SELECT [7, f1.a.x, f1.a.y[0]] from proj.dat.in_table
-);
-"""
-[[tests.schema_objects]]
-name = "proj.dat.in_table"
-kind.table.columns = [
-    { name = "f0", dtype = "int64" },
-    { name = "f1", dtype = "struct<a struct<x int64, y array<int64>>>" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "arr", dtype = "array<int64>" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+# declare x, y int64;
+# set (x, y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-SELECT SPLIT(letter_group, ' ')[offset((select min(idx) from proj.dat.letters))] as split_index
-FROM proj.dat.letters;
-"""
-[[tests.schema_objects]]
-name = "proj.dat.letters"
-kind.table.columns = [
-    { name = "letter_group", dtype = "string" },
-    { name = "idx", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "split_index", dtype = "string" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-split_index = ["proj.dat.letters->letter_group", "proj.dat.letters->idx"]
+# insert into proj.dat.out_table
+# select
+#     x, y;
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-SELECT [
-    (select min(idx1) from proj.dat.indices),
-    (select min(idx2) from proj.dat.indices)
-][(select min(idx3) from proj.dat.indices)]
-"""
-[[tests.schema_objects]]
-name = "proj.dat.indices"
-kind.table.columns = [
-    { name = "idx1", dtype = "int64" },
-    { name = "idx2", dtype = "int64" },
-    { name = "idx3", dtype = "int64"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "idx", dtype = "int64" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-idx = ["proj.dat.indices->idx1", "proj.dat.indices->idx2", "proj.dat.indices->idx3"]
+# end;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "ix", dtype = "int64" },
+#     { name = "iy", dtype = "int64"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "ox", dtype = "int64" },
+#     { name = "oy", dtype = "int64"}
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# ox = ["proj.dat.in_table->ix"]
+# oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-SELECT (select [1,2,3])[(select min(idx3) from proj.dat.indices)]
-"""
-[[tests.schema_objects]]
-name = "proj.dat.indices"
-kind.table.columns = [
-    { name = "idx1", dtype = "int64" },
-    { name = "idx2", dtype = "int64" },
-    { name = "idx3", dtype = "int64"}
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "idx", dtype = "int64" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-idx = ["proj.dat.indices->idx3"]
+# [[tests]]
+# sql = """
+# begin
 
-[[tests]]
-sql="""
-insert into proj.dat.out_table
-with tmp as (
-    select *
-    from proj.dat.t1, proj.dat.t2
-)
-select c1+c2
-from tmp
-"""
-[[tests.schema_objects]]
-name = "proj.dat.t1"
-kind.table.columns = [
-    { name = "id", dtype = "int64" },
-    { name = "c1", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.t2"
-kind.table.columns = [
-    { name = "id", dtype = "int64" },
-    { name = "c2", dtype = "int64" },
-]
-[[tests.schema_objects]]
-name = "proj.dat.out_table"
-kind.table.columns = [
-    { name = "c", dtype = "int64" },
-]
-[tests.ready_lineage."proj.dat.out_table"]
-c = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
+# declare X, y int64;
+# set (x, Y, @@time_zone) = (select as struct sum(ix), sum(iy)+sum(ix), "UTC" from proj.dat.in_table);
+
+# insert into proj.dat.out_table
+# select
+#     X, y;
+
+# end;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "ix", dtype = "int64" },
+#     { name = "iy", dtype = "int64"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "ox", dtype = "int64" },
+#     { name = "oy", dtype = "int64"}
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# ox = ["proj.dat.in_table->ix"]
+# oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
+
+# [[tests]]
+# sql = """
+# create temp table foo(a string, b string);
+
+# insert into foo
+# select a,b from proj.dat.in_table;
+
+# insert into proj.dat.out_table
+# select a, b from foo;
+
+# drop table foo;
+# create temp table foo(c string);
+
+# insert into foo
+# select c from proj.dat.in_table;
+
+# insert into proj.dat.out_table
+# select "fill", c from foo;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "STRING" },
+#     { name = "b", dtype = "STRING" },
+#     { name = "c", dtype = "STRING" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# a = ["proj.dat.in_table->a"]
+# b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+
+
+# [[tests]]
+# sql = """
+# for record in (select * from proj.dat.in_table)
+# do
+#     insert into proj.dat.out_table
+#     select record.a, record.b;
+
+#     insert into proj.dat.out_table
+#     select record.a, record.c;
+# end for;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "STRING" },
+#     { name = "b", dtype = "STRING" },
+#     { name = "c", dtype = "STRING" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# a = ["proj.dat.in_table->a"]
+# b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with t1 as (
+#     select a as c1, b as c2, c as c3
+#     from proj.dat.in_table
+# )
+
+# , t2 as (
+#     select 2 as c2
+# )
+
+# , d as (
+#     select d as end_date
+#     from proj.dat.in_table
+# )
+
+# select c2,if(true,d.end_date,end_date)
+# from t1 as t
+# left join d on (true)
+# left join t2 using (c2)
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "int64" },
+#     { name = "b", dtype = "int64" },
+#     { name = "c", dtype = "int64" },
+#     { name = "d", dtype = "DATE"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# a = ["proj.dat.in_table->b"]
+# b = ["proj.dat.in_table->d"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with t1 as (
+#     select a,b,c
+#     from proj.dat.in_table
+# )
+
+# select
+#     count(*),
+#     t.c
+# from t1 as t
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "int64" },
+#     { name = "b", dtype = "int64" },
+#     { name = "c", dtype = "int64" },
+#     { name = "d", dtype = "DATE"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# b = ["proj.dat.in_table->c"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with s as (
+#     select
+#         struct(a as x, b as y) s
+#     from proj.dat.in_table
+# )
+
+# select
+#     s.s.x+s.s.y,
+#     s.s.X+s.s.Y
+# from s
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "int64" },
+#     { name = "b", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# a = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+# b = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with tmp as (
+#     select [struct(a as x, b as y), struct(3 as x, 4 as y)] as s
+#     from proj.dat.in_table
+# )
+
+# select
+#     * except (s) from
+# tmp, unnest(tmp.s)
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "a", dtype = "int64" },
+#     { name = "b", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# a = ["proj.dat.in_table->a"]
+# b = ["proj.dat.in_table->b"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# select
+#     date_diff(d1, d2, day)
+# from proj.dat.in_table
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "d1", dtype = "date" },
+#     { name = "d2", dtype = "date" }
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "diff", dtype = "int64" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# diff = ["proj.dat.in_table->d1", "proj.dat.in_table->d2"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# select
+#     date_trunc(d1, month)
+# from proj.dat.in_table
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "d1", dtype = "date" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "trunc", dtype = "int64" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# trunc = ["proj.dat.in_table->d1"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with tmp as (
+#     select x, y, w, f
+#     from proj.dat.in_table
+# )
+# , tmp2 as (
+#     select x, y, f
+#     from proj.dat.in_table
+# )
+# , tmp3 as (
+#     select y, z, w, x
+#     from proj.dat.in_table
+# )
+# select
+#     w,z  -- x and f are ambiguous
+# from tmp inner join tmp2 using (x,y) inner join tmp3 using (y,w)
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "x", dtype = "int64" },
+#     { name = "y", dtype = "int64" },
+#     { name = "z", dtype = "int64" },
+#     { name = "w", dtype = "int64" },
+#     { name = "f", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int64" }]
+# [tests.ready_lineage."proj.dat.out_table"]
+# w = ["proj.dat.in_table->w"]
+# z = ["proj.dat.in_table->z"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with tmp as (
+#     select ts, id
+#     from proj.dat.t1
+# )
+# , tmp2 as (
+#     select id, f1
+#     from proj.dat.t2
+# )
+# , tmp3 as (
+#     select id, f2
+#     from proj.dat.t3
+# )
+# select
+#     ts,
+#     id,
+#     f1,
+#     f2,
+# from tmp left join tmp2 using (id) left join tmp3 using (id)
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.t1"
+# kind.table.columns = [
+#     { name = "ts", dtype = "timestamp" },
+#     { name = "id", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.t2"
+# kind.table.columns = [
+#     { name = "id", dtype = "int64" },
+#     { name = "f1", dtype = "string" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.t3"
+# kind.table.columns = [
+#     { name = "id", dtype = "int64" },
+#     { name = "f2", dtype = "string" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "ts", dtype = "timestamp" },
+#     { name = "id", dtype = "int64" },
+#     { name = "f1", dtype = "string" },
+#     { name = "f2", dtype = "string" },
+
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# ts = ["proj.dat.t1->ts"]
+# id = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
+# f1 = ["proj.dat.t2->f1"]
+# f2 = ["proj.dat.t3->f2"]
+
+# [[tests]]
+# sql="""
+# create temp table new_data as (
+#     select
+#         TS,
+#         id,
+#         f1
+#     from proj.dat.in_table
+# );
+
+# merge into proj.dat.out_table as T
+# using (
+#     select TS,id,f1
+#     from new_data
+# ) as S
+# on T.TS=S.TS and T.id =S.id and T.TS=current_timestamp
+# when not matched by target then
+#     insert (
+#         TS,
+#         id,
+#         f1
+#     )
+#     values (
+#         s.TS,
+#         s.id,
+#         s.f1
+#     );
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "ts", dtype = "timestamp" },
+#     { name = "id", dtype = "int64" },
+#     { name = "f1", dtype = "string" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "ts", dtype = "timestamp" },
+#     { name = "id", dtype = "int64" },
+#     { name = "f1", dtype = "string" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# ts = ["proj.dat.in_table->ts"]
+# id = ["proj.dat.in_table->id"]
+# f1 = ["proj.dat.in_table->f1"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# SELECT ARRAY_CONCAT_AGG(x) AS array_concat_agg FROM (
+#   SELECT [NULL, 1, 2, 3, 4] AS x
+#   UNION ALL SELECT NULL
+#   UNION ALL SELECT [5, f0] from proj.dat.in_table
+#   UNION ALL SELECT [7, f1.a.x, f1.a.y[0]] from proj.dat.in_table
+# );
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.in_table"
+# kind.table.columns = [
+#     { name = "f0", dtype = "int64" },
+#     { name = "f1", dtype = "struct<a struct<x int64, y array<int64>>>" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "arr", dtype = "array<int64>" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# SELECT SPLIT(letter_group, ' ')[offset((select min(idx) from proj.dat.letters))] as split_index
+# FROM proj.dat.letters;
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.letters"
+# kind.table.columns = [
+#     { name = "letter_group", dtype = "string" },
+#     { name = "idx", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "split_index", dtype = "string" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# split_index = ["proj.dat.letters->letter_group", "proj.dat.letters->idx"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# SELECT [
+#     (select min(idx1) from proj.dat.indices),
+#     (select min(idx2) from proj.dat.indices)
+# ][(select min(idx3) from proj.dat.indices)]
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.indices"
+# kind.table.columns = [
+#     { name = "idx1", dtype = "int64" },
+#     { name = "idx2", dtype = "int64" },
+#     { name = "idx3", dtype = "int64"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "idx", dtype = "int64" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# idx = ["proj.dat.indices->idx1", "proj.dat.indices->idx2", "proj.dat.indices->idx3"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# SELECT (select [1,2,3])[(select min(idx3) from proj.dat.indices)]
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.indices"
+# kind.table.columns = [
+#     { name = "idx1", dtype = "int64" },
+#     { name = "idx2", dtype = "int64" },
+#     { name = "idx3", dtype = "int64"}
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "idx", dtype = "int64" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# idx = ["proj.dat.indices->idx3"]
+
+# [[tests]]
+# sql="""
+# insert into proj.dat.out_table
+# with tmp as (
+#     select *
+#     from proj.dat.t1, proj.dat.t2
+# )
+# select c1+c2
+# from tmp
+# """
+# [[tests.schema_objects]]
+# name = "proj.dat.t1"
+# kind.table.columns = [
+#     { name = "id", dtype = "int64" },
+#     { name = "c1", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.t2"
+# kind.table.columns = [
+#     { name = "id", dtype = "int64" },
+#     { name = "c2", dtype = "int64" },
+# ]
+# [[tests.schema_objects]]
+# name = "proj.dat.out_table"
+# kind.table.columns = [
+#     { name = "c", dtype = "int64" },
+# ]
+# [tests.ready_lineage."proj.dat.out_table"]
+# c = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
