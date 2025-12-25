@@ -1286,9 +1286,15 @@ impl LineageExtractor {
     }
 
     fn with_lin(&mut self, with: &With) -> anyhow::Result<()> {
+        // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
+        self.context
+            .push_new_ctx(IndexMap::new(), HashSet::new(), false);
+
         for cte in &with.ctes {
             self.cte_lin(cte)?;
         }
+
+        self.context.pop_curr_ctx();
         Ok(())
     }
 
@@ -2044,6 +2050,36 @@ impl LineageExtractor {
         }
     }
 
+    fn create_struct_node(
+        &mut self,
+        name: NodeName,
+        fields: Vec<StructNodeFieldType>,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
+        let obj_name = self.get_anon_obj_name("anon_struct");
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousStruct,
+            vec![],
+        );
+
+        let node = LineageNode {
+            name,
+            r#type: NodeType::Struct(StructNodeType { fields }),
+            source_obj: obj_idx,
+            input,
+            nested_nodes: IndexMap::new(),
+        };
+
+        let node_idx = self.context.arena_lineage_nodes.allocate(node);
+        self.context.add_nested_nodes(node_idx);
+
+        let obj = &mut self.context.arena_objects[obj_idx];
+        obj.lineage_nodes.push(node_idx);
+
+        node_idx
+    }
+
     fn struct_expr_lin(
         &mut self,
         struct_expr: &StructExpr,
@@ -2089,31 +2125,7 @@ impl LineageExtractor {
             fields.push(struct_node_field_type);
         }
 
-        let node_type = NodeType::Struct(StructNodeType {
-            fields: fields.clone(),
-        });
-
-        let obj_name = self.get_anon_obj_name("anon_struct");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousStruct,
-            vec![],
-        );
-
-        let node = LineageNode {
-            name: NodeName::Anonymous,
-            r#type: node_type.clone(),
-            source_obj: obj_idx,
-            input: input.clone(),
-            nested_nodes: IndexMap::new(),
-        };
-
-        let node_idx = self.context.arena_lineage_nodes.allocate(node);
-        self.context.add_nested_nodes(node_idx);
-
-        let obj = &mut self.context.arena_objects[obj_idx];
-        obj.lineage_nodes.push(node_idx);
-        Ok(node_idx)
+        Ok(self.create_struct_node(NodeName::Anonymous, fields, input))
     }
 
     fn create_array_node(&mut self, array_type: NodeType, input: Vec<ArenaIndex>) -> ArenaIndex {
@@ -2243,27 +2255,7 @@ impl LineageExtractor {
             ));
             input.extend(&node.input);
         }
-        let node_type = NodeType::Struct(StructNodeType { fields });
-
-        let obj_name = self.get_anon_obj_name("anon_struct");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousStruct,
-            vec![],
-        );
-
-        let node = LineageNode {
-            name: NodeName::Defined(name.to_owned()),
-            r#type: node_type.clone(),
-            source_obj: obj_idx,
-            input,
-            nested_nodes: IndexMap::new(),
-        };
-
-        let node_idx = self.context.arena_lineage_nodes.allocate(node);
-        self.context.add_nested_nodes(node_idx);
-        let obj = &mut self.context.arena_objects[obj_idx];
-        obj.lineage_nodes.push(node_idx);
+        let node_idx = self.create_struct_node(NodeName::Defined(name.to_owned()), fields, input);
         self.context.add_output_lineage_node(node_idx);
         node_idx
     }
@@ -3712,11 +3704,7 @@ impl LineageExtractor {
         let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = select_query_expr.with.as_ref() {
-            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context
-                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
-            self.context.pop_curr_ctx();
         }
 
         let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
@@ -3921,11 +3909,7 @@ impl LineageExtractor {
     ) -> anyhow::Result<ArenaIndex> {
         let ctx_objects_start_size = self.context.objects_stack.len();
         if let Some(with) = grouping_query_expr.with.as_ref() {
-            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context
-                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
-            self.context.pop_curr_ctx();
         }
         let obj_idx = self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
         let ctx_objects_curr_size = self.context.objects_stack.len();
@@ -3944,11 +3928,7 @@ impl LineageExtractor {
         let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = set_select_query_expr.with.as_ref() {
-            // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
-            self.context
-                .push_new_ctx(IndexMap::new(), HashSet::new(), false);
             self.with_lin(with)?;
-            self.context.pop_curr_ctx();
         }
 
         let set_obj_idx = self.context.allocate_new_ctx_object(
