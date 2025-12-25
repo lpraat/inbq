@@ -2116,6 +2116,33 @@ impl LineageExtractor {
         Ok(node_idx)
     }
 
+    fn create_array_node(&mut self, array_type: NodeType, input: Vec<ArenaIndex>) -> ArenaIndex {
+        let obj_name = self.get_anon_obj_name("anon_array");
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousArray,
+            vec![],
+        );
+
+        let node = LineageNode {
+            name: NodeName::Anonymous,
+            r#type: NodeType::Array(Box::new(ArrayNodeType {
+                r#type: array_type,
+                input: input.clone(),
+            })),
+            source_obj: obj_idx,
+            input,
+            nested_nodes: IndexMap::new(),
+        };
+
+        let node_idx = self.context.arena_lineage_nodes.allocate(node);
+        self.context.add_nested_nodes(node_idx);
+
+        let obj = &mut self.context.arena_objects[obj_idx];
+        obj.lineage_nodes.push(node_idx);
+        node_idx
+    }
+
     fn array_expr_lin(
         &mut self,
         array_expr: &ArrayExpr,
@@ -2162,32 +2189,42 @@ impl LineageExtractor {
             input.push(element_node_idx)
         }
 
-        let obj_name = self.get_anon_obj_name("anon_array");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousArray,
-            vec![],
-        );
+        Ok(self.create_array_node(array_type, input))
+    }
 
-        let arr_node_type = NodeType::Array(Box::new(ArrayNodeType {
-            r#type: array_type,
-            input: input.clone(),
-        }));
+    fn array_function_expr_lin(
+        &mut self,
+        array_function_expr: &ArrayFunctionExpr,
+        column_usage: ColumnUsage,
+    ) -> anyhow::Result<ArenaIndex> {
+        self.array_expr_lin(
+            &ArrayExpr {
+                r#type: None,
+                exprs: vec![Expr::Query(Box::new(array_function_expr.query.clone()))],
+            },
+            column_usage,
+        )
+    }
 
-        let node = LineageNode {
-            name: NodeName::Anonymous,
-            r#type: arr_node_type,
-            source_obj: obj_idx,
-            input,
-            nested_nodes: IndexMap::new(),
-        };
+    fn array_agg_function_expr_lin(
+        &mut self,
+        array_agg_function_expr: &ArrayAggFunctionExpr,
+        expand_value_table: bool,
+        column_usage: ColumnUsage,
+    ) -> anyhow::Result<ArenaIndex> {
+        let node_idx = self.expr_lin(
+            &array_agg_function_expr.arg.expr,
+            expand_value_table,
+            column_usage,
+        )?;
+        if let Some(named_window_expr) = &array_agg_function_expr.over {
+            self.named_window_expr_lin(named_window_expr, expand_value_table)?;
+        }
 
-        let node_idx = self.context.arena_lineage_nodes.allocate(node);
-        self.context.add_nested_nodes(node_idx);
-
-        let obj = &mut self.context.arena_objects[obj_idx];
-        obj.lineage_nodes.push(node_idx);
-        Ok(node_idx)
+        Ok(self.create_array_node(
+            self.context.arena_lineage_nodes[node_idx].r#type.clone(),
+            vec![node_idx],
+        ))
     }
 
     fn create_anon_struct_from_table_nodes(
@@ -2923,63 +2960,6 @@ impl LineageExtractor {
         self.context.add_output_lineage_node(node_idx);
         self.context.add_used_column(node_idx, column_usage);
         Ok(node_idx)
-    }
-
-    fn array_function_expr_lin(
-        &mut self,
-        array_function_expr: &ArrayFunctionExpr,
-        column_usage: ColumnUsage,
-    ) -> anyhow::Result<ArenaIndex> {
-        self.array_expr_lin(
-            &ArrayExpr {
-                r#type: None,
-                exprs: vec![Expr::Query(Box::new(array_function_expr.query.clone()))],
-            },
-            column_usage,
-        )
-    }
-
-    fn array_agg_function_expr_lin(
-        &mut self,
-        array_agg_function_expr: &ArrayAggFunctionExpr,
-        expand_value_table: bool,
-        column_usage: ColumnUsage,
-    ) -> anyhow::Result<ArenaIndex> {
-        let node_idx = self.expr_lin(
-            &array_agg_function_expr.arg.expr,
-            expand_value_table,
-            column_usage,
-        )?;
-        let obj_name = self.get_anon_obj_name("anon_array");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousArray,
-            vec![],
-        );
-
-        let node = &self.context.arena_lineage_nodes[node_idx];
-
-        let lin_node = LineageNode {
-            name: NodeName::Anonymous,
-            r#type: NodeType::Array(Box::new(ArrayNodeType {
-                r#type: node.r#type.clone(),
-                input: vec![node_idx],
-            })),
-            source_obj: node.source_obj,
-            input: vec![node_idx],
-            nested_nodes: IndexMap::new(),
-        };
-        let lin_node_idx = self.context.arena_lineage_nodes.allocate(lin_node);
-        self.context.add_nested_nodes(lin_node_idx);
-
-        let obj = &mut self.context.arena_objects[obj_idx];
-        obj.lineage_nodes.push(node_idx);
-
-        if let Some(named_window_expr) = &array_agg_function_expr.over {
-            self.named_window_expr_lin(named_window_expr, expand_value_table)?;
-        }
-
-        Ok(lin_node_idx)
     }
 
     fn select_expr_all_lin(
