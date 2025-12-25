@@ -353,6 +353,95 @@ impl NodeType {
             _ => None,
         }
     }
+
+    fn from_parser_type(param_type: &Type, types_vec: &mut Vec<Self>) -> Self {
+        let r#type = match param_type {
+            Type::Array { r#type } => NodeType::Array(Box::new(ArrayNodeType {
+                r#type: Self::from_parser_type(r#type, types_vec),
+                input: vec![],
+            })),
+            Type::BigNumeric => NodeType::BigNumeric,
+            Type::Bool => NodeType::Boolean,
+            Type::Bytes => NodeType::Bytes,
+            Type::Date => NodeType::Date,
+            Type::Datetime => NodeType::Datetime,
+            Type::Float64 => NodeType::Float64,
+            Type::Geography => NodeType::Geography,
+            Type::Int64 => NodeType::Int64,
+            Type::Interval => NodeType::Interval,
+            Type::Json => NodeType::Json,
+            Type::Numeric => NodeType::Numeric,
+            Type::Range { r#type: ty } => {
+                NodeType::Range(Box::new(Self::from_parser_type(ty, types_vec)))
+            }
+            Type::String => NodeType::String,
+            Type::Struct { fields } => NodeType::Struct(StructNodeType {
+                fields: fields
+                    .iter()
+                    .map(|field| {
+                        StructNodeFieldType::new(
+                            field
+                                .name
+                                .as_ref()
+                                .map_or("anonymous", |name| name.as_str()),
+                            Self::from_parser_type(&field.r#type, types_vec),
+                            vec![],
+                        )
+                    })
+                    .collect(),
+            }),
+            Type::Time => NodeType::Time,
+            Type::Timestamp => NodeType::Timestamp,
+        };
+        types_vec.push(r#type.clone());
+        r#type
+    }
+
+    fn from_parser_parameterized_type(param_type: &ParameterizedType) -> NodeType {
+        match param_type {
+            ParameterizedType::Array {
+                r#type: parameterized_type,
+            } => NodeType::Array(Box::new(ArrayNodeType {
+                r#type: Self::from_parser_parameterized_type(parameterized_type),
+                input: vec![],
+            })),
+            ParameterizedType::BigNumeric {
+                precision: _,
+                scale: _,
+            } => NodeType::BigNumeric,
+            ParameterizedType::Bool => NodeType::Boolean,
+            ParameterizedType::Bytes { max_length: _ } => NodeType::Bytes,
+            ParameterizedType::Date => NodeType::Date,
+            ParameterizedType::Datetime => NodeType::Datetime,
+            ParameterizedType::Float64 => NodeType::Float64,
+            ParameterizedType::Geography => NodeType::Geography,
+            ParameterizedType::Int64 => NodeType::Int64,
+            ParameterizedType::Interval => NodeType::Interval,
+            ParameterizedType::Json => NodeType::Json,
+            ParameterizedType::Numeric {
+                precision: _,
+                scale: _,
+            } => NodeType::Numeric,
+            ParameterizedType::Range { r#type: ty } => {
+                NodeType::Range(Box::new(Self::from_parser_parameterized_type(ty)))
+            }
+            ParameterizedType::String { max_length: _ } => NodeType::String,
+            ParameterizedType::Struct { fields } => NodeType::Struct(StructNodeType {
+                fields: fields
+                    .iter()
+                    .map(|field| {
+                        StructNodeFieldType::new(
+                            field.name.as_str(),
+                            Self::from_parser_parameterized_type(&field.r#type),
+                            vec![],
+                        )
+                    })
+                    .collect(),
+            }),
+            ParameterizedType::Time => NodeType::Time,
+            ParameterizedType::Timestamp => NodeType::Timestamp,
+        }
+    }
 }
 
 impl Display for NodeType {
@@ -1936,7 +2025,7 @@ impl LineageExtractor {
     }
 
     fn add_typed_struct_fields_to_context(&mut self, typ: &Type) {
-        let struct_node_type = node_type_from_parser_type(typ, &mut vec![]);
+        let struct_node_type = NodeType::from_parser_type(typ, &mut vec![]);
 
         match struct_node_type {
             NodeType::Struct(struct_node_type) => {
@@ -2041,7 +2130,7 @@ impl LineageExtractor {
 
         let (mut array_type, strict) = if let Some(typ) = &array_expr.r#type {
             let ty = match typ {
-                Type::Array { r#type } => node_type_from_parser_type(r#type, &mut vec![]),
+                Type::Array { r#type } => NodeType::from_parser_type(r#type, &mut vec![]),
                 _ => NodeType::Unknown,
             };
             (ty, true)
@@ -2261,7 +2350,7 @@ impl LineageExtractor {
             }
             Expr::Range(range_expr) => self.allocate_expr_node(
                 "constant",
-                NodeType::Range(Box::new(node_type_from_parser_type(
+                NodeType::Range(Box::new(NodeType::from_parser_type(
                     &range_expr.r#type,
                     &mut vec![],
                 ))),
@@ -2523,14 +2612,14 @@ impl LineageExtractor {
                 FunctionExpr::Cast(cast_fn_expr) => {
                     let node_idx =
                         self.expr_lin(&cast_fn_expr.expr, expand_value_table, column_usage)?;
-                    let cast_type = node_type_from_parser_parameterized_type(&cast_fn_expr.r#type);
+                    let cast_type = NodeType::from_parser_parameterized_type(&cast_fn_expr.r#type);
                     self.allocate_expr_node("cast", cast_type, vec![node_idx])
                 }
                 FunctionExpr::SafeCast(safe_cast_fn_expr) => {
                     let node_idx =
                         self.expr_lin(&safe_cast_fn_expr.expr, expand_value_table, column_usage)?;
                     let safe_cast_type =
-                        node_type_from_parser_parameterized_type(&safe_cast_fn_expr.r#type);
+                        NodeType::from_parser_parameterized_type(&safe_cast_fn_expr.r#type);
                     self.allocate_expr_node("safe_cast", safe_cast_type, vec![node_idx])
                 }
                 FunctionExpr::Array(array_function_expr) => {
@@ -4002,7 +4091,7 @@ impl LineageExtractor {
                     .map(|col_schema| {
                         (
                             NodeName::Defined(col_schema.name.as_str().to_owned()),
-                            node_type_from_parser_parameterized_type(&col_schema.r#type),
+                            NodeType::from_parser_parameterized_type(&col_schema.r#type),
                             vec![],
                         )
                     })
@@ -4587,7 +4676,7 @@ impl LineageExtractor {
                 var.as_str(),
                 declare_var_statement.r#type.as_ref().map_or_else(
                     || NodeType::Unknown,
-                    node_type_from_parser_parameterized_type,
+                    NodeType::from_parser_parameterized_type,
                 ),
                 &input_lineage_nodes,
             );
@@ -4946,101 +5035,12 @@ pub struct Lineage {
     pub used_columns: ColumnsUsed,
 }
 
-fn node_type_from_parser_type(param_type: &Type, types_vec: &mut Vec<NodeType>) -> NodeType {
-    let r#type = match param_type {
-        Type::Array { r#type } => NodeType::Array(Box::new(ArrayNodeType {
-            r#type: node_type_from_parser_type(r#type, types_vec),
-            input: vec![],
-        })),
-        Type::BigNumeric => NodeType::BigNumeric,
-        Type::Bool => NodeType::Boolean,
-        Type::Bytes => NodeType::Bytes,
-        Type::Date => NodeType::Date,
-        Type::Datetime => NodeType::Datetime,
-        Type::Float64 => NodeType::Float64,
-        Type::Geography => NodeType::Geography,
-        Type::Int64 => NodeType::Int64,
-        Type::Interval => NodeType::Interval,
-        Type::Json => NodeType::Json,
-        Type::Numeric => NodeType::Numeric,
-        Type::Range { r#type: ty } => {
-            NodeType::Range(Box::new(node_type_from_parser_type(ty, types_vec)))
-        }
-        Type::String => NodeType::String,
-        Type::Struct { fields } => NodeType::Struct(StructNodeType {
-            fields: fields
-                .iter()
-                .map(|field| {
-                    StructNodeFieldType::new(
-                        field
-                            .name
-                            .as_ref()
-                            .map_or("anonymous", |name| name.as_str()),
-                        node_type_from_parser_type(&field.r#type, types_vec),
-                        vec![],
-                    )
-                })
-                .collect(),
-        }),
-        Type::Time => NodeType::Time,
-        Type::Timestamp => NodeType::Timestamp,
-    };
-    types_vec.push(r#type.clone());
-    r#type
-}
-
-fn node_type_from_parser_parameterized_type(param_type: &ParameterizedType) -> NodeType {
-    match param_type {
-        ParameterizedType::Array {
-            r#type: parameterized_type,
-        } => NodeType::Array(Box::new(ArrayNodeType {
-            r#type: node_type_from_parser_parameterized_type(parameterized_type),
-            input: vec![],
-        })),
-        ParameterizedType::BigNumeric {
-            precision: _,
-            scale: _,
-        } => NodeType::BigNumeric,
-        ParameterizedType::Bool => NodeType::Boolean,
-        ParameterizedType::Bytes { max_length: _ } => NodeType::Bytes,
-        ParameterizedType::Date => NodeType::Date,
-        ParameterizedType::Datetime => NodeType::Datetime,
-        ParameterizedType::Float64 => NodeType::Float64,
-        ParameterizedType::Geography => NodeType::Geography,
-        ParameterizedType::Int64 => NodeType::Int64,
-        ParameterizedType::Interval => NodeType::Interval,
-        ParameterizedType::Json => NodeType::Json,
-        ParameterizedType::Numeric {
-            precision: _,
-            scale: _,
-        } => NodeType::Numeric,
-        ParameterizedType::Range { r#type: ty } => {
-            NodeType::Range(Box::new(node_type_from_parser_parameterized_type(ty)))
-        }
-        ParameterizedType::String { max_length: _ } => NodeType::String,
-        ParameterizedType::Struct { fields } => NodeType::Struct(StructNodeType {
-            fields: fields
-                .iter()
-                .map(|field| {
-                    StructNodeFieldType::new(
-                        field.name.as_str(),
-                        node_type_from_parser_parameterized_type(&field.r#type),
-                        vec![],
-                    )
-                })
-                .collect(),
-        }),
-        ParameterizedType::Time => NodeType::Time,
-        ParameterizedType::Timestamp => NodeType::Timestamp,
-    }
-}
-
 fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
     let mut scanner = Scanner::new(&column.dtype);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
     let r#type = parser.parse_parameterized_bq_type()?;
-    Ok(node_type_from_parser_parameterized_type(&r#type))
+    Ok(NodeType::from_parser_parameterized_type(&r#type))
 }
 
 pub fn extract_lineage(
