@@ -16,7 +16,7 @@ use crate::{
 };
 
 use anyhow::anyhow;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -627,33 +627,33 @@ impl From<ColumnUsage> for String {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct UsedColumn {
+struct ColumnUsed {
     arena_index: ArenaIndex,
     kind: ColumnUsage,
 }
 
 #[derive(Debug)]
-struct UsedColumns {
-    set: HashSet<UsedColumn>,
+struct ColumnsUsed {
+    set: IndexSet<ColumnUsed>,
 }
 
-impl UsedColumns {
+impl ColumnsUsed {
     fn new() -> Self {
         Self {
-            set: HashSet::new(),
+            set: IndexSet::new(),
         }
     }
 }
 
-impl Default for UsedColumns {
+impl Default for ColumnsUsed {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl UsedColumns {
+impl ColumnsUsed {
     fn add_column(&mut self, node: ArenaIndex, kind: ColumnUsage) {
-        self.set.insert(UsedColumn {
+        self.set.insert(ColumnUsed {
             arena_index: node,
             kind,
         });
@@ -689,7 +689,7 @@ struct Context {
     typed_struct_fields: Vec<StructNodeFieldType>,
     output: Vec<ArenaIndex>,
     last_select_statement: Option<String>,
-    used_columns: UsedColumns,
+    columns_used: ColumnsUsed,
     state: ContextState,
 }
 
@@ -711,7 +711,7 @@ impl Context {
         self.typed_struct_fields.clear();
         self.output.clear();
         self.last_select_statement = None;
-        self.used_columns = UsedColumns::new();
+        self.columns_used = ColumnsUsed::new();
         self.state = ContextState::default();
     }
 
@@ -830,7 +830,7 @@ impl Context {
                         )
                     };
 
-                    self.add_output_lineage_node(nested_node_idx);
+                    self.add_node_to_output_lineage(nested_node_idx);
                     added_nested_nodes.push(nested_node_idx);
 
                     let node = &mut self.arena_lineage_nodes[node_idx];
@@ -899,7 +899,7 @@ impl Context {
                     )
                 };
 
-                self.add_output_lineage_node(nested_node_idx);
+                self.add_node_to_output_lineage(nested_node_idx);
                 added_nested_nodes.push(nested_node_idx);
 
                 let node = &mut self.arena_lineage_nodes[node_idx];
@@ -965,7 +965,7 @@ impl Context {
                     self.add_nested_nodes(lin_idx);
                     added_nested_nodes.push(lin_idx);
 
-                    self.add_output_lineage_node(lin_idx);
+                    self.add_node_to_output_lineage(lin_idx);
                     star_indices.push(lin_idx);
 
                     let node = &mut self.arena_lineage_nodes[node_idx];
@@ -1020,7 +1020,7 @@ impl Context {
                     &input_indices,
                 );
                 self.add_nested_nodes(lin_idx);
-                self.add_output_lineage_node(lin_idx);
+                self.add_node_to_output_lineage(lin_idx);
                 added_nested_nodes.push(lin_idx);
 
                 let node = &mut self.arena_lineage_nodes[node_idx];
@@ -1212,13 +1212,13 @@ impl Context {
         self.objects_stack.pop();
     }
 
-    fn add_output_lineage_node(&mut self, node_idx: ArenaIndex) {
+    fn add_node_to_output_lineage(&mut self, node_idx: ArenaIndex) {
         if let ContextState::TrackingOutputLineage = self.state {
             self.output.push(node_idx);
         }
     }
 
-    fn update_output_lineage_with_object_nodes(&mut self, obj_idx: ArenaIndex) {
+    fn add_object_nodes_to_output_lineage(&mut self, obj_idx: ArenaIndex) {
         if let ContextState::TrackingOutputLineage = self.state {
             let obj = &self.arena_objects[obj_idx];
             let nodes = &obj.lineage_nodes;
@@ -1227,7 +1227,7 @@ impl Context {
     }
 
     fn add_used_column(&mut self, node: ArenaIndex, kind: ColumnUsage) {
-        self.used_columns.add_column(node, kind);
+        self.columns_used.add_column(node, kind);
     }
 }
 
@@ -1272,8 +1272,7 @@ impl LineageExtractor {
                         .collect(),
                 );
                 self.context.add_object(cte_idx);
-                self.context
-                    .update_output_lineage_with_object_nodes(cte_idx);
+                self.context.add_object_nodes_to_output_lineage(cte_idx);
             }
             Cte::Recursive(_) => {
                 // TODO
@@ -1481,7 +1480,7 @@ impl LineageExtractor {
             let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
             let node_idx =
                 self.allocate_expr_node("star", NodeType::Unknown, nested_node.input.clone());
-            self.context.add_output_lineage_node(node_idx);
+            self.context.add_node_to_output_lineage(node_idx);
             node_idx
         } else {
             let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
@@ -1492,7 +1491,7 @@ impl LineageExtractor {
             );
             let node = &mut self.context.arena_lineage_nodes[node_idx];
             node.input.extend_from_slice(input);
-            self.context.add_output_lineage_node(node_idx);
+            self.context.add_node_to_output_lineage(node_idx);
             node_idx
         }
     }
@@ -1622,7 +1621,7 @@ impl LineageExtractor {
                                 )?,
                             _ => unreachable!(),
                         };
-                        self.context.add_output_lineage_node(node_idx);
+                        self.context.add_node_to_output_lineage(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
@@ -1632,7 +1631,7 @@ impl LineageExtractor {
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
                         let node_idx = self.array_expr_lin(array_expr, column_usage)?;
-                        self.context.add_output_lineage_node(node_idx);
+                        self.context.add_node_to_output_lineage(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         let index_node_idx = self.expr_lin(right, false, column_usage)?;
@@ -1682,7 +1681,7 @@ impl LineageExtractor {
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr, column_usage)?;
-                        self.context.add_output_lineage_node(node_idx);
+                        self.context.add_node_to_output_lineage(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
@@ -1692,7 +1691,7 @@ impl LineageExtractor {
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
                         let node_idx = self.struct_expr_lin(struct_expr, column_usage)?;
-                        self.context.add_output_lineage_node(node_idx);
+                        self.context.add_node_to_output_lineage(node_idx);
                         let node = &self.context.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
@@ -1835,7 +1834,7 @@ impl LineageExtractor {
                             false,
                             column_usage,
                         )?;
-                        self.context.add_output_lineage_node(node_idx);
+                        self.context.add_node_to_output_lineage(node_idx);
                         return Ok(node_idx);
                     }
 
@@ -2128,6 +2127,27 @@ impl LineageExtractor {
         Ok(self.create_struct_node(NodeName::Anonymous, fields, input))
     }
 
+    fn create_anon_struct_from_table_nodes(
+        &mut self,
+        name: &str,
+        nodes: &[ArenaIndex],
+    ) -> ArenaIndex {
+        let mut fields = vec![];
+        let mut input = vec![];
+        for node_idx in nodes {
+            let node = &self.context.arena_lineage_nodes[*node_idx];
+            fields.push(StructNodeFieldType::new(
+                node.name.string(),
+                node.r#type.clone(),
+                node.input.clone(),
+            ));
+            input.extend(&node.input);
+        }
+        let node_idx = self.create_struct_node(NodeName::Defined(name.to_owned()), fields, input);
+        self.context.add_node_to_output_lineage(node_idx);
+        node_idx
+    }
+
     fn create_array_node(&mut self, array_type: NodeType, input: Vec<ArenaIndex>) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name("anon_array");
         let obj_idx = self.context.allocate_new_ctx_object(
@@ -2239,57 +2259,6 @@ impl LineageExtractor {
         ))
     }
 
-    fn create_anon_struct_from_table_nodes(
-        &mut self,
-        name: &str,
-        nodes: &[ArenaIndex],
-    ) -> ArenaIndex {
-        let mut fields = vec![];
-        let mut input = vec![];
-        for node_idx in nodes {
-            let node = &self.context.arena_lineage_nodes[*node_idx];
-            fields.push(StructNodeFieldType::new(
-                node.name.string(),
-                node.r#type.clone(),
-                node.input.clone(),
-            ));
-            input.extend(&node.input);
-        }
-        let node_idx = self.create_struct_node(NodeName::Defined(name.to_owned()), fields, input);
-        self.context.add_output_lineage_node(node_idx);
-        node_idx
-    }
-
-    fn allocate_expr_node(
-        &mut self,
-        source_name: &str,
-        r#type: NodeType,
-        input: Vec<ArenaIndex>,
-    ) -> ArenaIndex {
-        // TODO: use a common container obj for literals
-        let obj_name = self.get_anon_obj_name(source_name);
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousExpr,
-            vec![],
-        );
-        self.context
-            .allocate_new_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
-    }
-
-    fn common_supertype_error_msg(
-        &self,
-        t1: &NodeType,
-        t2: &NodeType,
-        expr_name: &str,
-        expr: &Expr,
-    ) -> String {
-        format!(
-            "Cannot find common supertype for type `{}` and type `{}` in {} expr `{:?}`",
-            t1, t2, expr_name, expr
-        )
-    }
-
     fn generic_function_expr_lin(
         &mut self,
         name: &str,
@@ -2334,6 +2303,35 @@ impl LineageExtractor {
         let node_idx = self.expr_lin(expr, expand_value_table, column_usage)?;
         self.context.state = curr_state;
         Ok(node_idx)
+    }
+
+    fn common_supertype_error_msg(
+        &self,
+        t1: &NodeType,
+        t2: &NodeType,
+        expr_name: &str,
+        expr: &Expr,
+    ) -> String {
+        format!(
+            "Cannot find common supertype for type `{}` and type `{}` in {} expr `{:?}`",
+            t1, t2, expr_name, expr
+        )
+    }
+
+    fn allocate_expr_node(
+        &mut self,
+        source_name: &str,
+        r#type: NodeType,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
+        let obj_name = self.get_anon_obj_name(source_name);
+        let obj_idx = self.context.allocate_new_ctx_object(
+            &obj_name,
+            ContextObjectKind::AnonymousExpr,
+            vec![],
+        );
+        self.context
+            .allocate_new_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
     }
 
     fn expr_lin(
@@ -2949,7 +2947,7 @@ impl LineageExtractor {
             }
         };
 
-        self.context.add_output_lineage_node(node_idx);
+        self.context.add_node_to_output_lineage(node_idx);
         self.context.add_used_column(node_idx, column_usage);
         Ok(node_idx)
     }
@@ -3126,129 +3124,6 @@ impl LineageExtractor {
         Ok(())
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    fn from_path_expr_lin(
-        &mut self,
-        from_path_expr: &FromPathExpr,
-        from_tables: &mut Vec<ArenaIndex>,
-        joined_tables: &[ArenaIndex],
-        check_unnest: bool,
-    ) -> anyhow::Result<()> {
-        let table_name = &from_path_expr.path.name;
-        let table_like_obj_id = self.get_table_from_context(table_name);
-        let path_identifiers = from_path_expr.path.identifiers();
-
-        if table_like_obj_id.is_none() {
-            if check_unnest {
-                if path_identifiers.len() > 1 {
-                    let table = path_identifiers[0];
-                    let column = path_identifiers[1];
-                    let mut access_path = AccessPath {
-                        path: path_identifiers
-                            .into_iter()
-                            .skip(2)
-                            .map(|f| AccessOp::Field(f.to_owned()))
-                            .collect::<Vec<AccessOp>>(),
-                    };
-                    access_path.path.push(AccessOp::Index);
-
-                    // Push new context just for unnest expr
-                    let mut ctx_objects = from_tables
-                        .iter()
-                        .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
-                        .collect::<IndexMap<String, ArenaIndex>>();
-
-                    ctx_objects.extend(
-                        joined_tables
-                            .iter()
-                            .cloned()
-                            .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
-                    );
-                    self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
-
-                    let col_source_idx = self.get_column(Some(table), column)?;
-                    self.context
-                        .add_used_column(col_source_idx, ColumnUsage::Unnest);
-                    let col_node = &self.context.arena_lineage_nodes[col_source_idx];
-                    let nested_node_idx = col_node.access(&access_path)?;
-
-                    let name = from_path_expr
-                        .alias
-                        .as_ref()
-                        .map_or(self.get_anon_obj_name("unnest"), |alias| {
-                            alias.as_str().to_owned()
-                        });
-
-                    let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
-                    let col_name = from_path_expr
-                        .alias
-                        .as_ref()
-                        .map_or(NodeName::Anonymous, |alias| {
-                            NodeName::Defined(alias.as_str().to_owned())
-                        });
-
-                    let unnest_nodes = match &nested_node.r#type {
-                        NodeType::Struct(struct_node_type) => {
-                            let mut nodes = vec![];
-                            for field in &struct_node_type.fields {
-                                let inner_node_idx = nested_node.access(&AccessPath {
-                                    path: vec![AccessOp::Field(field.name.clone())],
-                                })?;
-                                nodes.push((
-                                    NodeName::Defined(field.name.clone()),
-                                    field.r#type.clone(),
-                                    vec![inner_node_idx],
-                                ));
-                            }
-                            nodes
-                        }
-                        _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
-                    };
-
-                    let unnest_idx = self.context.allocate_new_ctx_object(
-                        &name,
-                        ContextObjectKind::Unnest,
-                        unnest_nodes,
-                    );
-
-                    self.context.pop_curr_ctx();
-
-                    self.context
-                        .update_output_lineage_with_object_nodes(unnest_idx);
-                    self.add_new_from_table(from_tables, unnest_idx)?;
-                }
-
-                return Ok(());
-            }
-
-            return Err(anyhow!(
-                "Table like obj name `{}` not in context.",
-                table_name
-            ));
-        }
-
-        let contains_alias = from_path_expr.alias.is_some();
-        let table_like_name = if contains_alias {
-            from_path_expr.alias.as_ref().unwrap().as_str().to_owned()
-        } else {
-            table_name.clone()
-        };
-
-        let table_like_obj_id = table_like_obj_id.unwrap();
-
-        if contains_alias {
-            // If aliased, we create a new object
-            let table_alias_idx =
-                self.create_table_alias_from_table(&table_like_name, table_like_obj_id);
-            self.context
-                .update_output_lineage_with_object_nodes(table_alias_idx);
-            self.add_new_from_table(from_tables, table_alias_idx)?;
-        } else {
-            self.add_new_from_table(from_tables, table_like_obj_id)?;
-        }
-        Ok(())
-    }
-
     fn create_table_alias_from_table(&mut self, alias: &str, obj_idx: ArenaIndex) -> ArenaIndex {
         // If aliased, we create a new object
         let table_like_obj = &self.context.arena_objects[obj_idx];
@@ -3264,403 +3139,6 @@ impl LineageExtractor {
             ContextObjectKind::TableAlias,
             new_lineage_nodes,
         )
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    fn from_expr_lin(
-        &mut self,
-        from_expr: &FromExpr,
-        from_tables: &mut Vec<ArenaIndex>,
-        joined_tables: &mut Vec<ArenaIndex>,
-        joined_ambiguous_columns: &mut HashSet<String>,
-    ) -> anyhow::Result<()> {
-        match from_expr {
-            FromExpr::Join(join_expr)
-            | FromExpr::LeftJoin(join_expr)
-            | FromExpr::RightJoin(join_expr)
-            | FromExpr::FullJoin(join_expr) => self.join_expr_lineage(
-                join_expr,
-                from_tables,
-                joined_tables,
-                joined_ambiguous_columns,
-            )?,
-            FromExpr::CrossJoin(cross_join_expr) => {
-                self.from_expr_lin(
-                    &cross_join_expr.left,
-                    from_tables,
-                    joined_tables,
-                    joined_ambiguous_columns,
-                )?;
-                match cross_join_expr.right.as_ref() {
-                    FromExpr::Path(from_path_expr) => {
-                        // Implicit unnest
-                        self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, true)?
-                    }
-                    _ => self.from_expr_lin(
-                        &cross_join_expr.right,
-                        from_tables,
-                        joined_tables,
-                        joined_ambiguous_columns,
-                    )?,
-                }
-
-                let mut joined_table_names: Vec<&str> = vec![];
-                let from_tables_len = from_tables.len();
-
-                let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
-                let left_join_table = if !joined_tables.is_empty() {
-                    // We have already joined two tables
-                    &self.context.arena_objects[*joined_tables.last().unwrap()]
-                } else {
-                    // This is the first join, which corresponds to index -2 in the original from_tables
-                    &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
-                };
-                joined_table_names.push(&left_join_table.name);
-
-                let right_join_table =
-                    &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
-                joined_table_names.push(&right_join_table.name);
-                let mut lineage_nodes = vec![];
-                let mut joined_columns = HashSet::new();
-                let mut add_lineage_nodes = |table: &ContextObject| {
-                    for node_idx in &table.lineage_nodes {
-                        let node = &self.context.arena_lineage_nodes[*node_idx];
-                        let newly_inserted = joined_columns.insert(node.name.string());
-                        if newly_inserted {
-                            lineage_nodes.push((
-                                node.name.clone(),
-                                node.r#type.clone(),
-                                vec![*node_idx],
-                            ))
-                        }
-                    }
-                };
-                add_lineage_nodes(left_join_table);
-                add_lineage_nodes(right_join_table);
-                let joined_table_name = format!(
-                    // Create a new name for the join_table.
-                    // This name is not a valid bq table name (we use {})
-                    "{{{}}}",
-                    joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        })
-                );
-
-                let table_like_idx = self.context.allocate_new_ctx_object(
-                    &joined_table_name,
-                    ContextObjectKind::JoinTable,
-                    lineage_nodes,
-                );
-                self.context
-                    .update_output_lineage_with_object_nodes(table_like_idx);
-                joined_tables.push(table_like_idx);
-            }
-            FromExpr::Unnest(unnest_expr) => {
-                // Push new context just for unnest expr
-                self.push_from_context(from_tables, joined_tables, HashSet::new());
-
-                let node_idx =
-                    self.expr_lin(unnest_expr.array.as_ref(), false, ColumnUsage::Unnest)?;
-
-                let name = unnest_expr
-                    .alias
-                    .as_ref()
-                    .map_or(self.get_anon_obj_name("unnest"), |alias| {
-                        alias.as_str().to_owned()
-                    });
-
-                let col_name = unnest_expr
-                    .alias
-                    .as_ref()
-                    .map_or(NodeName::Anonymous, |alias| {
-                        NodeName::Defined(alias.as_str().to_owned())
-                    });
-
-                let node = &self.context.arena_lineage_nodes[node_idx];
-
-                let nested_node_idx = node.access(&AccessPath {
-                    path: vec![AccessOp::Index],
-                })?;
-                let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
-
-                let unnest_nodes = match &nested_node.r#type {
-                    NodeType::Struct(struct_node_type) => {
-                        let mut nodes = vec![];
-                        for field in &struct_node_type.fields {
-                            let inner_node_idx = nested_node.access(&AccessPath {
-                                path: vec![AccessOp::Field(field.name.clone())],
-                            })?;
-                            nodes.push((
-                                NodeName::Defined(field.name.clone()),
-                                field.r#type.clone(),
-                                vec![inner_node_idx],
-                            ));
-                        }
-                        nodes
-                    }
-                    _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
-                };
-
-                let unnest_idx = self.context.allocate_new_ctx_object(
-                    &name,
-                    ContextObjectKind::Unnest,
-                    unnest_nodes,
-                );
-
-                self.context.pop_curr_ctx();
-
-                self.context
-                    .update_output_lineage_with_object_nodes(unnest_idx);
-                self.add_new_from_table(from_tables, unnest_idx)?;
-            }
-            FromExpr::Path(from_path_expr) => {
-                self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, false)?
-            }
-            FromExpr::GroupingQuery(from_grouping_query_expr) => {
-                let source_name = &from_grouping_query_expr
-                    .alias
-                    .as_ref()
-                    .map(|alias| alias.as_str().to_owned());
-
-                let new_source_name = if let Some(name) = source_name {
-                    name
-                } else {
-                    &self.get_anon_obj_name("query")
-                };
-
-                let obj_idx = self.query_expr_lin(&from_grouping_query_expr.query, true)?;
-                let obj = &self.context.arena_objects[obj_idx];
-
-                let table_like_idx = self.context.allocate_new_ctx_object(
-                    new_source_name,
-                    ContextObjectKind::Query,
-                    obj.lineage_nodes
-                        .iter()
-                        .map(|idx| {
-                            let node = &self.context.arena_lineage_nodes[*idx];
-                            (node.name.clone(), node.r#type.clone(), vec![*idx])
-                        })
-                        .collect(),
-                );
-                self.context
-                    .update_output_lineage_with_object_nodes(table_like_idx);
-                self.add_new_from_table(from_tables, table_like_idx)?;
-            }
-            FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(
-                &grouping_from_expr.query,
-                from_tables,
-                joined_tables,
-                joined_ambiguous_columns,
-            )?,
-            FromExpr::TableFunction(_) => {
-                // TODO
-                // also:
-                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/range-functions#range_sessionize
-                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
-                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/vectorindex_functions
-                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/federated_query_functions#external_query
-                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/table-functions-built-in#external_object_transform
-                return Err(anyhow!(
-                    "Cannot extract lineage from a table function call (still a todo)."
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    fn join_expr_lineage(
-        &mut self,
-        join_expr: &JoinExpr,
-        from_tables: &mut Vec<ArenaIndex>,
-        joined_tables: &mut Vec<ArenaIndex>,
-        joined_ambiguous_columns: &mut HashSet<String>,
-    ) -> anyhow::Result<()> {
-        self.from_expr_lin(
-            &join_expr.left,
-            from_tables,
-            joined_tables,
-            joined_ambiguous_columns,
-        )?;
-        self.from_expr_lin(
-            &join_expr.right,
-            from_tables,
-            joined_tables,
-            joined_ambiguous_columns,
-        )?;
-        let from_tables_len = from_tables.len();
-
-        let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
-        let left_join_table_idx = if !joined_tables.is_empty() {
-            // We have already joined two tables
-            *joined_tables.last().unwrap()
-        } else {
-            // This is the first join, which corresponds to index -2 in the original from_tables
-            *from_tables_split.0.last().unwrap()
-        };
-
-        let right_join_table_idx = *from_tables_split.1.last_mut().unwrap();
-
-        let joined_table_names: Vec<String> = vec![
-            self.context.arena_objects[left_join_table_idx].name.clone(),
-            self.context.arena_objects[right_join_table_idx]
-                .name
-                .clone(),
-        ];
-
-        match &join_expr.cond {
-            JoinCondition::Using {
-                columns: using_columns,
-            } => {
-                let mut lineage_nodes = vec![];
-                let mut using_columns_added = HashSet::new();
-                for col in using_columns {
-                    let col_name = col.as_str().to_lowercase();
-                    let left_lineage_node_idx = self.context.arena_objects[left_join_table_idx]
-                        .lineage_nodes
-                        .iter()
-                        .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
-                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
-                        .ok_or(anyhow!(
-                            "Cannot find column {:?} in table {:?}.",
-                            col_name,
-                            &self.context.arena_objects[left_join_table_idx].name
-                        ))?
-                        .1;
-
-                    let right_lineage_node_idx = self.context.arena_objects[right_join_table_idx]
-                        .lineage_nodes
-                        .iter()
-                        .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
-                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
-                        .ok_or(anyhow!(
-                            "Cannot find column {:?} in table {:?}.",
-                            col_name,
-                            &self.context.arena_objects[right_join_table_idx].name
-                        ))?
-                        .1;
-
-                    lineage_nodes.push((
-                        NodeName::Defined(col_name.clone()),
-                        self.context.arena_lineage_nodes[left_lineage_node_idx]
-                            .r#type
-                            .clone(),
-                        vec![left_lineage_node_idx, right_lineage_node_idx],
-                    ));
-                    using_columns_added.insert(col_name);
-                    self.context
-                        .add_used_column(left_lineage_node_idx, ColumnUsage::Join);
-                    self.context
-                        .add_used_column(right_lineage_node_idx, ColumnUsage::Join);
-                }
-
-                for using_col in &using_columns_added {
-                    joined_ambiguous_columns.remove(using_col);
-                }
-
-                let left_columns: HashSet<&str> = self.context.arena_objects[left_join_table_idx]
-                    .lineage_nodes
-                    .iter()
-                    .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
-                    .collect();
-                let right_columns: HashSet<&str> = self.context.arena_objects[right_join_table_idx]
-                    .lineage_nodes
-                    .iter()
-                    .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
-                    .collect();
-
-                for col in left_columns.intersection(&right_columns) {
-                    if !using_columns_added.contains(*col) {
-                        joined_ambiguous_columns.insert(col.to_string());
-                    }
-                }
-
-                // Add remaning columns not in using clause
-                lineage_nodes.extend(
-                    self.context.arena_objects[left_join_table_idx]
-                        .lineage_nodes
-                        .iter()
-                        .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
-                );
-
-                lineage_nodes.extend(
-                    self.context.arena_objects[right_join_table_idx]
-                        .lineage_nodes
-                        .iter()
-                        .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
-                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
-                );
-
-                let joined_table_name = format!(
-                    // Create a new name for the using_table.
-                    // This name is not a valid bq table name (we use {})
-                    "{{{}}}",
-                    joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        })
-                );
-
-                let table_like_idx = self.context.allocate_new_ctx_object(
-                    &joined_table_name,
-                    ContextObjectKind::UsingTable,
-                    lineage_nodes,
-                );
-                self.context
-                    .update_output_lineage_with_object_nodes(table_like_idx);
-                joined_tables.push(table_like_idx);
-            }
-            JoinCondition::On(expr) => {
-                let mut lineage_nodes = vec![];
-                let mut joined_columns = HashSet::new();
-                let mut add_lineage_nodes = |table: &ContextObject| {
-                    for node_idx in &table.lineage_nodes {
-                        let node = &self.context.arena_lineage_nodes[*node_idx];
-                        let newly_inserted = joined_columns.insert(node.name.string());
-                        if newly_inserted {
-                            lineage_nodes.push((
-                                node.name.clone(),
-                                node.r#type.clone(),
-                                vec![*node_idx],
-                            ))
-                        }
-                    }
-                };
-
-                add_lineage_nodes(&self.context.arena_objects[left_join_table_idx]);
-                add_lineage_nodes(&self.context.arena_objects[right_join_table_idx]);
-                let joined_table_name = format!(
-                    // Create a new name for the join_table.
-                    // This name is not a valid bq table name (we use {})
-                    "{{{}}}",
-                    joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        })
-                );
-
-                let table_like_idx = self.context.allocate_new_ctx_object(
-                    &joined_table_name,
-                    ContextObjectKind::JoinTable,
-                    lineage_nodes,
-                );
-                self.context
-                    .update_output_lineage_with_object_nodes(table_like_idx);
-                joined_tables.push(table_like_idx);
-
-                self.push_from_context(from_tables, joined_tables, HashSet::new());
-                self.expr_lin_to_track_col_usage(expr, false, ColumnUsage::Join)?;
-                self.context.pop_curr_ctx();
-            }
-        }
-
-        Ok(())
     }
 
     fn named_window_expr_lin(
@@ -3693,6 +3171,24 @@ impl LineageExtractor {
             }
         };
         Ok(())
+    }
+
+    fn query_expr_lin(
+        &mut self,
+        query: &QueryExpr,
+        expand_value_table: bool,
+    ) -> anyhow::Result<ArenaIndex> {
+        Ok(match query {
+            QueryExpr::Grouping(grouping_query_expr) => {
+                self.grouping_query_expr_lin(grouping_query_expr, expand_value_table)?
+            }
+            QueryExpr::Select(select_query_expr) => {
+                self.select_query_expr_lin(select_query_expr, expand_value_table)?
+            }
+            QueryExpr::SetSelect(set_select_query_expr) => {
+                self.set_select_query_expr_lin(set_select_query_expr, expand_value_table)?
+            }
+        })
     }
 
     fn select_query_expr_lin(
@@ -3888,7 +3384,7 @@ impl LineageExtractor {
         anon_obj.lineage_nodes = lineage_nodes.clone();
 
         self.context
-            .update_output_lineage_with_object_nodes(anon_obj_idx);
+            .add_object_nodes_to_output_lineage(anon_obj_idx);
 
         let ctx_objects_curr_size = self.context.objects_stack.len();
         for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
@@ -3971,8 +3467,7 @@ impl LineageExtractor {
         let set_obj = &mut self.context.arena_objects[set_obj_idx];
         set_obj.lineage_nodes = set_nodes;
 
-        self.context
-            .update_output_lineage_with_object_nodes(set_obj_idx);
+        self.context.add_object_nodes_to_output_lineage(set_obj_idx);
 
         let ctx_objects_curr_size = self.context.objects_stack.len();
         for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
@@ -3982,22 +3477,579 @@ impl LineageExtractor {
         Ok(set_obj_idx)
     }
 
-    fn query_expr_lin(
+    #[allow(clippy::wrong_self_convention)]
+    fn from_lin(&mut self, from: &crate::ast::From) -> anyhow::Result<()> {
+        // TODO: handle pivot, unpivot
+        let mut from_tables: Vec<ArenaIndex> = Vec::new();
+        let mut joined_tables: Vec<ArenaIndex> = Vec::new();
+        let mut joined_ambiguous_columns: HashSet<String> = HashSet::new();
+
+        self.from_expr_lin(
+            &from.expr,
+            &mut from_tables,
+            &mut joined_tables,
+            &mut joined_ambiguous_columns,
+        )?;
+
+        self.push_from_context(&from_tables, &joined_tables, joined_ambiguous_columns);
+        Ok(())
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn from_expr_lin(
         &mut self,
-        query: &QueryExpr,
-        expand_value_table: bool,
-    ) -> anyhow::Result<ArenaIndex> {
-        Ok(match query {
-            QueryExpr::Grouping(grouping_query_expr) => {
-                self.grouping_query_expr_lin(grouping_query_expr, expand_value_table)?
+        from_expr: &FromExpr,
+        from_tables: &mut Vec<ArenaIndex>,
+        joined_tables: &mut Vec<ArenaIndex>,
+        joined_ambiguous_columns: &mut HashSet<String>,
+    ) -> anyhow::Result<()> {
+        match from_expr {
+            FromExpr::Join(join_expr)
+            | FromExpr::LeftJoin(join_expr)
+            | FromExpr::RightJoin(join_expr)
+            | FromExpr::FullJoin(join_expr) => self.join_expr_lineage(
+                join_expr,
+                from_tables,
+                joined_tables,
+                joined_ambiguous_columns,
+            )?,
+            FromExpr::CrossJoin(cross_join_expr) => {
+                self.from_expr_lin(
+                    &cross_join_expr.left,
+                    from_tables,
+                    joined_tables,
+                    joined_ambiguous_columns,
+                )?;
+                match cross_join_expr.right.as_ref() {
+                    FromExpr::Path(from_path_expr) => {
+                        // Implicit unnest
+                        self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, true)?
+                    }
+                    _ => self.from_expr_lin(
+                        &cross_join_expr.right,
+                        from_tables,
+                        joined_tables,
+                        joined_ambiguous_columns,
+                    )?,
+                }
+
+                let mut joined_table_names: Vec<&str> = vec![];
+                let from_tables_len = from_tables.len();
+
+                let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
+                let left_join_table = if !joined_tables.is_empty() {
+                    // We have already joined two tables
+                    &self.context.arena_objects[*joined_tables.last().unwrap()]
+                } else {
+                    // This is the first join, which corresponds to index -2 in the original from_tables
+                    &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
+                };
+                joined_table_names.push(&left_join_table.name);
+
+                let right_join_table =
+                    &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
+                joined_table_names.push(&right_join_table.name);
+                let mut lineage_nodes = vec![];
+                let mut joined_columns = HashSet::new();
+                let mut add_lineage_nodes = |table: &ContextObject| {
+                    for node_idx in &table.lineage_nodes {
+                        let node = &self.context.arena_lineage_nodes[*node_idx];
+                        let newly_inserted = joined_columns.insert(node.name.string());
+                        if newly_inserted {
+                            lineage_nodes.push((
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                vec![*node_idx],
+                            ))
+                        }
+                    }
+                };
+                add_lineage_nodes(left_join_table);
+                add_lineage_nodes(right_join_table);
+                let joined_table_name = format!(
+                    // Create a new name for the join_table.
+                    // This name is not a valid bq table name (we use {})
+                    "{{{}}}",
+                    joined_table_names
+                        .into_iter()
+                        .fold(String::from("join"), |acc, name| {
+                            format!("{}_{}", acc, name)
+                        })
+                );
+
+                let table_like_idx = self.context.allocate_new_ctx_object(
+                    &joined_table_name,
+                    ContextObjectKind::JoinTable,
+                    lineage_nodes,
+                );
+                self.context
+                    .add_object_nodes_to_output_lineage(table_like_idx);
+                joined_tables.push(table_like_idx);
             }
-            QueryExpr::Select(select_query_expr) => {
-                self.select_query_expr_lin(select_query_expr, expand_value_table)?
+            FromExpr::Unnest(unnest_expr) => {
+                // Push new context just for unnest expr
+                self.push_from_context(from_tables, joined_tables, HashSet::new());
+
+                let node_idx =
+                    self.expr_lin(unnest_expr.array.as_ref(), false, ColumnUsage::Unnest)?;
+
+                let name = unnest_expr
+                    .alias
+                    .as_ref()
+                    .map_or(self.get_anon_obj_name("unnest"), |alias| {
+                        alias.as_str().to_owned()
+                    });
+
+                let col_name = unnest_expr
+                    .alias
+                    .as_ref()
+                    .map_or(NodeName::Anonymous, |alias| {
+                        NodeName::Defined(alias.as_str().to_owned())
+                    });
+
+                let node = &self.context.arena_lineage_nodes[node_idx];
+
+                let nested_node_idx = node.access(&AccessPath {
+                    path: vec![AccessOp::Index],
+                })?;
+                let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
+
+                let unnest_nodes = match &nested_node.r#type {
+                    NodeType::Struct(struct_node_type) => {
+                        let mut nodes = vec![];
+                        for field in &struct_node_type.fields {
+                            let inner_node_idx = nested_node.access(&AccessPath {
+                                path: vec![AccessOp::Field(field.name.clone())],
+                            })?;
+                            nodes.push((
+                                NodeName::Defined(field.name.clone()),
+                                field.r#type.clone(),
+                                vec![inner_node_idx],
+                            ));
+                        }
+                        nodes
+                    }
+                    _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                };
+
+                let unnest_idx = self.context.allocate_new_ctx_object(
+                    &name,
+                    ContextObjectKind::Unnest,
+                    unnest_nodes,
+                );
+
+                self.context.pop_curr_ctx();
+
+                self.context.add_object_nodes_to_output_lineage(unnest_idx);
+                self.add_new_from_table(from_tables, unnest_idx)?;
             }
-            QueryExpr::SetSelect(set_select_query_expr) => {
-                self.set_select_query_expr_lin(set_select_query_expr, expand_value_table)?
+            FromExpr::Path(from_path_expr) => {
+                self.from_path_expr_lin(from_path_expr, from_tables, joined_tables, false)?
             }
-        })
+            FromExpr::GroupingQuery(from_grouping_query_expr) => {
+                let source_name = &from_grouping_query_expr
+                    .alias
+                    .as_ref()
+                    .map(|alias| alias.as_str().to_owned());
+
+                let new_source_name = if let Some(name) = source_name {
+                    name
+                } else {
+                    &self.get_anon_obj_name("query")
+                };
+
+                let obj_idx = self.query_expr_lin(&from_grouping_query_expr.query, true)?;
+                let obj = &self.context.arena_objects[obj_idx];
+
+                let table_like_idx = self.context.allocate_new_ctx_object(
+                    new_source_name,
+                    ContextObjectKind::Query,
+                    obj.lineage_nodes
+                        .iter()
+                        .map(|idx| {
+                            let node = &self.context.arena_lineage_nodes[*idx];
+                            (node.name.clone(), node.r#type.clone(), vec![*idx])
+                        })
+                        .collect(),
+                );
+                self.context
+                    .add_object_nodes_to_output_lineage(table_like_idx);
+                self.add_new_from_table(from_tables, table_like_idx)?;
+            }
+            FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(
+                &grouping_from_expr.query,
+                from_tables,
+                joined_tables,
+                joined_ambiguous_columns,
+            )?,
+            FromExpr::TableFunction(_) => {
+                // TODO
+                // also:
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/range-functions#range_sessionize
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/vectorindex_functions
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/federated_query_functions#external_query
+                // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/table-functions-built-in#external_object_transform
+                return Err(anyhow!(
+                    "Cannot extract lineage from a table function call (still a todo)."
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn from_path_expr_lin(
+        &mut self,
+        from_path_expr: &FromPathExpr,
+        from_tables: &mut Vec<ArenaIndex>,
+        joined_tables: &[ArenaIndex],
+        check_unnest: bool,
+    ) -> anyhow::Result<()> {
+        let table_name = &from_path_expr.path.name;
+        let table_like_obj_id = self.get_table_from_context(table_name);
+        let path_identifiers = from_path_expr.path.identifiers();
+
+        if table_like_obj_id.is_none() {
+            if check_unnest {
+                if path_identifiers.len() > 1 {
+                    let table = path_identifiers[0];
+                    let column = path_identifiers[1];
+                    let mut access_path = AccessPath {
+                        path: path_identifiers
+                            .into_iter()
+                            .skip(2)
+                            .map(|f| AccessOp::Field(f.to_owned()))
+                            .collect::<Vec<AccessOp>>(),
+                    };
+                    access_path.path.push(AccessOp::Index);
+
+                    // Push new context just for unnest expr
+                    let mut ctx_objects = from_tables
+                        .iter()
+                        .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
+                        .collect::<IndexMap<String, ArenaIndex>>();
+
+                    ctx_objects.extend(
+                        joined_tables
+                            .iter()
+                            .cloned()
+                            .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
+                    );
+                    self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
+
+                    let col_source_idx = self.get_column(Some(table), column)?;
+                    self.context
+                        .add_used_column(col_source_idx, ColumnUsage::Unnest);
+                    let col_node = &self.context.arena_lineage_nodes[col_source_idx];
+                    let nested_node_idx = col_node.access(&access_path)?;
+
+                    let name = from_path_expr
+                        .alias
+                        .as_ref()
+                        .map_or(self.get_anon_obj_name("unnest"), |alias| {
+                            alias.as_str().to_owned()
+                        });
+
+                    let nested_node = &self.context.arena_lineage_nodes[nested_node_idx];
+                    let col_name = from_path_expr
+                        .alias
+                        .as_ref()
+                        .map_or(NodeName::Anonymous, |alias| {
+                            NodeName::Defined(alias.as_str().to_owned())
+                        });
+
+                    let unnest_nodes = match &nested_node.r#type {
+                        NodeType::Struct(struct_node_type) => {
+                            let mut nodes = vec![];
+                            for field in &struct_node_type.fields {
+                                let inner_node_idx = nested_node.access(&AccessPath {
+                                    path: vec![AccessOp::Field(field.name.clone())],
+                                })?;
+                                nodes.push((
+                                    NodeName::Defined(field.name.clone()),
+                                    field.r#type.clone(),
+                                    vec![inner_node_idx],
+                                ));
+                            }
+                            nodes
+                        }
+                        _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                    };
+
+                    let unnest_idx = self.context.allocate_new_ctx_object(
+                        &name,
+                        ContextObjectKind::Unnest,
+                        unnest_nodes,
+                    );
+
+                    self.context.pop_curr_ctx();
+
+                    self.context.add_object_nodes_to_output_lineage(unnest_idx);
+                    self.add_new_from_table(from_tables, unnest_idx)?;
+                }
+
+                return Ok(());
+            }
+
+            return Err(anyhow!(
+                "Table like obj name `{}` not in context.",
+                table_name
+            ));
+        }
+
+        let contains_alias = from_path_expr.alias.is_some();
+        let table_like_name = if contains_alias {
+            from_path_expr.alias.as_ref().unwrap().as_str().to_owned()
+        } else {
+            table_name.clone()
+        };
+
+        let table_like_obj_id = table_like_obj_id.unwrap();
+
+        if contains_alias {
+            // If aliased, we create a new object
+            let table_alias_idx =
+                self.create_table_alias_from_table(&table_like_name, table_like_obj_id);
+            self.context
+                .add_object_nodes_to_output_lineage(table_alias_idx);
+            self.add_new_from_table(from_tables, table_alias_idx)?;
+        } else {
+            self.add_new_from_table(from_tables, table_like_obj_id)?;
+        }
+        Ok(())
+    }
+
+    fn push_from_context(
+        &mut self,
+        from_tables: &[ArenaIndex],
+        joined_tables: &[ArenaIndex],
+        joined_ambiguous_columns: HashSet<String>,
+    ) {
+        let mut clean_joined_tables: Vec<ArenaIndex> = vec![];
+        let mut last_using_idx: Option<ArenaIndex> = None;
+        for jt in joined_tables {
+            let jt_obj = &self.context.arena_objects[*jt];
+            match jt_obj.kind {
+                ContextObjectKind::UsingTable => {
+                    last_using_idx = Some(*jt);
+                }
+                ContextObjectKind::JoinTable => {
+                    // dont push
+                }
+                _ => clean_joined_tables.push(*jt),
+            }
+        }
+        if let Some(last_using_idx) = last_using_idx {
+            clean_joined_tables.push(last_using_idx);
+        }
+
+        let joined_tables = clean_joined_tables;
+
+        let mut ctx_objects = from_tables
+            .iter()
+            .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
+            .collect::<IndexMap<String, ArenaIndex>>();
+        ctx_objects.extend(
+            joined_tables
+                .into_iter()
+                .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
+        );
+        self.context
+            .push_new_ctx(ctx_objects, joined_ambiguous_columns, true);
+    }
+
+    fn join_expr_lineage(
+        &mut self,
+        join_expr: &JoinExpr,
+        from_tables: &mut Vec<ArenaIndex>,
+        joined_tables: &mut Vec<ArenaIndex>,
+        joined_ambiguous_columns: &mut HashSet<String>,
+    ) -> anyhow::Result<()> {
+        self.from_expr_lin(
+            &join_expr.left,
+            from_tables,
+            joined_tables,
+            joined_ambiguous_columns,
+        )?;
+        self.from_expr_lin(
+            &join_expr.right,
+            from_tables,
+            joined_tables,
+            joined_ambiguous_columns,
+        )?;
+        let from_tables_len = from_tables.len();
+
+        let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
+        let left_join_table_idx = if !joined_tables.is_empty() {
+            // We have already joined two tables
+            *joined_tables.last().unwrap()
+        } else {
+            // This is the first join, which corresponds to index -2 in the original from_tables
+            *from_tables_split.0.last().unwrap()
+        };
+
+        let right_join_table_idx = *from_tables_split.1.last_mut().unwrap();
+
+        let joined_table_names: Vec<String> = vec![
+            self.context.arena_objects[left_join_table_idx].name.clone(),
+            self.context.arena_objects[right_join_table_idx]
+                .name
+                .clone(),
+        ];
+
+        match &join_expr.cond {
+            JoinCondition::Using {
+                columns: using_columns,
+            } => {
+                let mut lineage_nodes = vec![];
+                let mut using_columns_added = HashSet::new();
+                for col in using_columns {
+                    let col_name = col.as_str().to_lowercase();
+                    let left_lineage_node_idx = self.context.arena_objects[left_join_table_idx]
+                        .lineage_nodes
+                        .iter()
+                        .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
+                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
+                        .ok_or(anyhow!(
+                            "Cannot find column {:?} in table {:?}.",
+                            col_name,
+                            &self.context.arena_objects[left_join_table_idx].name
+                        ))?
+                        .1;
+
+                    let right_lineage_node_idx = self.context.arena_objects[right_join_table_idx]
+                        .lineage_nodes
+                        .iter()
+                        .map(|&idx| (&self.context.arena_lineage_nodes[idx], idx))
+                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
+                        .ok_or(anyhow!(
+                            "Cannot find column {:?} in table {:?}.",
+                            col_name,
+                            &self.context.arena_objects[right_join_table_idx].name
+                        ))?
+                        .1;
+
+                    lineage_nodes.push((
+                        NodeName::Defined(col_name.clone()),
+                        self.context.arena_lineage_nodes[left_lineage_node_idx]
+                            .r#type
+                            .clone(),
+                        vec![left_lineage_node_idx, right_lineage_node_idx],
+                    ));
+                    using_columns_added.insert(col_name);
+                    self.context
+                        .add_used_column(left_lineage_node_idx, ColumnUsage::Join);
+                    self.context
+                        .add_used_column(right_lineage_node_idx, ColumnUsage::Join);
+                }
+
+                for using_col in &using_columns_added {
+                    joined_ambiguous_columns.remove(using_col);
+                }
+
+                let left_columns: HashSet<&str> = self.context.arena_objects[left_join_table_idx]
+                    .lineage_nodes
+                    .iter()
+                    .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
+                    .collect();
+                let right_columns: HashSet<&str> = self.context.arena_objects[right_join_table_idx]
+                    .lineage_nodes
+                    .iter()
+                    .map(|&idx| self.context.arena_lineage_nodes[idx].name.string())
+                    .collect();
+
+                for col in left_columns.intersection(&right_columns) {
+                    if !using_columns_added.contains(*col) {
+                        joined_ambiguous_columns.insert(col.to_string());
+                    }
+                }
+
+                // Add remaning columns not in using clause
+                lineage_nodes.extend(
+                    self.context.arena_objects[left_join_table_idx]
+                        .lineage_nodes
+                        .iter()
+                        .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+                );
+
+                lineage_nodes.extend(
+                    self.context.arena_objects[right_join_table_idx]
+                        .lineage_nodes
+                        .iter()
+                        .map(|idx| (&self.context.arena_lineage_nodes[*idx], idx))
+                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+                );
+
+                let joined_table_name = format!(
+                    // Create a new name for the using_table.
+                    // This name is not a valid bq table name (we use {})
+                    "{{{}}}",
+                    joined_table_names
+                        .into_iter()
+                        .fold(String::from("join"), |acc, name| {
+                            format!("{}_{}", acc, name)
+                        })
+                );
+
+                let table_like_idx = self.context.allocate_new_ctx_object(
+                    &joined_table_name,
+                    ContextObjectKind::UsingTable,
+                    lineage_nodes,
+                );
+                self.context
+                    .add_object_nodes_to_output_lineage(table_like_idx);
+                joined_tables.push(table_like_idx);
+            }
+            JoinCondition::On(expr) => {
+                let mut lineage_nodes = vec![];
+                let mut joined_columns = HashSet::new();
+                let mut add_lineage_nodes = |table: &ContextObject| {
+                    for node_idx in &table.lineage_nodes {
+                        let node = &self.context.arena_lineage_nodes[*node_idx];
+                        let newly_inserted = joined_columns.insert(node.name.string());
+                        if newly_inserted {
+                            lineage_nodes.push((
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                vec![*node_idx],
+                            ))
+                        }
+                    }
+                };
+
+                add_lineage_nodes(&self.context.arena_objects[left_join_table_idx]);
+                add_lineage_nodes(&self.context.arena_objects[right_join_table_idx]);
+                let joined_table_name = format!(
+                    // Create a new name for the join_table.
+                    // This name is not a valid bq table name (we use {})
+                    "{{{}}}",
+                    joined_table_names
+                        .into_iter()
+                        .fold(String::from("join"), |acc, name| {
+                            format!("{}_{}", acc, name)
+                        })
+                );
+
+                let table_like_idx = self.context.allocate_new_ctx_object(
+                    &joined_table_name,
+                    ContextObjectKind::JoinTable,
+                    lineage_nodes,
+                );
+                self.context
+                    .add_object_nodes_to_output_lineage(table_like_idx);
+                joined_tables.push(table_like_idx);
+
+                self.push_from_context(from_tables, joined_tables, HashSet::new());
+                self.expr_lin_to_track_col_usage(expr, false, ColumnUsage::Join)?;
+                self.context.pop_curr_ctx();
+            }
+        }
+
+        Ok(())
     }
 
     fn query_statement_lin(&mut self, query_statement: &QueryStatement) -> anyhow::Result<()> {
@@ -4060,64 +4112,7 @@ impl LineageExtractor {
         };
         self.context.add_object(temp_table_idx);
         self.context
-            .update_output_lineage_with_object_nodes(temp_table_idx);
-        Ok(())
-    }
-
-    fn push_from_context(
-        &mut self,
-        from_tables: &[ArenaIndex],
-        joined_tables: &[ArenaIndex],
-        joined_ambiguous_columns: HashSet<String>,
-    ) {
-        let mut clean_joined_tables: Vec<ArenaIndex> = vec![];
-        let mut last_using_idx: Option<ArenaIndex> = None;
-        for jt in joined_tables {
-            let jt_obj = &self.context.arena_objects[*jt];
-            match jt_obj.kind {
-                ContextObjectKind::UsingTable => {
-                    last_using_idx = Some(*jt);
-                }
-                ContextObjectKind::JoinTable => {
-                    // dont push
-                }
-                _ => clean_joined_tables.push(*jt),
-            }
-        }
-        if let Some(last_using_idx) = last_using_idx {
-            clean_joined_tables.push(last_using_idx);
-        }
-
-        let joined_tables = clean_joined_tables;
-
-        let mut ctx_objects = from_tables
-            .iter()
-            .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
-            .collect::<IndexMap<String, ArenaIndex>>();
-        ctx_objects.extend(
-            joined_tables
-                .into_iter()
-                .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
-        );
-        self.context
-            .push_new_ctx(ctx_objects, joined_ambiguous_columns, true);
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    fn from_lin(&mut self, from: &crate::ast::From) -> anyhow::Result<()> {
-        // TODO: handle pivot, unpivot
-        let mut from_tables: Vec<ArenaIndex> = Vec::new();
-        let mut joined_tables: Vec<ArenaIndex> = Vec::new();
-        let mut joined_ambiguous_columns: HashSet<String> = HashSet::new();
-
-        self.from_expr_lin(
-            &from.expr,
-            &mut from_tables,
-            &mut joined_tables,
-            &mut joined_ambiguous_columns,
-        )?;
-
-        self.push_from_context(&from_tables, &joined_tables, joined_ambiguous_columns);
+            .add_object_nodes_to_output_lineage(temp_table_idx);
         Ok(())
     }
 
@@ -4238,7 +4233,7 @@ impl LineageExtractor {
             let node_idx = self.expr_lin(&update_item.expr, false, ColumnUsage::Update)?;
             let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
             col_lineage_node.input.push(node_idx);
-            self.context.add_output_lineage_node(*col_source_idx);
+            self.context.add_node_to_output_lineage(*col_source_idx);
         }
 
         self.context.pop_curr_ctx();
@@ -4295,7 +4290,7 @@ impl LineageExtractor {
                 .for_each(|(target_col, value)| {
                     let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
                     target_lineage_node.input.push(value);
-                    self.context.add_output_lineage_node(*target_col);
+                    self.context.add_node_to_output_lineage(*target_col);
                 });
         } else {
             for (target_col, value) in target_columns
@@ -4305,7 +4300,7 @@ impl LineageExtractor {
                 let node_idx = self.expr_lin(value, false, ColumnUsage::Insert)?;
                 let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
                 target_lineage_node.input.push(node_idx);
-                self.context.add_output_lineage_node(*target_col);
+                self.context.add_node_to_output_lineage(*target_col);
             }
         }
 
@@ -4342,7 +4337,7 @@ impl LineageExtractor {
             let node_idx = self.expr_lin(value, false, ColumnUsage::MergeInsert)?;
             let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
             target_lineage_node.input.push(node_idx);
-            self.context.add_output_lineage_node(*target_col);
+            self.context.add_node_to_output_lineage(*target_col);
         }
         self.context.pop_curr_ctx();
 
@@ -4382,7 +4377,7 @@ impl LineageExtractor {
             let node_idx = self.expr_lin(&update_item.expr, false, ColumnUsage::MergeUpdate)?;
             let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
             col_lineage_node.input.push(node_idx);
-            self.context.add_output_lineage_node(*col_source_idx);
+            self.context.add_node_to_output_lineage(*col_source_idx);
         }
         Ok(())
     }
@@ -4413,7 +4408,7 @@ impl LineageExtractor {
         for (target_node, source_node) in target_nodes.into_iter().zip(nodes) {
             let target_lineage_node = &mut self.context.arena_lineage_nodes[target_node];
             target_lineage_node.input.push(source_node);
-            self.context.add_output_lineage_node(target_node);
+            self.context.add_node_to_output_lineage(target_node);
         }
 
         Ok(())
@@ -4465,8 +4460,7 @@ impl LineageExtractor {
                             })
                             .collect(),
                     );
-                    self.context
-                        .update_output_lineage_with_object_nodes(source_idx);
+                    self.context.add_object_nodes_to_output_lineage(source_idx);
                     (Some(source_idx), Some(input))
                 } else {
                     (None, Some(input))
@@ -4483,8 +4477,7 @@ impl LineageExtractor {
         if let Some(alias) = &merge_statement.source_alias {
             let alias_idx =
                 self.create_table_alias_from_table(alias.as_str(), source_table_id.unwrap());
-            self.context
-                .update_output_lineage_with_object_nodes(alias_idx);
+            self.context.add_object_nodes_to_output_lineage(alias_idx);
             let source_table = &self.context.arena_objects[alias_idx];
             full_ctx.insert(source_table.name.clone(), alias_idx);
             source_ctx.insert(source_table.name.clone(), alias_idx);
@@ -4495,8 +4488,7 @@ impl LineageExtractor {
         }
         if let Some(alias) = &merge_statement.target_alias {
             let alias_idx = self.create_table_alias_from_table(alias.as_str(), target_table_id);
-            self.context
-                .update_output_lineage_with_object_nodes(alias_idx);
+            self.context.add_object_nodes_to_output_lineage(alias_idx);
             let target_table = &self.context.arena_objects[alias_idx];
             full_ctx.insert(target_table.name.clone(), alias_idx);
             target_ctx.insert(target_table.name.clone(), alias_idx);
@@ -4614,7 +4606,7 @@ impl LineageExtractor {
         );
         let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
         self.context.vars.insert(var_ident, var_node_idx);
-        self.context.add_output_lineage_node(var_node_idx);
+        self.context.add_node_to_output_lineage(var_node_idx);
         object_idx
     }
 
@@ -4741,11 +4733,11 @@ impl LineageExtractor {
         let obj_idx = self.query_expr_lin(&for_in_statement.table_expr, false)?;
         let obj = &self.context.arena_objects[obj_idx];
 
-        let mut struct_node_tyupes = vec![];
+        let mut struct_node_types = vec![];
         let mut input = vec![];
         for node_idx in &obj.lineage_nodes {
             let node = &self.context.arena_lineage_nodes[*node_idx];
-            struct_node_tyupes.push(StructNodeFieldType::new(
+            struct_node_types.push(StructNodeFieldType::new(
                 node.name.string(),
                 node.r#type.clone(),
                 vec![*node_idx],
@@ -4753,7 +4745,7 @@ impl LineageExtractor {
             input.extend(&node.input);
         }
         let struct_node = NodeType::Struct(StructNodeType {
-            fields: struct_node_tyupes,
+            fields: struct_node_types,
         });
 
         let obj_name = self.get_anon_obj_name("anon_struct");
@@ -4774,7 +4766,7 @@ impl LineageExtractor {
         let node_idx = self.context.arena_lineage_nodes.allocate(node);
         self.context.add_nested_nodes(node_idx);
 
-        self.context.add_output_lineage_node(node_idx);
+        self.context.add_node_to_output_lineage(node_idx);
         let var_idx =
             self.add_var_to_scope(for_in_statement.var_name.as_str(), struct_node, &[node_idx]);
 
@@ -4984,7 +4976,7 @@ pub struct UsedObject {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ColumnsUsed {
+pub struct UsedColumns {
     pub objects: Vec<UsedObject>,
 }
 
@@ -4992,7 +4984,7 @@ pub struct ColumnsUsed {
 pub struct Lineage {
     pub raw_lineage: Option<RawLineage>,
     pub lineage: ReadyLineage,
-    pub used_columns: ColumnsUsed,
+    pub used_columns: UsedColumns,
 }
 
 fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
@@ -5140,7 +5132,7 @@ fn _extract_lineage(
 
         let mut objects: IndexMap<
             ArenaIndex,
-            IndexMap<ArenaIndex, HashSet<(ArenaIndex, ArenaIndex)>>,
+            IndexMap<ArenaIndex, IndexSet<(ArenaIndex, ArenaIndex)>>,
         > = IndexMap::new();
 
         for output_node_idx in &lineage_extractor.context.output {
@@ -5170,7 +5162,7 @@ fn _extract_lineage(
                         .and_modify(|s| {
                             s.insert((source_obj_idx, node_idx));
                         })
-                        .or_insert(HashSet::from([(source_obj_idx, node_idx)]));
+                        .or_insert(IndexSet::from([(source_obj_idx, node_idx)]));
                 } else {
                     stack.extend(&node.input);
                 }
@@ -5291,10 +5283,10 @@ fn _extract_lineage(
         };
 
         let used_columns = {
-            let mut used_nodes: IndexMap<ArenaIndex, IndexMap<ArenaIndex, HashSet<String>>> =
+            let mut used_nodes: IndexMap<ArenaIndex, IndexMap<ArenaIndex, IndexSet<String>>> =
                 IndexMap::new();
 
-            for used_col in &lineage_extractor.context.used_columns.set {
+            for used_col in &lineage_extractor.context.columns_used.set {
                 let col_node_idx = used_col.arena_index;
                 let col_node = &lineage_extractor.context.arena_lineage_nodes[col_node_idx];
 
@@ -5354,7 +5346,7 @@ fn _extract_lineage(
                 });
             }
 
-            ColumnsUsed {
+            UsedColumns {
                 objects: used_objects,
             }
         };

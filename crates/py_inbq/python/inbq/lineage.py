@@ -50,6 +50,25 @@ class ReadyLineage:
 
 
 @dataclass
+class UsedNode:
+    name: str
+    used_in: list[str]
+
+
+@dataclass
+class UsedObject:
+    name: str
+    kind: str
+    nodes: list[UsedNode]
+
+
+@dataclass
+class UsedColumns:
+    objects: list[UsedObject]
+
+
+@dataclass
 class Lineage:
     lineage: ReadyLineage
     raw_lineage: RawLineage | None
+    used_columns: UsedColumns

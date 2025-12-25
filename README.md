@@ -30,7 +30,7 @@ def add_table(name: str, columns: list[tuple[str, str]]) -> None:
 
 add_table("project.dataset.out", [("id", "int64"), ("val", "float64")])
 add_table("project.dataset.t1", [("id", "int64"), ("x", "float64")])
-add_table("project.dataset.t2", [("id", "int64"), ("y", "float64")])
+add_table("project.dataset.t2", [("id", "int64"), ("s", "struct<source string, x float64>")])
 
 query = """
 declare default_val float64 default (select min(val) from project.dataset.out);
@@ -38,7 +38,7 @@ declare default_val float64 default (select min(val) from project.dataset.out);
 insert into `project.dataset.out`
 select
     id,
-    if(x is null or y is null, default_val, x+y)
+    if(x is null or s.x is null, default_val, x + s.x)
 from `project.dataset.t1` inner join `project.dataset.t2` using (id)
 """
 
@@ -59,9 +59,17 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
 
 # Prints:
 # ast=Ast(...)
+
 # Lineage:
-# project.dataset.out->id <- ['project.dataset.t1->id', 'project.dataset.t2->id']
-# project.dataset.out->val <- ['project.dataset.out->val', 'project.dataset.t2->y', 'project.dataset.t1->x']
+# project.dataset.out->id <- ['project.dataset.t2->id', 'project.dataset.t1->id']
+# project.dataset.out->val <- ['project.dataset.t2->s.x', 'project.dataset.t1->x', 'project.dataset.out->val']
+
+# Used columns:
+# project.dataset.out->val usage found in ['default_var', 'select']
+# project.dataset.t1->id usage found in ['join', 'select']
+# project.dataset.t1->x usage found in ['select']
+# project.dataset.t2->id usage found in ['join', 'select']
+# project.dataset.t2->s.x usage found in ['select']
 ```
 
 ## Rust
@@ -92,7 +100,7 @@ fn main() -> anyhow::Result<()> {
         insert into `project.dataset.out`
         select
             id,
-            if(x is null or y is null, default_val, x+y)
+            if(x is null or s.x is null, default_val, x + s.x)
         from `project.dataset.t1` inner join `project.dataset.t2` using (id)
     "#;
     let mut scanner = Scanner::new(sql);
@@ -118,7 +126,7 @@ fn main() -> anyhow::Result<()> {
             SchemaObject {
                 name: "project.dataset.t2".to_owned(),
                 kind: SchemaObjectKind::Table {
-                    columns: vec![column("id", "int64"), column("y", "float64")],
+                    columns: vec![column("id", "int64"), column("s", "struct<source string, x float64>")],
                 },
             },
         ],
@@ -146,9 +154,9 @@ cargo install inbq
 2. Run inbq: pass the catalog file and your [SQL file(s)](./examples/lineage/query.sql) to the inbq lineage command.
 ```bash
 inbq extract-lineage \
-    --pretty \ # Beautifies output JSON
+    --pretty \
     --catalog ./examples/lineage/catalog.json  \
-    ./examples/lineage/query.sql \ # Path to a single SQL file or a directory of .sql files
+    ./examples/lineage/query.sql
 ```
 
 The output is written to stdout.

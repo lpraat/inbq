@@ -28,7 +28,7 @@
         "table": {
           "columns": [
             { "name": "id", "dtype": "int64" },
-            { "name": "y", "dtype": "float64" }
+            { "name": "s", "dtype": "struct<source string, x float64>" }
           ]
         }
       }

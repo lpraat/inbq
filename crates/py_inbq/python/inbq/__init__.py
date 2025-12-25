@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Optional, Self
+from typing import Optional
 
 from inbq import ast_nodes as ast_nodes
 from inbq import lineage as lineage
