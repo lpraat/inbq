@@ -1077,7 +1077,7 @@ impl Context {
         for added_node_idx in inner_added_nested_nodes {
             let added_node = &self.arena_lineage_nodes[*added_node_idx];
             let inner_path = match &added_node.name {
-                NodeName::Nested(nested_node_name) => nested_node_name.access_path.clone(),
+                NodeName::Nested(nested_node_name) => &nested_node_name.access_path,
                 _ => unreachable!(),
             };
 
@@ -1621,14 +1621,14 @@ impl LineageExtractor {
                                 let field_name = match &binary_expr.left.as_ref() {
                                     Expr::Identifier(Identifier { name: ident })
                                     | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
-                                        ident.clone()
+                                        ident
                                     }
                                     _ => unreachable!(),
                                 };
                                 self.expr_lin(&binary_expr.right, false, column_usage)?;
                                 access_path.path.extend_from_slice(&[
                                     AccessOp::Index,
-                                    AccessOp::Field(field_name),
+                                    AccessOp::Field(field_name.clone()),
                                 ]);
                             }
                             Expr::Identifier(Identifier { name: ident })
@@ -1693,23 +1693,21 @@ impl LineageExtractor {
                     ) => {
                         let array_field = match bin_expr.left.as_ref() {
                             Expr::Identifier(Identifier { name: ident })
-                            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
-                                ident.clone()
-                            }
+                            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => ident,
                             _ => unreachable!(),
                         };
 
                         if self.context.get_query_table(ident).ok().is_some() {
                             // table.array_field
                             let col_source_idx =
-                                self.context.get_column(Some(ident), &array_field)?;
+                                self.context.get_column(Some(ident), array_field)?;
                             return Ok(col_source_idx);
                         } else {
                             // struct_col.array_field (or struct_var.array_field)
                             let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
                             access_path.path.extend_from_slice(&[
                                 AccessOp::Index,
-                                AccessOp::Field(array_field),
+                                AccessOp::Field(array_field.clone()),
                             ]);
                             access_path.path.reverse();
 
@@ -3001,7 +2999,7 @@ impl LineageExtractor {
         let mut new_lineage_nodes = vec![];
         let except_columns = select_expr
             .except
-            .clone()
+            .as_ref()
             .map_or(HashSet::default(), |cols| {
                 cols.iter()
                     .map(|c| c.as_str().to_lowercase())
@@ -3068,7 +3066,7 @@ impl LineageExtractor {
         col_expr: &SelectColAllExpr,
         lineage_nodes: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
-        let except_columns = col_expr.except.clone().map_or(HashSet::default(), |cols| {
+        let except_columns = col_expr.except.as_ref().map_or(HashSet::default(), |cols| {
             cols.iter()
                 .map(|c| c.as_str().to_lowercase())
                 .collect::<HashSet<String>>()
@@ -3078,8 +3076,8 @@ impl LineageExtractor {
         let node = &self.context.arena_lineage_nodes[node_idx];
 
         let mut new_lineage_nodes = vec![];
-        for node_idx in node.input.clone() {
-            let node = &mut self.context.arena_lineage_nodes[node_idx];
+        for node_idx in &node.input {
+            let node = &self.context.arena_lineage_nodes[*node_idx];
             if except_columns.contains(&node.name.string().to_lowercase()) {
                 continue;
             }
@@ -3088,7 +3086,7 @@ impl LineageExtractor {
                 node.name.clone(),
                 node.r#type.clone(),
                 anon_obj_idx,
-                vec![node_idx],
+                vec![*node_idx],
             ))
         }
 
@@ -3419,7 +3417,7 @@ impl LineageExtractor {
         self.context.pop_curr_query_ctx();
 
         let anon_obj = &mut self.context.arena_objects[anon_obj_idx];
-        anon_obj.lineage_nodes = lineage_nodes.clone();
+        anon_obj.lineage_nodes = lineage_nodes;
 
         self.context
             .add_object_nodes_to_output_lineage(anon_obj_idx);
@@ -3569,9 +3567,7 @@ impl LineageExtractor {
                     )?,
                 }
 
-                let mut joined_table_names: Vec<&str> = vec![];
                 let from_tables_len = from_tables.len();
-
                 let from_tables_split = from_tables.split_at_mut(from_tables_len - 1);
                 let left_join_table = if !joined_tables.is_empty() {
                     // We have already joined two tables
@@ -3580,11 +3576,8 @@ impl LineageExtractor {
                     // This is the first join, which corresponds to index -2 in the original from_tables
                     &self.context.arena_objects[*from_tables_split.0.last().unwrap()]
                 };
-                joined_table_names.push(&left_join_table.name);
-
                 let right_join_table =
                     &self.context.arena_objects[*from_tables_split.1.last_mut().unwrap()];
-                joined_table_names.push(&right_join_table.name);
                 let mut lineage_nodes = vec![];
                 let mut joined_columns = HashSet::new();
                 let mut add_lineage_nodes = |table: &ContextObject| {
@@ -3602,11 +3595,12 @@ impl LineageExtractor {
                 };
                 add_lineage_nodes(left_join_table);
                 add_lineage_nodes(right_join_table);
+
                 let joined_table_name = format!(
                     // Create a new name for the join_table.
                     // This name is not a valid bq table name (we use {})
                     "{{{}}}",
-                    joined_table_names
+                    [&left_join_table.name, &right_join_table.name]
                         .into_iter()
                         .fold(String::from("join"), |acc, name| {
                             format!("{}_{}", acc, name)
@@ -3837,25 +3831,19 @@ impl LineageExtractor {
             ));
         }
 
-        let contains_alias = from_path_expr.alias.is_some();
-        let table_like_name = if contains_alias {
-            from_path_expr.alias.as_ref().unwrap().as_str().to_owned()
-        } else {
-            table_name.clone()
-        };
-
         let table_like_obj_id = table_like_obj_id.unwrap();
 
-        if contains_alias {
+        if let Some(alias) = &from_path_expr.alias {
             // If aliased, we create a new object
             let table_alias_idx =
-                self.create_table_alias_from_table(&table_like_name, table_like_obj_id);
+                self.create_table_alias_from_table(alias.as_str(), table_like_obj_id);
             self.context
                 .add_object_nodes_to_output_lineage(table_alias_idx);
             self.add_new_from_table(from_tables, table_alias_idx)?;
         } else {
             self.add_new_from_table(from_tables, table_like_obj_id)?;
         }
+
         Ok(())
     }
 
@@ -3929,13 +3917,6 @@ impl LineageExtractor {
         };
 
         let right_join_table_idx = *from_tables_split.1.last_mut().unwrap();
-
-        let joined_table_names: Vec<String> = vec![
-            self.context.arena_objects[left_join_table_idx].name.clone(),
-            self.context.arena_objects[right_join_table_idx]
-                .name
-                .clone(),
-        ];
 
         match &join_expr.cond {
             JoinCondition::Using {
@@ -4027,11 +4008,14 @@ impl LineageExtractor {
                     // Create a new name for the using_table.
                     // This name is not a valid bq table name (we use {})
                     "{{{}}}",
-                    joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        })
+                    [
+                        &self.context.arena_objects[left_join_table_idx].name,
+                        &self.context.arena_objects[right_join_table_idx].name
+                    ]
+                    .into_iter()
+                    .fold(String::from("join"), |acc, name| {
+                        format!("{}_{}", acc, name)
+                    })
                 );
 
                 let table_like_idx = self.context.allocate_object(
@@ -4066,11 +4050,14 @@ impl LineageExtractor {
                     // Create a new name for the join_table.
                     // This name is not a valid bq table name (we use {})
                     "{{{}}}",
-                    joined_table_names
-                        .into_iter()
-                        .fold(String::from("join"), |acc, name| {
-                            format!("{}_{}", acc, name)
-                        })
+                    [
+                        &self.context.arena_objects[left_join_table_idx].name,
+                        &self.context.arena_objects[right_join_table_idx].name
+                    ]
+                    .into_iter()
+                    .fold(String::from("join"), |acc, name| {
+                        format!("{}_{}", acc, name)
+                    })
                 );
 
                 let table_like_idx = self.context.allocate_object(
@@ -5347,7 +5334,6 @@ fn _extract_lineage(
             let output_lineage = lineage_extractor
                 .context
                 .output
-                .clone()
                 .iter()
                 .map(|aidx| aidx.index)
                 .collect();
