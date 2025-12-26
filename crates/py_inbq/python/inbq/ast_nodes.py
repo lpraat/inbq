@@ -556,12 +556,15 @@ class AstNode:
     def from_dict(cls, data: dict) -> Self:
         """
         Instantiating a `inbq.Ast` using this method is more than 100x slower than using `inbq.parse_sql`.
-        This method is primarily intended for internal use and testing.
+        This method is intended for testing purposes only.
         """
         return cls._instantiate_type_from_data(cls, data)
 
     @classmethod
     def _decode_enum_variant(cls, first_type: typing.Type, data: dict) -> Any:
+        """
+        This method is intended for testing purposes only.
+        """
         if "_" in first_type.__name__:
             # Find the py_class of the enum variant
             # from args which contains all the variants
@@ -579,6 +582,9 @@ class AstNode:
 
     @classmethod
     def _instantiate_type_from_data(cls, ty: typing.Type, data: dict) -> Any:
+        """
+        This method is intended for testing purposes only.
+        """
         if ty in cls._PRIMITIVE_TYPES:
             return ty(data)
 
