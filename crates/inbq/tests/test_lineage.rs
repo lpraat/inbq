@@ -108,9 +108,6 @@ fn test_lineage() {
             );
         }
 
-        println!("Used columns: {:?}", used_columns_map);
-        println!("Target used columns: {:?}", target_used_columns);
-
         assert!(
             used_columns_map.len() == target_used_columns.len()
                 && used_columns_map

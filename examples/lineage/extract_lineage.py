@@ -31,4 +31,4 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
     print("\nUsed columns:")
     for object in output_lineage.used_columns.objects:
         for node in object.nodes:
-            print(f"{object.name}->{node.name} usage found in {node.used_in}")
+            print(f"{object.name}->{node.name} used in {node.used_in}")
