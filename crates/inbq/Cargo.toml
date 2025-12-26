@@ -3,6 +3,7 @@ name = "inbq"
 description = """
 A library for parsing BigQuery queries and extracting schema-aware, column-level lineage.
 """
+keywords = ["bigquery", "data-lineage", "parser", "sql"]
 documentation = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
