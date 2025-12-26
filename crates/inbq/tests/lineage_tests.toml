@@ -1887,3 +1887,79 @@ c = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
 c1 = ["select"]
 [tests.used_columns."proj.dat.t2"]
 c2 = ["select"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+select
+    l.y + r.y
+from `proj.dat.t1` l inner join `proj.dat.t1`(2) r using (x)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and table_functions can have the same name
+name = "proj.dat.t1"
+kind.table_function.arguments = [
+    { standard = { name = "arg", dtype = "int64" } },
+]
+kind.table_function.returns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+y = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
+[tests.used_columns."proj.dat.t1"]
+x = ["join"]
+y = ["select"]
+[tests.used_columns."proj.dat.t1(*)"]
+x = ["join"]
+y = ["select"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+select
+    x,
+    l.y + r.y
+from `proj.dat.t1`(2) l inner join `proj.dat.t1` r using (x)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table_function.arguments = [
+    { standard = { name = "arg", dtype = "int64" } },
+]
+kind.table_function.returns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+x = ["proj.dat.t1->x", "proj.dat.t1(*)->x"]
+y = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
+[tests.used_columns."proj.dat.t1"]
+x = ["join", "select"]
+y = ["select"]
+[tests.used_columns."proj.dat.t1(*)"]
+x = ["join", "select"]
+y = ["select"]

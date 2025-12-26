@@ -27,6 +27,13 @@ use std::{hash::Hash, result::Result::Ok};
 
 use super::find_mathching_function;
 
+#[macro_export]
+macro_rules! routine_name {
+    ($name:expr) => {
+        format!("{}(*)", $name)
+    };
+}
+
 #[derive(Debug, Clone)]
 struct LineageNode {
     name: NodeName,
@@ -545,6 +552,7 @@ enum ContextObjectKind {
     AnonymousExpr,
     Unnest,
     Var,
+    TableFunction,
 }
 
 impl From<ContextObjectKind> for String {
@@ -563,6 +571,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::AnonymousArray => "anonymous_array".to_owned(),
             ContextObjectKind::Unnest => "unnest".to_owned(),
             ContextObjectKind::Var => "var".to_owned(),
+            ContextObjectKind::TableFunction => "table_function".to_owned(),
         }
     }
 }
@@ -684,6 +693,10 @@ struct Context {
     source_tables: IndexMap<String, ArenaIndex>,
     script_tables: Vec<ArenaIndex>,
 
+    // Routines
+    source_routines: IndexMap<String, ArenaIndex>,
+    script_routines: Vec<ArenaIndex>,
+
     // Vars
     vars: IndexMap<String, ArenaIndex>,
 
@@ -722,6 +735,10 @@ impl Context {
         self.last_select_statement = None;
         self.columns_used = ColumnsUsed::new();
         self.state = ContextState::default();
+    }
+
+    fn is_source_obj(&self, name: &str) -> bool {
+        self.source_tables.contains_key(name) || self.source_routines.contains_key(name)
     }
 
     fn allocate_object(
@@ -1383,6 +1400,31 @@ impl Context {
 
     fn pop_script_table(&mut self) {
         self.script_tables.pop();
+    }
+
+    /// Get the object index for the routine-like obj named `routine_name`.
+    /// Script routines are checked first, then source routines.
+    fn get_routine(&self, routine_name: &str) -> Option<ArenaIndex> {
+        let routine_idx = {
+            for i in (0..self.script_routines.len()).rev() {
+                if self.arena_objects[self.script_routines[i]].name == *routine_name {
+                    return Some(self.script_routines[i]);
+                }
+            }
+            None
+        };
+
+        routine_idx.map_or(self.source_routines.get(routine_name).cloned(), Some)
+    }
+
+    #[allow(dead_code)]
+    fn add_script_routine(&mut self, object_idx: ArenaIndex) {
+        self.script_routines.push(object_idx);
+    }
+
+    #[allow(dead_code)]
+    fn pop_script_routine(&mut self) {
+        self.script_routines.pop();
     }
 
     fn add_node_to_output_lineage(&mut self, node_idx: ArenaIndex) {
@@ -3674,17 +3716,33 @@ impl LineageExtractor {
                 joined_tables,
                 joined_ambiguous_columns,
             )?,
-            FromExpr::TableFunction(_) => {
+            FromExpr::TableFunction(table_function_expr) => {
                 // TODO
-                // also:
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/range-functions#range_sessionize
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#vector_search
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/vectorindex_functions
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/federated_query_functions#external_query
                 // - https://docs.cloud.google.com/bigquery/docs/reference/standard-sql/table-functions-built-in#external_object_transform
-                return Err(anyhow!(
-                    "Cannot extract lineage from a table function call (still a todo)."
-                ));
+
+                let routine_name = routine_name!(table_function_expr.name.name);
+                let routine_idx = if let Some(routine_idx) = self.context.get_routine(&routine_name)
+                {
+                    routine_idx
+                } else {
+                    return Err(anyhow!(
+                        "Table valued function `{}` not in context.",
+                        routine_name
+                    ));
+                };
+                if let Some(alias) = &table_function_expr.alias {
+                    let table_alias_idx =
+                        self.create_table_alias_from_table(alias.as_str(), routine_idx);
+                    self.context
+                        .add_object_nodes_to_output_lineage(table_alias_idx);
+                    self.add_new_from_table(from_tables, table_alias_idx)?;
+                } else {
+                    self.add_new_from_table(from_tables, routine_idx)?;
+                }
             }
         }
         Ok(())
@@ -4916,25 +4974,26 @@ pub struct Catalog {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct UdfArg {
+pub struct UserFunctionArg {
     pub name: String,
     pub dtype: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub enum TvfArgument {
-    Standard(TvfStandardArgument),
-    Table(TvfTableArgument),
+#[serde(rename_all = "snake_case")]
+pub enum TableFunctionArgument {
+    Standard(TableFunctionStandardArgument),
+    Table(TableFunctionTableArgument),
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct TvfStandardArgument {
+pub struct TableFunctionStandardArgument {
     pub name: String,
     pub dtype: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct TvfTableArgument {
+pub struct TableFunctionTableArgument {
     pub name: String,
     pub columns: Vec<Column>,
 }
@@ -4950,12 +5009,12 @@ pub enum SchemaObjectKind {
         columns: Vec<Column>,
     },
     // Routines
-    UserDefinedFunction {
-        arguments: Vec<UdfArg>,
+    UserFunction {
+        arguments: Vec<UserFunctionArg>,
         returns: String,
     },
     TableFunction {
-        arguments: Vec<TvfArgument>,
+        arguments: Vec<TableFunctionArgument>,
         returns: Vec<Column>,
     },
 }
@@ -4993,6 +5052,63 @@ fn parse_dtype(dtype: &str) -> anyhow::Result<NodeType> {
     Ok(NodeType::from_parser_parameterized_type(&r#type))
 }
 
+fn columns_to_nodes(
+    schema_object_name: &str,
+    columns: &[Column],
+) -> Vec<(NodeName, NodeType, Vec<ArenaIndex>)> {
+    let mut unique_columns = HashSet::new();
+    let mut duplicate_columns = vec![];
+    let are_columns_unique = columns.iter().all(|col| {
+        let is_unique = unique_columns.insert(&col.name);
+        if !is_unique {
+            duplicate_columns.push(&col.name);
+        }
+        is_unique
+    });
+    if !are_columns_unique {
+        panic!(
+            "Found duplicate columns in schema object `{}`: `{:?}`.",
+            schema_object_name, duplicate_columns
+        );
+    }
+
+    let mut nodes = vec![];
+
+    for col in columns {
+        let node_type = match parse_dtype(&col.dtype) {
+            Err(err) => {
+                panic!(
+                    "Cannot retrieve node type from column {:?} due to: {}",
+                    col, err
+                );
+            }
+            Ok(node_type) => node_type,
+        };
+
+        // Check that struct field names are unique
+        if let NodeType::Struct(ref struct_node_type) = node_type {
+            let mut set = HashSet::new();
+
+            for field in &struct_node_type.fields {
+                if set.contains(&field.name) {
+                    panic!(
+                        "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
+                        &col.name, schema_object_name, &field.name
+                    );
+                }
+                set.insert(&field.name);
+            }
+        }
+
+        nodes.push((
+            NodeName::Defined(col.name.to_lowercase()),
+            node_type,
+            vec![],
+        ));
+    }
+    nodes
+}
+
 pub fn extract_lineage(
     asts: &[&Ast],
     catalog: &Catalog,
@@ -5020,79 +5136,52 @@ fn _extract_lineage(
     include_raw: bool,
 ) -> Vec<anyhow::Result<Lineage>> {
     let mut ctx = Context::default();
-    let mut source_objects = IndexMap::new();
-    for schema_object in &catalog.schema_objects {
-        if source_objects.contains_key(&schema_object.name) {
-            panic!(
-                "Found duplicate definition of schema object `{}`.",
-                schema_object.name
-            );
-        }
+    let mut source_tables = IndexMap::new();
+    let mut source_routines = IndexMap::new();
 
+    for schema_object in &catalog.schema_objects {
         match &schema_object.kind {
             SchemaObjectKind::Table { columns } | SchemaObjectKind::View { columns } => {
-                let context_object_kind = ContextObjectKind::Table;
-
-                let mut unique_columns = HashSet::new();
-                let mut duplicate_columns = vec![];
-                let are_columns_unique = columns.iter().all(|col| {
-                    let is_unique = unique_columns.insert(&col.name);
-                    if !is_unique {
-                        duplicate_columns.push(&col.name);
-                    }
-                    is_unique
-                });
-                if !are_columns_unique {
+                if source_tables.contains_key(&schema_object.name) {
                     panic!(
-                        "Found duplicate columns in schema object `{}`: `{:?}`.",
-                        &schema_object.name, duplicate_columns
+                        "Found duplicate definition of table schema object `{}`.",
+                        schema_object.name
                     );
                 }
-
-                let mut nodes = vec![];
-
-                for col in columns {
-                    let node_type = match parse_dtype(&col.dtype) {
-                        Err(err) => {
-                            panic!(
-                                "Cannot retrieve node type from column {:?} due to: {}",
-                                col, err
-                            );
-                        }
-                        Ok(node_type) => node_type,
-                    };
-
-                    // Check that struct field names are unique
-                    if let NodeType::Struct(ref struct_node_type) = node_type {
-                        let mut set = HashSet::new();
-
-                        for field in &struct_node_type.fields {
-                            if set.contains(&field.name) {
-                                panic!(
-                                    "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
-                                    &col.name, &schema_object.name, &field.name
-                                );
-                            }
-                            set.insert(&field.name);
-                        }
-                    }
-
-                    nodes.push((
-                        NodeName::Defined(col.name.to_lowercase()),
-                        node_type,
-                        vec![],
-                    ));
-                }
-
+                let table_nodes = columns_to_nodes(&schema_object.name, columns);
                 let table_idx =
-                    ctx.allocate_object(&schema_object.name, context_object_kind, nodes);
-                source_objects.insert(schema_object.name.clone(), table_idx);
+                    ctx.allocate_object(&schema_object.name, ContextObjectKind::Table, table_nodes);
+                source_tables.insert(schema_object.name.clone(), table_idx);
             }
-            SchemaObjectKind::UserDefinedFunction { arguments, returns } => todo!(),
-            SchemaObjectKind::TableFunction { arguments, returns } => todo!(),
+            SchemaObjectKind::UserFunction {
+                arguments: _,
+                returns: _,
+            } => {
+                // TODO
+            }
+            SchemaObjectKind::TableFunction {
+                arguments: _,
+                returns: columns,
+            } => {
+                if source_routines.contains_key(&schema_object.name) {
+                    panic!(
+                        "Found duplicate definition of routine schema object `{}`.",
+                        schema_object.name
+                    );
+                }
+                let routine_name = routine_name!(schema_object.name);
+                let routine_nodes = columns_to_nodes(&schema_object.name, columns);
+                let routine_idx = ctx.allocate_object(
+                    &routine_name,
+                    ContextObjectKind::TableFunction,
+                    routine_nodes,
+                );
+                source_routines.insert(routine_name.clone(), routine_idx);
+            }
         }
     }
-    ctx.source_tables = source_objects;
+    ctx.source_tables = source_tables;
+    ctx.source_routines = source_routines;
 
     let mut lineages = vec![];
     let mut lineage_extractor = LineageExtractor {
@@ -5150,11 +5239,7 @@ fn _extract_lineage(
                 let source_obj_idx = node.source_obj;
                 let source_obj = &lineage_extractor.context.arena_objects[source_obj_idx];
 
-                if lineage_extractor
-                    .context
-                    .source_tables
-                    .contains_key(&source_obj.name)
-                {
+                if lineage_extractor.context.is_source_obj(&source_obj.name) {
                     objects
                         .entry(output_source_idx)
                         .or_default()
@@ -5177,10 +5262,7 @@ fn _extract_lineage(
             let obj_name = obj.name.clone();
             let obj_kind = obj.kind;
             if just_include_source_objects
-                && (!lineage_extractor
-                    .context
-                    .source_tables
-                    .contains_key(&obj_name)
+                && (!lineage_extractor.context.is_source_obj(&obj_name)
                     && !lineage_extractor
                         .context
                         .last_select_statement
@@ -5206,10 +5288,7 @@ fn _extract_lineage(
                 for (inp_obj_idx, inp_node_idx) in input {
                     let inp_obj = &lineage_extractor.context.arena_objects[*inp_obj_idx];
                     if just_include_source_objects
-                        && !lineage_extractor
-                            .context
-                            .source_tables
-                            .contains_key(&inp_obj.name)
+                        && !lineage_extractor.context.is_source_obj(&inp_obj.name)
                     {
                         continue;
                     }
@@ -5302,11 +5381,7 @@ fn _extract_lineage(
                     let source_obj_idx = node.source_obj;
                     let source_obj = &lineage_extractor.context.arena_objects[source_obj_idx];
 
-                    if lineage_extractor
-                        .context
-                        .source_tables
-                        .contains_key(&source_obj.name)
-                    {
+                    if lineage_extractor.context.is_source_obj(&source_obj.name) {
                         used_nodes
                             .entry(source_obj_idx)
                             .or_default()
