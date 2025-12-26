@@ -52,10 +52,17 @@ pipeline_output = inbq.run_pipeline(sqls=[query], pipeline=pipeline)
 
 for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
     print(f"{ast=}")
-    print("Lineage:")
+    print("\nLineage:")
     for object in output_lineage.lineage.objects:
         for node in object.nodes:
-            print(f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.input]}")
+            print(
+                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.input]}"
+            )
+
+    print("\nUsed columns:")
+    for object in output_lineage.used_columns.objects:
+        for node in object.nodes:
+            print(f"{object.name}->{node.name} used in {node.used_in}")
 
 # Prints:
 # ast=Ast(...)
@@ -65,11 +72,11 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
 # project.dataset.out->val <- ['project.dataset.t2->s.x', 'project.dataset.t1->x', 'project.dataset.out->val']
 
 # Used columns:
-# project.dataset.out->val usage found in ['default_var', 'select']
-# project.dataset.t1->id usage found in ['join', 'select']
-# project.dataset.t1->x usage found in ['select']
-# project.dataset.t2->id usage found in ['join', 'select']
-# project.dataset.t2->s.x usage found in ['select']
+# project.dataset.out->val used in ['default_var', 'select']
+# project.dataset.t1->id used in ['join', 'select']
+# project.dataset.t1->x used in ['select']
+# project.dataset.t2->id used in ['join', 'select']
+# project.dataset.t2->s.x used in ['select']
 ```
 
 ## Rust
