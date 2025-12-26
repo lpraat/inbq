@@ -1963,3 +1963,65 @@ y = ["select"]
 [tests.used_columns."proj.dat.t1(*)"]
 x = ["join", "select"]
 y = ["select"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+select
+    `proj.dat.t1`((x,y))
+from proj.dat.t1
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and user_functions can have the same name
+name = "proj.dat.t1"
+kind.user_function.arguments = [
+    { name = "s", dtype = "struct<x int64, y int64>" },
+]
+kind.user_function.returns = "float64"
+[tests.ready_lineage."proj.dat.out"]
+x = ["proj.dat.t1->x","proj.dat.t1->y"]
+[tests.used_columns."proj.dat.t1"]
+x = ["select"]
+y = ["select"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+select
+    dat.t1((x,y))
+from proj.dat.t1
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and user_functions can have the same name
+name = "dat.t1"
+kind.user_function.arguments = [
+    { name = "s", dtype = "struct<x int64, y int64>" },
+]
+kind.user_function.returns = "float64"
+[tests.ready_lineage."proj.dat.out"]
+x = ["proj.dat.t1->x","proj.dat.t1->y"]
+[tests.used_columns."proj.dat.t1"]
+x = ["select"]
+y = ["select"]

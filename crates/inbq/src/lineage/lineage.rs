@@ -25,7 +25,7 @@ use std::{
 };
 use std::{hash::Hash, result::Result::Ok};
 
-use super::find_mathching_function;
+use super::find_matching_function;
 
 #[macro_export]
 macro_rules! routine_name {
@@ -552,6 +552,7 @@ enum ContextObjectKind {
     AnonymousExpr,
     Unnest,
     Var,
+    UserFunction,
     TableFunction,
 }
 
@@ -571,6 +572,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::AnonymousArray => "anonymous_array".to_owned(),
             ContextObjectKind::Unnest => "unnest".to_owned(),
             ContextObjectKind::Var => "var".to_owned(),
+            ContextObjectKind::UserFunction => "user_function".to_owned(),
             ContextObjectKind::TableFunction => "table_function".to_owned(),
         }
     }
@@ -1868,7 +1870,6 @@ impl LineageExtractor {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::GenericFunction(function_expr),
                     ) => {
-                        // todo: handle user scalar functions call (with schema from schema object)
                         if ident.eq_ignore_ascii_case("safe") {
                             return self.expr_lin(right, false, column_usage);
                         }
@@ -2318,11 +2319,30 @@ impl LineageExtractor {
             args.push(&node.r#type);
         }
 
-        let func = find_mathching_function(name);
-        let return_type = if let Some(func_def) = func {
-            (func_def.compute_return_type)(&args, &input)
-        } else {
-            NodeType::Unknown
+        let routine_name = routine_name!(name);
+        let (name, return_type) = match self.context.get_routine(&routine_name) {
+            Some(routine_idx)
+                if self.context.arena_objects[routine_idx].kind
+                    == ContextObjectKind::UserFunction =>
+            {
+                // TODO: check argument types as we do for other calls (need to save routine arguments somewhere)
+                let return_node_idx = self.context.arena_objects[routine_idx].lineage_nodes[0];
+                (
+                    routine_name,
+                    self.context.arena_lineage_nodes[return_node_idx]
+                        .r#type
+                        .clone(),
+                )
+            }
+            _ => {
+                let func = find_matching_function(name);
+                let return_type = if let Some(func_def) = func {
+                    (func_def.compute_return_type)(&args, &input)
+                } else {
+                    NodeType::Unknown
+                };
+                (name.to_lowercase(), return_type)
+            }
         };
 
         if let Some(named_window_expr) = &function_expr.over {
@@ -5142,9 +5162,32 @@ fn _extract_lineage(
             }
             SchemaObjectKind::UserFunction {
                 arguments: _,
-                returns: _,
+                returns,
             } => {
-                // TODO
+                if source_routines.contains_key(&schema_object.name) {
+                    panic!(
+                        "Found duplicate definition of routine schema object `{}`.",
+                        schema_object.name
+                    );
+                }
+                let return_type = match parse_dtype(returns) {
+                    Err(err) => {
+                        panic!(
+                            "Cannot retrieve return type {} of routine {} due to: {}",
+                            returns, schema_object.name, err
+                        );
+                    }
+                    Ok(return_type) => return_type,
+                };
+
+                let routine_name = routine_name!(schema_object.name);
+                let routine_nodes = vec![(NodeName::Anonymous, return_type, vec![])];
+                let routine_idx = ctx.allocate_object(
+                    &routine_name,
+                    ContextObjectKind::UserFunction,
+                    routine_nodes,
+                );
+                source_routines.insert(routine_name.clone(), routine_idx);
             }
             SchemaObjectKind::TableFunction {
                 arguments: _,

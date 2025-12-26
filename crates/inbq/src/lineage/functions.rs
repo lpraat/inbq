@@ -16,7 +16,7 @@ fn array_type_with_unkown_type() -> NodeType {
     }))
 }
 
-pub(crate) fn find_mathching_function(name: &str) -> Option<FunctionDefinition> {
+pub(crate) fn find_matching_function(name: &str) -> Option<FunctionDefinition> {
     match name.to_lowercase().as_str() {
         // Generic functions
         "string" => Some(FunctionDefinition {
