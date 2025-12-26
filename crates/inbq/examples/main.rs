@@ -20,8 +20,8 @@ fn main() -> anyhow::Result<()> {
         insert into `project.dataset.out`
         select
             id,
-            if(x is null or y is null, default_val, x+y)
-        from `project.dataset.t1` inner join `project.dataset.t2` using (id)
+            if(x is null or s.x is null, default_val, x + s.x)
+        from `project.dataset.t1` inner join `project.dataset.t2` using (id);
     "#;
     let mut scanner = Scanner::new(sql);
     scanner.scan()?;
@@ -46,16 +46,20 @@ fn main() -> anyhow::Result<()> {
             SchemaObject {
                 name: "project.dataset.t2".to_owned(),
                 kind: SchemaObjectKind::Table {
-                    columns: vec![column("id", "int64"), column("y", "float64")],
+                    columns: vec![
+                        column("id", "int64"),
+                        column("s", "struct<source string, x float64>"),
+                    ],
                 },
             },
         ],
     };
 
-    let output_lineage = extract_lineage(&[&ast], &data_catalog, false, true)
+    let lineage = extract_lineage(&[&ast], &data_catalog, false, true)
         .pop()
         .unwrap()?;
 
-    println!("Lineage: {:?}", output_lineage.lineage);
+    println!("\nLineage: {:?}", lineage.lineage);
+    println!("\nUsed columns: {:?}", lineage.used_columns);
     Ok(())
 }
