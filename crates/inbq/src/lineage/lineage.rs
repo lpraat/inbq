@@ -676,21 +676,30 @@ impl Default for ContextState {
 
 #[derive(Debug, Default)]
 struct Context {
+    // Arena
     arena_objects: Arena<ContextObject>,
     arena_lineage_nodes: Arena<LineageNode>,
-    // todo: source tables and source routines can have the same name
-    source_objects: IndexMap<String, ArenaIndex>,
-    objects_stack: Vec<ArenaIndex>,
-    stack: Vec<IndexMap<String, IndexDepth>>,
-    columns_stack: Vec<IndexMap<String, Vec<IndexDepth>>>,
-    joined_ambiguous_columns_stack: Vec<HashSet<String>>,
-    stack_depth: u16,
+
+    // Tables
+    source_tables: IndexMap<String, ArenaIndex>,
+    script_tables: Vec<ArenaIndex>,
+
+    // Vars
     vars: IndexMap<String, ArenaIndex>,
+
+    // Query context
+    query_tables: Vec<IndexMap<String, IndexDepth>>,
+    query_columns: Vec<IndexMap<String, Vec<IndexDepth>>>,
+    query_depth: u16,
+    query_joined_ambiguous_columns: Vec<HashSet<String>>,
+
+    state: ContextState,
     typed_struct_fields: Vec<StructNodeFieldType>,
+
+    // Output
     output: Vec<ArenaIndex>,
     last_select_statement: Option<String>,
     columns_used: ColumnsUsed,
-    state: ContextState,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -702,11 +711,11 @@ struct IndexDepth {
 impl Context {
     fn reset(&mut self) {
         // Keep the same arena and clear the rest
-        self.objects_stack.clear();
-        self.stack.clear();
-        self.columns_stack.clear();
-        self.joined_ambiguous_columns_stack.clear();
-        self.stack_depth = 0;
+        self.script_tables.clear();
+        self.query_tables.clear();
+        self.query_columns.clear();
+        self.query_joined_ambiguous_columns.clear();
+        self.query_depth = 0;
         self.vars.clear();
         self.typed_struct_fields.clear();
         self.output.clear();
@@ -715,7 +724,7 @@ impl Context {
         self.state = ContextState::default();
     }
 
-    fn allocate_new_ctx_object(
+    fn allocate_object(
         &mut self,
         name: &str,
         kind: ContextObjectKind,
@@ -747,7 +756,7 @@ impl Context {
         new_id
     }
 
-    fn allocate_new_lineage_node(
+    fn allocate_lineage_node(
         &mut self,
         name: NodeName,
         r#type: NodeType,
@@ -1104,33 +1113,33 @@ impl Context {
         })
     }
 
-    fn curr_stack(&self) -> Option<&IndexMap<String, IndexDepth>> {
-        self.stack.last()
+    fn curr_query_tables(&self) -> Option<&IndexMap<String, IndexDepth>> {
+        self.query_tables.last()
     }
 
-    fn curr_columns_stack(&self) -> Option<&IndexMap<String, Vec<IndexDepth>>> {
-        self.columns_stack.last()
+    fn curr_query_columns(&self) -> Option<&IndexMap<String, Vec<IndexDepth>>> {
+        self.query_columns.last()
     }
 
-    fn curr_ambiguous_columns_stack(&self) -> Option<&HashSet<String>> {
-        self.joined_ambiguous_columns_stack.last()
+    fn curr_query_joined_ambiguous_columns(&self) -> Option<&HashSet<String>> {
+        self.query_joined_ambiguous_columns.last()
     }
 
-    fn push_new_ctx(
+    fn push_query_ctx(
         &mut self,
-        ctx_objects: IndexMap<String, ArenaIndex>,
+        query_tables: IndexMap<String, ArenaIndex>,
         ambiguous_columns: HashSet<String>,
-        include_outer_context: bool,
+        include_outer: bool,
     ) {
-        self.stack_depth += 1;
-        let mut new_ctx: IndexMap<String, IndexDepth> = ctx_objects
+        self.query_depth += 1;
+        let mut new_tables: IndexMap<String, IndexDepth> = query_tables
             .into_iter()
             .map(|(k, v)| {
                 (
                     k,
                     IndexDepth {
                         arena_index: v,
-                        depth: self.stack_depth,
+                        depth: self.query_depth,
                     },
                 )
             })
@@ -1138,78 +1147,242 @@ impl Context {
         let mut new_columns: IndexMap<String, Vec<IndexDepth>> = IndexMap::new();
         let mut new_ambiguous_columns: HashSet<String> = ambiguous_columns;
 
-        for key in new_ctx.keys() {
-            let ctx_obj = &self.arena_objects[new_ctx[key].arena_index];
-            for node_idx in &ctx_obj.lineage_nodes {
+        for key in new_tables.keys() {
+            let query_table = &self.arena_objects[new_tables[key].arena_index];
+            for node_idx in &query_table.lineage_nodes {
                 let node = &self.arena_lineage_nodes[*node_idx];
                 new_columns
                     .entry(node.name.string().to_lowercase())
                     .or_default()
                     .push(IndexDepth {
-                        arena_index: new_ctx[key].arena_index,
-                        depth: self.stack_depth,
+                        arena_index: new_tables[key].arena_index,
+                        depth: self.query_depth,
                     });
             }
         }
 
-        if include_outer_context {
-            if let Some(prev_ctx) = self.stack.last() {
-                for key in prev_ctx.keys() {
-                    if !new_ctx.contains_key(key) {
-                        new_ctx.insert(key.clone(), prev_ctx[key]);
-                        let ctx_obj = &self.arena_objects[prev_ctx[key].arena_index];
-                        for node_idx in &ctx_obj.lineage_nodes {
+        if include_outer {
+            if let Some(outer_tables) = self.query_tables.last() {
+                for key in outer_tables.keys() {
+                    if !new_tables.contains_key(key) {
+                        new_tables.insert(key.clone(), outer_tables[key]);
+                        let query_table = &self.arena_objects[outer_tables[key].arena_index];
+                        for node_idx in &query_table.lineage_nodes {
                             let node = &self.arena_lineage_nodes[*node_idx];
                             new_columns
                                 .entry(node.name.string().to_lowercase())
                                 .or_default()
-                                .push(prev_ctx[key]);
+                                .push(outer_tables[key]);
                         }
                     }
                 }
             }
 
-            if let Some(prev_ambiguous_cols) = self.joined_ambiguous_columns_stack.last() {
+            if let Some(prev_ambiguous_cols) = self.query_joined_ambiguous_columns.last() {
                 for col in prev_ambiguous_cols {
                     new_ambiguous_columns.insert(col.clone());
                 }
             }
         }
 
-        self.stack.push(new_ctx);
-        self.columns_stack.push(new_columns);
-        self.joined_ambiguous_columns_stack
+        self.query_tables.push(new_tables);
+        self.query_columns.push(new_columns);
+        self.query_joined_ambiguous_columns
             .push(new_ambiguous_columns);
     }
 
-    fn pop_curr_ctx(&mut self) {
-        self.stack.pop();
-        self.columns_stack.pop();
-        self.joined_ambiguous_columns_stack.pop();
-        self.stack_depth -= 1;
+    fn pop_curr_query_ctx(&mut self) {
+        self.query_tables.pop();
+        self.query_columns.pop();
+        self.query_joined_ambiguous_columns.pop();
+        self.query_depth -= 1;
     }
 
-    fn get_object(&self, key: &str) -> Option<ArenaIndex> {
-        for i in (0..self.objects_stack.len()).rev() {
-            let obj = &self.arena_objects[self.objects_stack[i]];
+    /// Get the node index of a column or variable from the current query context.
+    /// Priority order: columns are checked first, then variables.
+    ///
+    /// If not found, an `Err` is returned.
+    fn get_query_col_or_var(&mut self, name: &str) -> anyhow::Result<ArenaIndex> {
+        match self.get_column(None, name) {
+            Ok(col_idx) => Ok(col_idx),
+            Err(col_err) => match col_err.downcast_ref::<GetColumnError>() {
+                Some(GetColumnError::Ambiguous(_)) => Err(col_err),
+                Some(GetColumnError::NotFound(_)) | None => self.get_var(name).map_err(|_| {
+                    anyhow!(
+                        "Could not get column `{name:?}` \
+                        and could not find a variable with that name either."
+                    )
+                }),
+            },
+        }
+    }
 
-            if matches!(obj.kind, ContextObjectKind::Cte) && obj.name.eq_ignore_ascii_case(key) {
-                return Some(self.objects_stack[i]);
-            }
+    /// Get the node index of a variable from the current query context.
+    ///
+    /// If not found, an `Err` is returned.
+    fn get_var(&self, var_name: &str) -> anyhow::Result<ArenaIndex> {
+        self.vars
+            .get(&var_name.to_lowercase())
+            .ok_or_else(|| anyhow!("Variable `{}` not found in context.", var_name))
+            .copied()
+    }
 
-            if obj.name == *key {
-                return Some(self.objects_stack[i]);
+    /// Get the object index of a table from the current query context.
+    ///
+    /// If not found, an `Err` is returned
+    fn get_query_table(&self, name: &str) -> anyhow::Result<ArenaIndex> {
+        let curr_stack = self
+            .curr_query_tables()
+            .ok_or(anyhow!("Table `{}` not found in context.", name))?;
+
+        if let Some(ctx_table_idx) = curr_stack.get(name) {
+            return Ok(ctx_table_idx.arena_index);
+        }
+        if let Some(ctx_table_idx) = curr_stack.get(&name.to_lowercase()) {
+            // Ctes and table aliases are case insensitive
+            let obj = &self.arena_objects[ctx_table_idx.arena_index];
+            if matches!(
+                obj.kind,
+                ContextObjectKind::TableAlias | ContextObjectKind::Cte
+            ) {
+                return Ok(ctx_table_idx.arena_index);
+            } else {
+                return Err(anyhow!(
+                    "Found matching table name {} by ignoring case but it is not an alias.",
+                    name,
+                ));
             }
         }
-        None
+
+        Err(anyhow!("Table `{}` not found in context.", name))
     }
 
-    fn add_object(&mut self, object_idx: ArenaIndex) {
-        self.objects_stack.push(object_idx);
+    /// Get the node index of a column from the current query context.
+    ///
+    /// If not found, an `Err` is returned
+    fn get_column(&mut self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
+        // column names are case insensitive
+        let column = column.to_lowercase();
+
+        if let Some(table) = table {
+            let ctx_table_idx = self.get_query_table(table)?;
+            let ctx_table = &self.arena_objects[ctx_table_idx];
+            let col_in_schema = ctx_table
+                .lineage_nodes
+                .iter()
+                .map(|n_idx| (&self.arena_lineage_nodes[*n_idx], *n_idx))
+                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column));
+            if let Some((_, col_idx)) = col_in_schema {
+                return Ok(col_idx);
+            }
+            Err(anyhow!(GetColumnError::NotFound(format!(
+                "Column `{}` not found in the schema of table `{}`",
+                column, table
+            ))))
+        } else if let Some(target_tables) =
+            self.curr_query_columns().and_then(|map| map.get(&column))
+        {
+            if self
+                .curr_query_joined_ambiguous_columns()
+                .unwrap()
+                .contains(&column)
+            {
+                return Err(anyhow!(GetColumnError::Ambiguous(format!(
+                    "Joined column `{}` is ambiguous.",
+                    column
+                ))));
+            }
+
+            let target_table_idx = if target_tables.len() > 1 {
+                if let Some(using_idx) = target_tables.iter().find(|&idx| {
+                    matches!(
+                        &self.arena_objects[idx.arena_index].kind,
+                        ContextObjectKind::UsingTable
+                    )
+                }) {
+                    *using_idx
+                } else {
+                    // if there are two table (not joined with using) at the same depth -> ambiguous
+                    let is_ambiguous = target_tables
+                        .iter()
+                        .map(|idx| (&self.arena_objects[idx.arena_index].name, idx.depth))
+                        .try_fold(HashSet::new(), |mut acc, (_, depth)| {
+                            if acc.insert(depth) { Some(acc) } else { None }
+                        })
+                        .is_none();
+
+                    if is_ambiguous {
+                        return Err(anyhow!(GetColumnError::Ambiguous(format!(
+                            "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
+                            column,
+                            target_tables
+                                .iter()
+                                .map(|source_idx| self.arena_objects[source_idx.arena_index]
+                                    .name
+                                    .clone())
+                                .collect::<Vec<String>>()
+                        ))));
+                    }
+
+                    target_tables[0]
+                }
+            } else {
+                target_tables[0]
+            };
+
+            let target_table_name = &self.arena_objects[target_table_idx.arena_index].name;
+            let ctx_table = self
+                .curr_query_tables()
+                .unwrap()
+                .get(target_table_name)
+                .map(|idx| &self.arena_objects[idx.arena_index])
+                .unwrap();
+
+            let node_idx = ctx_table
+                .lineage_nodes
+                .iter()
+                .map(|n_idx| (&self.arena_lineage_nodes[*n_idx], *n_idx))
+                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column))
+                .unwrap()
+                .1;
+            return Ok(node_idx);
+        } else {
+            return Err(anyhow!(GetColumnError::NotFound(format!(
+                "Column `{}` not found in context.",
+                column
+            ))));
+        }
     }
 
-    fn pop_object(&mut self) {
-        self.objects_stack.pop();
+    /// Get the object index for the table-like obj named `table_name`.
+    /// Script tables are checked first, then source tables.
+    fn get_table(&self, table_name: &str) -> Option<ArenaIndex> {
+        let table_idx = {
+            for i in (0..self.script_tables.len()).rev() {
+                let obj = &self.arena_objects[self.script_tables[i]];
+
+                if matches!(obj.kind, ContextObjectKind::Cte)
+                    && obj.name.eq_ignore_ascii_case(table_name)
+                {
+                    return Some(self.script_tables[i]);
+                }
+
+                if obj.name == *table_name {
+                    return Some(self.script_tables[i]);
+                }
+            }
+            None
+        };
+
+        table_idx.map_or(self.source_tables.get(table_name).cloned(), Some)
+    }
+
+    fn add_script_table(&mut self, object_idx: ArenaIndex) {
+        self.script_tables.push(object_idx);
+    }
+
+    fn pop_script_table(&mut self) {
+        self.script_tables.pop();
     }
 
     fn add_node_to_output_lineage(&mut self, node_idx: ArenaIndex) {
@@ -1226,8 +1399,8 @@ impl Context {
         }
     }
 
-    fn add_used_column(&mut self, node: ArenaIndex, kind: ColumnUsage) {
-        self.columns_used.add_column(node, kind);
+    fn add_used_column(&mut self, node_idx: ArenaIndex, kind: ColumnUsage) {
+        self.columns_used.add_column(node_idx, kind);
     }
 }
 
@@ -1260,7 +1433,7 @@ impl LineageExtractor {
                 let obj_idx = self.query_expr_lin(&non_recursive_cte.query, true)?;
                 let obj = &self.context.arena_objects[obj_idx];
 
-                let cte_idx = self.context.allocate_new_ctx_object(
+                let cte_idx = self.context.allocate_object(
                     &cte_name.as_str().to_lowercase(),
                     ContextObjectKind::Cte,
                     obj.lineage_nodes
@@ -1271,7 +1444,7 @@ impl LineageExtractor {
                         })
                         .collect(),
                 );
-                self.context.add_object(cte_idx);
+                self.context.add_script_table(cte_idx);
                 self.context.add_object_nodes_to_output_lineage(cte_idx);
             }
             Cte::Recursive(_) => {
@@ -1287,186 +1460,14 @@ impl LineageExtractor {
     fn with_lin(&mut self, with: &With) -> anyhow::Result<()> {
         // We push an empty context since a CTE on a subquery may not reference correlated columns from the outer query
         self.context
-            .push_new_ctx(IndexMap::new(), HashSet::new(), false);
+            .push_query_ctx(IndexMap::new(), HashSet::new(), false);
 
         for cte in &with.ctes {
             self.cte_lin(cte)?;
         }
 
-        self.context.pop_curr_ctx();
+        self.context.pop_curr_query_ctx();
         Ok(())
-    }
-
-    #[allow(dead_code)]
-    fn is_var_in_context(&self, var_name: &str) -> bool {
-        self.context.vars.contains_key(var_name)
-    }
-
-    #[allow(dead_code)]
-    fn is_column_in_context(&self, col_name: &str) -> bool {
-        self.context
-            .curr_columns_stack()
-            .is_some_and(|map| map.contains_key(&col_name.to_lowercase()))
-    }
-
-    /// Get the node index of a column or variable from the current context.
-    /// Priority order: columns are checked first, then variables.
-    ///
-    /// If not found, an `Err` is returned.
-    fn get_col_or_var(&mut self, name: &str) -> anyhow::Result<ArenaIndex> {
-        match self.get_column(None, name) {
-            Ok(col_idx) => Ok(col_idx),
-            Err(col_err) => match col_err.downcast_ref::<GetColumnError>() {
-                Some(GetColumnError::Ambiguous(_)) => Err(col_err),
-                Some(GetColumnError::NotFound(_)) | None => self.get_var(name).map_err(|_| {
-                    anyhow!(
-                        "Could not get column `{name:?}` \
-                        and could not find a variable with that name either."
-                    )
-                }),
-            },
-        }
-    }
-
-    /// Get the node index of a variable from the current context.
-    ///
-    /// If not found, an `Err` is returned.
-    fn get_var(&self, var_name: &str) -> anyhow::Result<ArenaIndex> {
-        self.context
-            .vars
-            .get(&var_name.to_lowercase())
-            .ok_or_else(|| anyhow!("Variable `{}` not found in context.", var_name))
-            .copied()
-    }
-
-    /// Get the object index of a table from the current index.
-    ///
-    /// If not found, an `Err` is returned
-    fn get_table(&self, name: &str) -> anyhow::Result<ArenaIndex> {
-        let curr_stack = self
-            .context
-            .curr_stack()
-            .ok_or(anyhow!("Table `{}` not found in context.", name))?;
-
-        if let Some(ctx_table_idx) = curr_stack.get(name) {
-            return Ok(ctx_table_idx.arena_index);
-        }
-        if let Some(ctx_table_idx) = curr_stack.get(&name.to_lowercase()) {
-            // Ctes and table aliases are case insensitive
-            let obj = &self.context.arena_objects[ctx_table_idx.arena_index];
-            if matches!(
-                obj.kind,
-                ContextObjectKind::TableAlias | ContextObjectKind::Cte
-            ) {
-                return Ok(ctx_table_idx.arena_index);
-            } else {
-                return Err(anyhow!(
-                    "Found matching table name {} by ignoring case but it is not an alias.",
-                    name,
-                ));
-            }
-        }
-
-        Err(anyhow!("Table `{}` not found in context.", name))
-    }
-
-    fn get_column(&mut self, table: Option<&str>, column: &str) -> anyhow::Result<ArenaIndex> {
-        // column names are case insensitive
-        let column = column.to_lowercase();
-
-        if let Some(table) = table {
-            let ctx_table_idx = self.get_table(table)?;
-            let ctx_table = &self.context.arena_objects[ctx_table_idx];
-            let col_in_schema = ctx_table
-                .lineage_nodes
-                .iter()
-                .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
-                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column));
-            if let Some((_, col_idx)) = col_in_schema {
-                return Ok(col_idx);
-            }
-            Err(anyhow!(GetColumnError::NotFound(format!(
-                "Column `{}` not found in the schema of table `{}`",
-                column, table
-            ))))
-        } else if let Some(target_tables) = self
-            .context
-            .curr_columns_stack()
-            .and_then(|map| map.get(&column))
-        {
-            if self
-                .context
-                .curr_ambiguous_columns_stack()
-                .unwrap()
-                .contains(&column)
-            {
-                return Err(anyhow!(GetColumnError::Ambiguous(format!(
-                    "Joined column `{}` is ambiguous.",
-                    column
-                ))));
-            }
-
-            let target_table_idx = if target_tables.len() > 1 {
-                if let Some(using_idx) = target_tables.iter().find(|&idx| {
-                    matches!(
-                        &self.context.arena_objects[idx.arena_index].kind,
-                        ContextObjectKind::UsingTable
-                    )
-                }) {
-                    *using_idx
-                } else {
-                    // if there are two table (not joined with using) at the same depth -> ambiguous
-                    let is_ambiguous = target_tables
-                        .iter()
-                        .map(|idx| (&self.context.arena_objects[idx.arena_index].name, idx.depth))
-                        .try_fold(HashSet::new(), |mut acc, (_, depth)| {
-                            if acc.insert(depth) { Some(acc) } else { None }
-                        })
-                        .is_none();
-
-                    if is_ambiguous {
-                        return Err(anyhow!(GetColumnError::Ambiguous(format!(
-                            "Column `{}` is ambiguous. It is contained in more than one table: {:?}.",
-                            column,
-                            target_tables
-                                .iter()
-                                .map(|source_idx| self.context.arena_objects
-                                    [source_idx.arena_index]
-                                    .name
-                                    .clone())
-                                .collect::<Vec<String>>()
-                        ))));
-                    }
-
-                    target_tables[0]
-                }
-            } else {
-                target_tables[0]
-            };
-
-            let target_table_name = &self.context.arena_objects[target_table_idx.arena_index].name;
-            let ctx_table = self
-                .context
-                .curr_stack()
-                .unwrap()
-                .get(target_table_name)
-                .map(|idx| &self.context.arena_objects[idx.arena_index])
-                .unwrap();
-
-            let node_idx = ctx_table
-                .lineage_nodes
-                .iter()
-                .map(|n_idx| (&self.context.arena_lineage_nodes[*n_idx], *n_idx))
-                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column))
-                .unwrap()
-                .1;
-            return Ok(node_idx);
-        } else {
-            return Err(anyhow!(GetColumnError::NotFound(format!(
-                "Column `{}` not found in context.",
-                column
-            ))));
-        }
     }
 
     fn nested_node_lin(
@@ -1522,10 +1523,10 @@ impl LineageExtractor {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
 
                         if access_path.path.is_empty() {
-                            if self.get_table(left_ident).ok().is_some() {
+                            if self.context.get_query_table(left_ident).ok().is_some() {
                                 // table.col
                                 let col_source_idx =
-                                    self.get_column(Some(left_ident), right_ident)?;
+                                    self.context.get_column(Some(left_ident), right_ident)?;
                                 let col = &self.context.arena_lineage_nodes[col_source_idx];
                                 let col_name = col.name.clone();
                                 let allocated_node_idx = self.allocate_expr_node(
@@ -1539,7 +1540,8 @@ impl LineageExtractor {
                                 return Ok(allocated_node_idx);
                             } else {
                                 // col_struct.field (or var_struct.field)
-                                let col_or_node_idx = self.get_col_or_var(left_ident)?;
+                                let col_or_node_idx =
+                                    self.context.get_query_col_or_var(left_ident)?;
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 let node = &self.context.arena_lineage_nodes[col_or_node_idx];
                                 let nested_node_idx = node.access(&access_path)?;
@@ -1550,17 +1552,18 @@ impl LineageExtractor {
                                 ));
                             }
                         } else {
-                            let col_or_var_source_idx = if self.get_table(left_ident).ok().is_some()
-                            {
-                                // table.col
-                                let col_name = right_ident.clone();
-                                self.get_column(Some(left_ident), &col_name)?
-                            } else {
-                                // col_struct.field (or var_struct.field)
-                                let col_or_node_idx = self.get_col_or_var(left_ident)?;
-                                access_path.path.push(AccessOp::Field(right_ident.clone()));
-                                col_or_node_idx
-                            };
+                            let col_or_var_source_idx =
+                                if self.context.get_query_table(left_ident).ok().is_some() {
+                                    // table.col
+                                    let col_name = right_ident.clone();
+                                    self.context.get_column(Some(left_ident), &col_name)?
+                                } else {
+                                    // col_struct.field (or var_struct.field)
+                                    let col_or_node_idx =
+                                        self.context.get_query_col_or_var(left_ident)?;
+                                    access_path.path.push(AccessOp::Field(right_ident.clone()));
+                                    col_or_node_idx
+                                };
                             access_path.path.reverse();
                             let node = &self.context.arena_lineage_nodes[col_or_var_source_idx];
                             let nested_node_idx = node.access(&access_path)?;
@@ -1654,13 +1657,14 @@ impl LineageExtractor {
                             _ => unreachable!(),
                         };
 
-                        if self.get_table(ident).ok().is_some() {
+                        if self.context.get_query_table(ident).ok().is_some() {
                             // table.array_field
-                            let col_source_idx = self.get_column(Some(ident), &array_field)?;
+                            let col_source_idx =
+                                self.context.get_column(Some(ident), &array_field)?;
                             return Ok(col_source_idx);
                         } else {
                             // struct_col.array_field (or struct_var.array_field)
-                            let col_or_var_idx = self.get_col_or_var(ident)?;
+                            let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
                             access_path.path.extend_from_slice(&[
                                 AccessOp::Index,
                                 AccessOp::Field(array_field),
@@ -1701,7 +1705,7 @@ impl LineageExtractor {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::Star,
                     ) => {
-                        if let Ok(source_obj_idx) = self.get_table(ident) {
+                        if let Ok(source_obj_idx) = self.context.get_query_table(ident) {
                             // table.*
                             let source_obj = &self.context.arena_objects[source_obj_idx];
                             return Ok(self.allocate_expr_node(
@@ -1711,7 +1715,7 @@ impl LineageExtractor {
                             ));
                         } else {
                             // col_struct.*
-                            let col_or_var_idx = self.get_col_or_var(ident)?;
+                            let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let access_path = AccessPath {
                                 path: vec![AccessOp::FieldStar],
@@ -1729,7 +1733,7 @@ impl LineageExtractor {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
-                        let col_or_var_idx = self.get_col_or_var(ident)?;
+                        let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
                         let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
@@ -2056,11 +2060,9 @@ impl LineageExtractor {
         input: Vec<ArenaIndex>,
     ) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name("anon_struct");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousStruct,
-            vec![],
-        );
+        let obj_idx =
+            self.context
+                .allocate_object(&obj_name, ContextObjectKind::AnonymousStruct, vec![]);
 
         let node = LineageNode {
             name,
@@ -2150,11 +2152,9 @@ impl LineageExtractor {
 
     fn create_array_node(&mut self, array_type: NodeType, input: Vec<ArenaIndex>) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name("anon_array");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousArray,
-            vec![],
-        );
+        let obj_idx =
+            self.context
+                .allocate_object(&obj_name, ContextObjectKind::AnonymousArray, vec![]);
 
         let node = LineageNode {
             name: NodeName::Anonymous,
@@ -2325,13 +2325,11 @@ impl LineageExtractor {
         input: Vec<ArenaIndex>,
     ) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name(source_name);
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousExpr,
-            vec![],
-        );
+        let obj_idx =
+            self.context
+                .allocate_object(&obj_name, ContextObjectKind::AnonymousExpr, vec![]);
         self.context
-            .allocate_new_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
+            .allocate_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
     }
 
     fn expr_lin(
@@ -2417,7 +2415,7 @@ impl LineageExtractor {
             }
             Expr::Identifier(Identifier { name: ident })
             | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
-                if let Ok(source_obj_idx) = self.get_table(ident) {
+                if let Ok(source_obj_idx) = self.context.get_query_table(ident) {
                     // table (can be unnest)
                     let source_obj = &self.context.arena_objects[source_obj_idx];
                     if source_obj.kind == ContextObjectKind::Unnest {
@@ -2438,7 +2436,7 @@ impl LineageExtractor {
                     }
                 } else {
                     // col
-                    let node_idx = self.get_col_or_var(ident)?;
+                    let node_idx = self.context.get_query_col_or_var(ident)?;
                     let node = &self.context.arena_lineage_nodes[node_idx];
                     let allocated_node_idx =
                         self.allocate_expr_node("col", node.r#type.clone(), vec![node_idx]);
@@ -2970,7 +2968,7 @@ impl LineageExtractor {
 
         for (col_name, sources) in self
             .context
-            .curr_columns_stack()
+            .curr_query_columns()
             .unwrap_or(&IndexMap::new())
             .iter()
         {
@@ -3012,7 +3010,7 @@ impl LineageExtractor {
         for tup in new_lineage_nodes {
             let lineage_node_idx = self
                 .context
-                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3);
+                .allocate_lineage_node(tup.0, tup.1, tup.2, tup.3);
             lineage_nodes.push(lineage_node_idx);
             self.context.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -3055,7 +3053,7 @@ impl LineageExtractor {
         for tup in new_lineage_nodes {
             let lineage_node_idx = self
                 .context
-                .allocate_new_lineage_node(tup.0, tup.1, tup.2, tup.3);
+                .allocate_lineage_node(tup.0, tup.1, tup.2, tup.3);
             lineage_nodes.push(lineage_node_idx);
             self.context.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -3071,7 +3069,7 @@ impl LineageExtractor {
         col_expr: &SelectColExpr,
         lineage_nodes: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
-        let pending_node_idx = self.context.allocate_new_lineage_node(
+        let pending_node_idx = self.context.allocate_lineage_node(
             NodeName::Anonymous,
             NodeType::Unknown,
             anon_obj_idx,
@@ -3134,7 +3132,7 @@ impl LineageExtractor {
             new_lineage_nodes.push((ln.name.clone(), ln.r#type.clone(), vec![*el]))
         }
 
-        self.context.allocate_new_ctx_object(
+        self.context.allocate_object(
             &alias.to_lowercase(),
             ContextObjectKind::TableAlias,
             new_lineage_nodes,
@@ -3196,7 +3194,7 @@ impl LineageExtractor {
         select_query_expr: &SelectQueryExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<ArenaIndex> {
-        let ctx_objects_start_size = self.context.objects_stack.len();
+        let script_tables_start_size = self.context.script_tables.len();
         let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = select_query_expr.with.as_ref() {
@@ -3210,11 +3208,9 @@ impl LineageExtractor {
             false
         };
 
-        let anon_obj_idx = self.context.allocate_new_ctx_object(
-            &anon_obj_name,
-            ContextObjectKind::AnonymousQuery,
-            vec![],
-        );
+        let anon_obj_idx =
+            self.context
+                .allocate_object(&anon_obj_name, ContextObjectKind::AnonymousQuery, vec![]);
 
         let mut lineage_nodes = vec![];
         for expr in &select_query_expr.select.exprs {
@@ -3251,7 +3247,7 @@ impl LineageExtractor {
                         fields: struct_node_tyupes,
                     });
 
-                    let struct_node_idx = self.context.allocate_new_lineage_node(
+                    let struct_node_idx = self.context.allocate_lineage_node(
                         NodeName::Anonymous,
                         struct_node,
                         anon_obj_idx,
@@ -3273,7 +3269,7 @@ impl LineageExtractor {
                                 let nested_field =
                                     &self.context.arena_lineage_nodes[nested_field_idx];
 
-                                let new_node_idx = self.context.allocate_new_lineage_node(
+                                let new_node_idx = self.context.allocate_lineage_node(
                                     NodeName::Defined(nested_field.name.string().to_owned()),
                                     nested_field.r#type.clone(),
                                     anon_obj_idx,
@@ -3305,7 +3301,7 @@ impl LineageExtractor {
         }
 
         // Push select columns (they can be referenced in group_by, having, qualify, and order_by clauses)
-        self.context.push_new_ctx(
+        self.context.push_query_ctx(
             IndexMap::from([(anon_obj_name, anon_obj_idx)]),
             HashSet::new(),
             true,
@@ -3378,7 +3374,7 @@ impl LineageExtractor {
             }
         }
 
-        self.context.pop_curr_ctx();
+        self.context.pop_curr_query_ctx();
 
         let anon_obj = &mut self.context.arena_objects[anon_obj_idx];
         anon_obj.lineage_nodes = lineage_nodes.clone();
@@ -3386,13 +3382,13 @@ impl LineageExtractor {
         self.context
             .add_object_nodes_to_output_lineage(anon_obj_idx);
 
-        let ctx_objects_curr_size = self.context.objects_stack.len();
-        for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
-            self.context.pop_object();
+        let script_tables_curr_size = self.context.script_tables.len();
+        for _ in 0..script_tables_curr_size - script_tables_start_size {
+            self.context.pop_script_table();
         }
 
         if pushed_context {
-            self.context.pop_curr_ctx();
+            self.context.pop_curr_query_ctx();
         }
 
         Ok(anon_obj_idx)
@@ -3403,14 +3399,14 @@ impl LineageExtractor {
         grouping_query_expr: &GroupingQueryExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<ArenaIndex> {
-        let ctx_objects_start_size = self.context.objects_stack.len();
+        let script_tables_start_size = self.context.script_tables.len();
         if let Some(with) = grouping_query_expr.with.as_ref() {
             self.with_lin(with)?;
         }
         let obj_idx = self.query_expr_lin(&grouping_query_expr.query, expand_value_table)?;
-        let ctx_objects_curr_size = self.context.objects_stack.len();
-        for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
-            self.context.pop_object();
+        let script_tables_curr_size = self.context.script_tables.len();
+        for _ in 0..script_tables_curr_size - script_tables_start_size {
+            self.context.pop_script_table();
         }
         Ok(obj_idx)
     }
@@ -3420,18 +3416,16 @@ impl LineageExtractor {
         set_select_query_expr: &SetSelectQueryExpr,
         expand_value_table: bool,
     ) -> anyhow::Result<ArenaIndex> {
-        let ctx_objects_start_size = self.context.objects_stack.len();
+        let script_tables_start_size = self.context.script_tables.len();
         let anon_obj_name = self.get_anon_obj_name("anon");
 
         if let Some(with) = set_select_query_expr.with.as_ref() {
             self.with_lin(with)?;
         }
 
-        let set_obj_idx = self.context.allocate_new_ctx_object(
-            &anon_obj_name,
-            ContextObjectKind::AnonymousQuery,
-            vec![],
-        );
+        let set_obj_idx =
+            self.context
+                .allocate_object(&anon_obj_name, ContextObjectKind::AnonymousQuery, vec![]);
 
         let left_obj_idx =
             self.query_expr_lin(&set_select_query_expr.left_query, expand_value_table)?;
@@ -3460,7 +3454,7 @@ impl LineageExtractor {
         for (name, r#type, source_obj, input) in nodes_elems.into_iter() {
             let node_idx = self
                 .context
-                .allocate_new_lineage_node(name, r#type, source_obj, input);
+                .allocate_lineage_node(name, r#type, source_obj, input);
             set_nodes.push(node_idx);
         }
 
@@ -3469,9 +3463,9 @@ impl LineageExtractor {
 
         self.context.add_object_nodes_to_output_lineage(set_obj_idx);
 
-        let ctx_objects_curr_size = self.context.objects_stack.len();
-        for _ in 0..ctx_objects_curr_size - ctx_objects_start_size {
-            self.context.pop_object();
+        let script_tables_curr_size = self.context.script_tables.len();
+        for _ in 0..script_tables_curr_size - script_tables_start_size {
+            self.context.pop_script_table();
         }
 
         Ok(set_obj_idx)
@@ -3577,7 +3571,7 @@ impl LineageExtractor {
                         })
                 );
 
-                let table_like_idx = self.context.allocate_new_ctx_object(
+                let table_like_idx = self.context.allocate_object(
                     &joined_table_name,
                     ContextObjectKind::JoinTable,
                     lineage_nodes,
@@ -3632,13 +3626,11 @@ impl LineageExtractor {
                     _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
                 };
 
-                let unnest_idx = self.context.allocate_new_ctx_object(
-                    &name,
-                    ContextObjectKind::Unnest,
-                    unnest_nodes,
-                );
+                let unnest_idx =
+                    self.context
+                        .allocate_object(&name, ContextObjectKind::Unnest, unnest_nodes);
 
-                self.context.pop_curr_ctx();
+                self.context.pop_curr_query_ctx();
 
                 self.context.add_object_nodes_to_output_lineage(unnest_idx);
                 self.add_new_from_table(from_tables, unnest_idx)?;
@@ -3661,7 +3653,7 @@ impl LineageExtractor {
                 let obj_idx = self.query_expr_lin(&from_grouping_query_expr.query, true)?;
                 let obj = &self.context.arena_objects[obj_idx];
 
-                let table_like_idx = self.context.allocate_new_ctx_object(
+                let table_like_idx = self.context.allocate_object(
                     new_source_name,
                     ContextObjectKind::Query,
                     obj.lineage_nodes
@@ -3707,7 +3699,7 @@ impl LineageExtractor {
         check_unnest: bool,
     ) -> anyhow::Result<()> {
         let table_name = &from_path_expr.path.name;
-        let table_like_obj_id = self.get_table_from_context(table_name);
+        let table_like_obj_id = self.context.get_table(table_name);
         let path_identifiers = from_path_expr.path.identifiers();
 
         if table_like_obj_id.is_none() {
@@ -3725,20 +3717,9 @@ impl LineageExtractor {
                     access_path.path.push(AccessOp::Index);
 
                     // Push new context just for unnest expr
-                    let mut ctx_objects = from_tables
-                        .iter()
-                        .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
-                        .collect::<IndexMap<String, ArenaIndex>>();
+                    self.push_from_context(from_tables, joined_tables, HashSet::new());
 
-                    ctx_objects.extend(
-                        joined_tables
-                            .iter()
-                            .cloned()
-                            .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
-                    );
-                    self.context.push_new_ctx(ctx_objects, HashSet::new(), true);
-
-                    let col_source_idx = self.get_column(Some(table), column)?;
+                    let col_source_idx = self.context.get_column(Some(table), column)?;
                     self.context
                         .add_used_column(col_source_idx, ColumnUsage::Unnest);
                     let col_node = &self.context.arena_lineage_nodes[col_source_idx];
@@ -3777,13 +3758,13 @@ impl LineageExtractor {
                         _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
                     };
 
-                    let unnest_idx = self.context.allocate_new_ctx_object(
+                    let unnest_idx = self.context.allocate_object(
                         &name,
                         ContextObjectKind::Unnest,
                         unnest_nodes,
                     );
 
-                    self.context.pop_curr_ctx();
+                    self.context.pop_curr_query_ctx();
 
                     self.context.add_object_nodes_to_output_lineage(unnest_idx);
                     self.add_new_from_table(from_tables, unnest_idx)?;
@@ -3846,17 +3827,17 @@ impl LineageExtractor {
 
         let joined_tables = clean_joined_tables;
 
-        let mut ctx_objects = from_tables
+        let mut query_tables = from_tables
             .iter()
             .map(|idx| (self.context.arena_objects[*idx].name.clone(), *idx))
             .collect::<IndexMap<String, ArenaIndex>>();
-        ctx_objects.extend(
+        query_tables.extend(
             joined_tables
                 .into_iter()
                 .map(|idx| (self.context.arena_objects[idx].name.clone(), idx)),
         );
         self.context
-            .push_new_ctx(ctx_objects, joined_ambiguous_columns, true);
+            .push_query_ctx(query_tables, joined_ambiguous_columns, true);
     }
 
     fn join_expr_lineage(
@@ -3995,7 +3976,7 @@ impl LineageExtractor {
                         })
                 );
 
-                let table_like_idx = self.context.allocate_new_ctx_object(
+                let table_like_idx = self.context.allocate_object(
                     &joined_table_name,
                     ContextObjectKind::UsingTable,
                     lineage_nodes,
@@ -4034,7 +4015,7 @@ impl LineageExtractor {
                         })
                 );
 
-                let table_like_idx = self.context.allocate_new_ctx_object(
+                let table_like_idx = self.context.allocate_object(
                     &joined_table_name,
                     ContextObjectKind::JoinTable,
                     lineage_nodes,
@@ -4045,7 +4026,7 @@ impl LineageExtractor {
 
                 self.push_from_context(from_tables, joined_tables, HashSet::new());
                 self.expr_lin_to_track_col_usage(expr, false, ColumnUsage::Join)?;
-                self.context.pop_curr_ctx();
+                self.context.pop_curr_query_ctx();
             }
         }
 
@@ -4079,7 +4060,7 @@ impl LineageExtractor {
             let obj_idx = self.query_expr_lin(query, false)?;
             let obj = &self.context.arena_objects[obj_idx];
 
-            self.context.allocate_new_ctx_object(
+            self.context.allocate_object(
                 table_name,
                 table_kind,
                 obj.lineage_nodes
@@ -4095,7 +4076,7 @@ impl LineageExtractor {
                 .schema
                 .as_ref()
                 .ok_or(anyhow!("Schema not found for table: `{:?}`.", table_name))?;
-            self.context.allocate_new_ctx_object(
+            self.context.allocate_object(
                 table_name,
                 table_kind,
                 schema
@@ -4110,26 +4091,10 @@ impl LineageExtractor {
                     .collect(),
             )
         };
-        self.context.add_object(temp_table_idx);
+        self.context.add_script_table(temp_table_idx);
         self.context
             .add_object_nodes_to_output_lineage(temp_table_idx);
         Ok(())
-    }
-
-    /// Get the object index for the table-like obj named `table_name`.
-    /// Context objects are checked first, then source tables.
-    fn get_table_from_context(&self, table_name: &str) -> Option<ArenaIndex> {
-        self.context
-            .get_object(table_name)
-            .filter(|&obj_idx| {
-                matches!(
-                    self.context.arena_objects[obj_idx].kind,
-                    ContextObjectKind::Cte
-                        | ContextObjectKind::TempTable
-                        | ContextObjectKind::Table
-                )
-            })
-            .map_or(self.context.source_objects.get(table_name).cloned(), Some)
     }
 
     /// Build a mapping col_name -> node_idx for each column/node in `table_obj`
@@ -4158,7 +4123,7 @@ impl LineageExtractor {
             target_table
         };
 
-        let target_table_id = self.get_table_from_context(target_table);
+        let target_table_id = self.context.get_table(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -4166,7 +4131,7 @@ impl LineageExtractor {
             ));
         }
 
-        self.context.push_new_ctx(
+        self.context.push_query_ctx(
             IndexMap::from([(target_table_alias.to_owned(), target_table_id.unwrap())]),
             HashSet::new(),
             true,
@@ -4184,7 +4149,7 @@ impl LineageExtractor {
             target_table
         };
 
-        let target_table_id = self.get_table_from_context(target_table);
+        let target_table_id = self.context.get_table(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -4203,7 +4168,7 @@ impl LineageExtractor {
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
         // NOTE: we push the target table after pushing the from context
-        self.context.push_new_ctx(
+        self.context.push_query_ctx(
             IndexMap::from([(target_table_alias.to_owned(), target_table_id.unwrap())]),
             HashSet::new(),
             true,
@@ -4236,10 +4201,10 @@ impl LineageExtractor {
             self.context.add_node_to_output_lineage(*col_source_idx);
         }
 
-        self.context.pop_curr_ctx();
+        self.context.pop_curr_query_ctx();
 
         if pushed_context {
-            self.context.pop_curr_ctx();
+            self.context.pop_curr_query_ctx();
         }
         Ok(())
     }
@@ -4247,7 +4212,7 @@ impl LineageExtractor {
     fn insert_statement_lin(&mut self, insert_statement: &InsertStatement) -> anyhow::Result<()> {
         let target_table = &insert_statement.table.name;
 
-        let target_table_id = self.get_table_from_context(target_table);
+        let target_table_id = self.context.get_table(target_table);
         if target_table_id.is_none() {
             return Err(anyhow!(
                 "Table like obj name `{}` not in context.",
@@ -4309,12 +4274,9 @@ impl LineageExtractor {
 
     fn merge_insert(
         &mut self,
-        ctx: &IndexMap<String, ArenaIndex>,
         target_table_id: ArenaIndex,
         merge_insert: &MergeInsert,
     ) -> anyhow::Result<()> {
-        self.context.push_new_ctx(ctx.clone(), HashSet::new(), true);
-
         let target_table_obj = &self.context.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
@@ -4339,7 +4301,6 @@ impl LineageExtractor {
             target_lineage_node.input.push(node_idx);
             self.context.add_node_to_output_lineage(*target_col);
         }
-        self.context.pop_curr_ctx();
 
         Ok(())
     }
@@ -4416,7 +4377,7 @@ impl LineageExtractor {
 
     fn merge_statement_lin(&mut self, merge_statement: &MergeStatement) -> anyhow::Result<()> {
         let target_table_name = &merge_statement.target_table.name;
-        let target_table_id = match self.get_table_from_context(target_table_name) {
+        let target_table_id = match self.context.get_table(target_table_name) {
             Some(target_table_id) => target_table_id,
             None => {
                 return Err(anyhow!(
@@ -4428,7 +4389,7 @@ impl LineageExtractor {
 
         let source_table_id = if let MergeSource::Table(path_name) = &merge_statement.source {
             let source_table = &path_name.name;
-            let source_table_id = self.get_table_from_context(source_table);
+            let source_table_id = self.context.get_table(source_table);
             if source_table_id.is_none() {
                 return Err(anyhow!(
                     "Table like obj name `{}` not in context.",
@@ -4449,7 +4410,7 @@ impl LineageExtractor {
 
                 if let Some(alias) = &merge_statement.source_alias {
                     let new_source_name = alias.as_str();
-                    let source_idx = self.context.allocate_new_ctx_object(
+                    let source_idx = self.context.allocate_object(
                         new_source_name,
                         ContextObjectKind::Query,
                         input
@@ -4471,47 +4432,47 @@ impl LineageExtractor {
 
         let source_table_id = source_table_id.or(subquery_table_id);
 
-        let mut full_ctx: IndexMap<String, ArenaIndex> = IndexMap::new();
-        let mut source_ctx: IndexMap<String, ArenaIndex> = IndexMap::new();
-        let mut target_ctx: IndexMap<String, ArenaIndex> = IndexMap::new();
+        let mut full_tables: IndexMap<String, ArenaIndex> = IndexMap::new();
+        let mut source_tables: IndexMap<String, ArenaIndex> = IndexMap::new();
+        let mut target_tables: IndexMap<String, ArenaIndex> = IndexMap::new();
         if let Some(alias) = &merge_statement.source_alias {
             let alias_idx =
                 self.create_table_alias_from_table(alias.as_str(), source_table_id.unwrap());
             self.context.add_object_nodes_to_output_lineage(alias_idx);
             let source_table = &self.context.arena_objects[alias_idx];
-            full_ctx.insert(source_table.name.clone(), alias_idx);
-            source_ctx.insert(source_table.name.clone(), alias_idx);
+            full_tables.insert(source_table.name.clone(), alias_idx);
+            source_tables.insert(source_table.name.clone(), alias_idx);
         } else if let Some(source_table_id) = source_table_id {
             let source_table = &self.context.arena_objects[source_table_id];
-            full_ctx.insert(source_table.name.clone(), source_table_id);
-            source_ctx.insert(source_table.name.clone().to_owned(), source_table_id);
+            full_tables.insert(source_table.name.clone(), source_table_id);
+            source_tables.insert(source_table.name.clone().to_owned(), source_table_id);
         }
         if let Some(alias) = &merge_statement.target_alias {
             let alias_idx = self.create_table_alias_from_table(alias.as_str(), target_table_id);
             self.context.add_object_nodes_to_output_lineage(alias_idx);
             let target_table = &self.context.arena_objects[alias_idx];
-            full_ctx.insert(target_table.name.clone(), alias_idx);
-            target_ctx.insert(target_table.name.clone(), alias_idx);
+            full_tables.insert(target_table.name.clone(), alias_idx);
+            target_tables.insert(target_table.name.clone(), alias_idx);
         } else {
             let target_table = &self.context.arena_objects[target_table_id];
-            full_ctx.insert(target_table.name.clone(), target_table_id);
-            target_ctx.insert(target_table.name.clone(), target_table_id);
+            full_tables.insert(target_table.name.clone(), target_table_id);
+            target_tables.insert(target_table.name.clone(), target_table_id);
         }
 
         self.context
-            .push_new_ctx(full_ctx.clone(), HashSet::new(), true);
+            .push_query_ctx(full_tables.clone(), HashSet::new(), true);
         self.expr_lin_to_track_col_usage(
             &merge_statement.condition,
             false,
             ColumnUsage::MergeJoin,
         )?;
-        self.context.pop_curr_ctx();
+        self.context.pop_curr_query_ctx();
 
         for when in &merge_statement.whens {
             match when {
                 When::Matched(when_matched) => {
                     self.context
-                        .push_new_ctx(full_ctx.clone(), HashSet::new(), true);
+                        .push_query_ctx(full_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_matched.search_condition {
                         self.expr_lin_to_track_col_usage(
@@ -4529,11 +4490,11 @@ impl LineageExtractor {
                         _ => unreachable!(),
                     }
 
-                    self.context.pop_curr_ctx();
+                    self.context.pop_curr_query_ctx();
                 }
                 When::NotMatchedByTarget(when_not_matched_by_target) => {
                     self.context
-                        .push_new_ctx(source_ctx.clone(), HashSet::new(), true);
+                        .push_query_ctx(source_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_target.search_condition {
                         self.expr_lin_to_track_col_usage(
@@ -4545,7 +4506,7 @@ impl LineageExtractor {
 
                     match &when_not_matched_by_target.merge {
                         Merge::Insert(merge_insert) => {
-                            self.merge_insert(&source_ctx, target_table_id, merge_insert)?
+                            self.merge_insert(target_table_id, merge_insert)?
                         }
                         Merge::InsertRow => self.merge_insert_row(
                             target_table_id,
@@ -4555,11 +4516,11 @@ impl LineageExtractor {
                         _ => unreachable!(),
                     }
 
-                    self.context.pop_curr_ctx();
+                    self.context.pop_curr_query_ctx();
                 }
                 When::NotMatchedBySource(when_not_matched_by_source) => {
                     self.context
-                        .push_new_ctx(target_ctx.clone(), HashSet::new(), true);
+                        .push_query_ctx(target_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_source.search_condition {
                         self.expr_lin_to_track_col_usage(
@@ -4577,7 +4538,7 @@ impl LineageExtractor {
                         _ => unreachable!(),
                     }
 
-                    self.context.pop_curr_ctx();
+                    self.context.pop_curr_query_ctx();
                 }
             }
         }
@@ -4595,7 +4556,7 @@ impl LineageExtractor {
         let var_ident = name.to_lowercase();
         let obj_name = format!("!var_{}", var_ident);
 
-        let object_idx = self.context.allocate_new_ctx_object(
+        let object_idx = self.context.allocate_object(
             &obj_name,
             ContextObjectKind::Var,
             vec![(
@@ -4653,7 +4614,7 @@ impl LineageExtractor {
             for (i, var) in set_var_statement.vars.iter().enumerate() {
                 match var {
                     SetVariable::UserVariable(var_name) => {
-                        let var_node_idx = self.get_var(var_name.as_str())?;
+                        let var_node_idx = self.context.get_var(var_name.as_str())?;
                         let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
                         var_node.input = inputs[i].clone();
                     }
@@ -4666,7 +4627,7 @@ impl LineageExtractor {
                 match var {
                     SetVariable::UserVariable(var_name) => {
                         let node_idx = self.expr_lin(expr, false, ColumnUsage::SetVar)?;
-                        let var_node_idx = self.get_var(var_name.as_str())?;
+                        let var_node_idx = self.context.get_var(var_name.as_str())?;
                         let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
                         var_node.input = vec![node_idx];
                     }
@@ -4684,11 +4645,11 @@ impl LineageExtractor {
         drop_table_statement: &DropTableStatement,
     ) -> anyhow::Result<()> {
         let table_name = &drop_table_statement.name.name;
-        let is_source_object = self.context.source_objects.contains_key(table_name);
+        let is_source_object = self.context.source_tables.contains_key(table_name);
 
         if !is_source_object {
             // Not a source object, it is a table created in this script
-            self.context.objects_stack.retain(|obj_idx| {
+            self.context.script_tables.retain(|obj_idx| {
                 let obj = &self.context.arena_objects[*obj_idx];
                 !(obj.name == *table_name && obj.kind == ContextObjectKind::TempTable)
             });
@@ -4706,6 +4667,7 @@ impl LineageExtractor {
     }
 
     fn statements_block_lin(&mut self, statements_block: &StatementsBlock) -> anyhow::Result<()> {
+        // We use a vec since a variable cannot be redeclared in an inner scope with the same name
         let mut declared_vars = vec![];
 
         for statement in &statements_block.statements {
@@ -4749,11 +4711,9 @@ impl LineageExtractor {
         });
 
         let obj_name = self.get_anon_obj_name("anon_struct");
-        let obj_idx = self.context.allocate_new_ctx_object(
-            &obj_name,
-            ContextObjectKind::AnonymousStruct,
-            vec![],
-        );
+        let obj_idx =
+            self.context
+                .allocate_object(&obj_name, ContextObjectKind::AnonymousStruct, vec![]);
 
         let node = LineageNode {
             name: NodeName::Anonymous,
@@ -4956,10 +4916,48 @@ pub struct Catalog {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct UdfArg {
+    pub name: String,
+    pub dtype: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub enum TvfArgument {
+    Standard(TvfStandardArgument),
+    Table(TvfTableArgument),
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TvfStandardArgument {
+    pub name: String,
+    pub dtype: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct TvfTableArgument {
+    pub name: String,
+    pub columns: Vec<Column>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SchemaObjectKind {
-    Table { columns: Vec<Column> },
-    View { columns: Vec<Column> },
+    // Tables
+    Table {
+        columns: Vec<Column>,
+    },
+    View {
+        columns: Vec<Column>,
+    },
+    // Routines
+    UserDefinedFunction {
+        arguments: Vec<UdfArg>,
+        returns: String,
+    },
+    TableFunction {
+        arguments: Vec<TvfArgument>,
+        returns: Vec<Column>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4987,8 +4985,8 @@ pub struct Lineage {
     pub used_columns: UsedColumns,
 }
 
-fn parse_column_dtype(column: &Column) -> anyhow::Result<NodeType> {
-    let mut scanner = Scanner::new(&column.dtype);
+fn parse_dtype(dtype: &str) -> anyhow::Result<NodeType> {
+    let mut scanner = Scanner::new(dtype);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
     let r#type = parser.parse_parameterized_bq_type()?;
@@ -5054,7 +5052,7 @@ fn _extract_lineage(
                 let mut nodes = vec![];
 
                 for col in columns {
-                    let node_type = match parse_column_dtype(col) {
+                    let node_type = match parse_dtype(&col.dtype) {
                         Err(err) => {
                             panic!(
                                 "Cannot retrieve node type from column {:?} due to: {}",
@@ -5087,12 +5085,14 @@ fn _extract_lineage(
                 }
 
                 let table_idx =
-                    ctx.allocate_new_ctx_object(&schema_object.name, context_object_kind, nodes);
+                    ctx.allocate_object(&schema_object.name, context_object_kind, nodes);
                 source_objects.insert(schema_object.name.clone(), table_idx);
             }
+            SchemaObjectKind::UserDefinedFunction { arguments, returns } => todo!(),
+            SchemaObjectKind::TableFunction { arguments, returns } => todo!(),
         }
     }
-    ctx.source_objects = source_objects;
+    ctx.source_tables = source_objects;
 
     let mut lineages = vec![];
     let mut lineage_extractor = LineageExtractor {
@@ -5152,7 +5152,7 @@ fn _extract_lineage(
 
                 if lineage_extractor
                     .context
-                    .source_objects
+                    .source_tables
                     .contains_key(&source_obj.name)
                 {
                     objects
@@ -5179,7 +5179,7 @@ fn _extract_lineage(
             if just_include_source_objects
                 && (!lineage_extractor
                     .context
-                    .source_objects
+                    .source_tables
                     .contains_key(&obj_name)
                     && !lineage_extractor
                         .context
@@ -5208,7 +5208,7 @@ fn _extract_lineage(
                     if just_include_source_objects
                         && !lineage_extractor
                             .context
-                            .source_objects
+                            .source_tables
                             .contains_key(&inp_obj.name)
                     {
                         continue;
@@ -5304,7 +5304,7 @@ fn _extract_lineage(
 
                     if lineage_extractor
                         .context
-                        .source_objects
+                        .source_tables
                         .contains_key(&source_obj.name)
                     {
                         used_nodes
