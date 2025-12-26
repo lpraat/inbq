@@ -10,14 +10,14 @@ documentation = "https://github.com/lpraat/inbq"
 homepage = "https://github.com/lpraat/inbq"
 repository = "https://github.com/lpraat/inbq"
 readme = "README.md"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 authors = ["Lorenzo Pratissoli <pratissolil@gmail.com>"]
 license = "MIT"
 
 [workspace.dependencies]
-inbq = { version = "0.6.0", path = "crates/inbq" }
-inbq_genpy = { version = "0.6.0", path = "crates/inbq_genpy"}
+inbq = { version = "0.7.0", path = "crates/inbq" }
+inbq_genpy = { version = "0.7.0", path = "crates/inbq_genpy"}
 
 anyhow = "1.0.100"
 clap = { version = "4.5.51" }
