@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use inbq::lineage::{Catalog, SchemaObject};
+use inbq::lineage::catalog::{Catalog, SchemaObject};
 use indexmap::IndexMap;
 use serde::Deserialize;
 

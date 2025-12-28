@@ -2,14 +2,15 @@ use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-        CreateTableStatement, Cte, DeclareVarStatement, DeleteStatement, DropTableStatement, Expr,
-        ForInStatement, FromExpr, FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr,
-        GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
-        Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr,
-        ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
-        StatementsBlock, StructExpr, Type, UnaryOperator, UpdateStatement, When, With,
+        CreateSqlFunctionStatement, CreateTableStatement, Cte, DeclareVarStatement,
+        DeleteStatement, DropFunctionStatement, DropTableStatement, Expr, ForInStatement, FromExpr,
+        FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr, GroupingQueryExpr,
+        Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert,
+        MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr, ParameterizedType,
+        QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, SelectAllExpr,
+        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+        SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr,
+        Type, UnaryOperator, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -18,14 +19,17 @@ use crate::{
 use anyhow::anyhow;
 use indexmap::{IndexMap, IndexSet};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     collections::HashSet,
     fmt::{Debug, Display},
 };
 use std::{hash::Hash, result::Result::Ok};
 
-use super::find_matching_function;
+use super::{
+    catalog::{Catalog, Column, SchemaObjectKind},
+    find_matching_function,
+};
 
 #[macro_export]
 macro_rules! routine_name {
@@ -361,10 +365,10 @@ impl NodeType {
         }
     }
 
-    fn from_parser_type(param_type: &Type, types_vec: &mut Vec<Self>) -> Self {
-        let r#type = match param_type {
+    fn from_parser_type(param_type: &Type) -> Self {
+        match param_type {
             Type::Array { r#type } => NodeType::Array(Box::new(ArrayNodeType {
-                r#type: Self::from_parser_type(r#type, types_vec),
+                r#type: Self::from_parser_type(r#type),
                 input: vec![],
             })),
             Type::BigNumeric => NodeType::BigNumeric,
@@ -378,9 +382,7 @@ impl NodeType {
             Type::Interval => NodeType::Interval,
             Type::Json => NodeType::Json,
             Type::Numeric => NodeType::Numeric,
-            Type::Range { r#type: ty } => {
-                NodeType::Range(Box::new(Self::from_parser_type(ty, types_vec)))
-            }
+            Type::Range { r#type: ty } => NodeType::Range(Box::new(Self::from_parser_type(ty))),
             Type::String => NodeType::String,
             Type::Struct { fields } => NodeType::Struct(StructNodeType {
                 fields: fields
@@ -391,7 +393,7 @@ impl NodeType {
                                 .name
                                 .as_ref()
                                 .map_or("anonymous", |name| name.as_str()),
-                            Self::from_parser_type(&field.r#type, types_vec),
+                            Self::from_parser_type(&field.r#type),
                             vec![],
                         )
                     })
@@ -399,9 +401,7 @@ impl NodeType {
             }),
             Type::Time => NodeType::Time,
             Type::Timestamp => NodeType::Timestamp,
-        };
-        types_vec.push(r#type.clone());
-        r#type
+        }
     }
 
     fn from_parser_parameterized_type(param_type: &ParameterizedType) -> NodeType {
@@ -552,7 +552,9 @@ enum ContextObjectKind {
     AnonymousExpr,
     Unnest,
     Var,
-    UserFunction,
+    Arg,
+    UserSqlFunction,
+    TempUserSqlFunction,
     TableFunction,
 }
 
@@ -572,8 +574,10 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::AnonymousArray => "anonymous_array".to_owned(),
             ContextObjectKind::Unnest => "unnest".to_owned(),
             ContextObjectKind::Var => "var".to_owned(),
-            ContextObjectKind::UserFunction => "user_function".to_owned(),
+            ContextObjectKind::Arg => "arg".to_owned(),
             ContextObjectKind::TableFunction => "table_function".to_owned(),
+            ContextObjectKind::UserSqlFunction => "user_sql_function".to_owned(),
+            ContextObjectKind::TempUserSqlFunction => "temp_user_sql_function".to_owned(),
         }
     }
 }
@@ -612,6 +616,7 @@ enum ColumnUsage {
     MergeInsert,
     DefaultVar,
     SetVar,
+    UserSqlFunction,
 }
 
 impl From<ColumnUsage> for String {
@@ -633,6 +638,7 @@ impl From<ColumnUsage> for String {
             ColumnUsage::MergeInsert => "merge_insert".into(),
             ColumnUsage::DefaultVar => "default_var".into(),
             ColumnUsage::SetVar => "set_var".into(),
+            ColumnUsage::UserSqlFunction => "user_sql_function".into(),
         }
     }
 }
@@ -685,6 +691,71 @@ impl Default for ContextState {
     }
 }
 
+#[derive(Debug, Clone)]
+enum UserSqlFunctionArgType {
+    Standard(NodeType),
+    AnyType,
+}
+
+#[derive(Debug, Clone)]
+struct UserSqlFunctionArg {
+    name: String,
+    r#type: UserSqlFunctionArgType,
+}
+
+impl UserSqlFunctionArg {
+    fn node_type(&self) -> NodeType {
+        match &self.r#type {
+            UserSqlFunctionArgType::Standard(node_type) => node_type.clone(),
+            UserSqlFunctionArgType::AnyType => NodeType::Unknown,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct UserSqlFunction {
+    name: String,
+    arguments: Vec<UserSqlFunctionArg>,
+    returns: Option<NodeType>,
+    body: Expr,
+    is_temporary: bool,
+}
+
+impl UserSqlFunction {
+    #[allow(dead_code)]
+    fn is_templated(&self) -> bool {
+        self.returns.is_none()
+            || self
+                .arguments
+                .iter()
+                .any(|el| matches!(el.r#type, UserSqlFunctionArgType::AnyType))
+    }
+    fn from_create_statement(statement: &CreateSqlFunctionStatement) -> Self {
+        let arguments = statement
+            .arguments
+            .iter()
+            .map(|arg| {
+                let r#type = match &arg.r#type {
+                    crate::ast::FunctionArgumentType::Standard(ty) => {
+                        UserSqlFunctionArgType::Standard(NodeType::from_parser_type(ty))
+                    }
+                    crate::ast::FunctionArgumentType::AnyType => UserSqlFunctionArgType::AnyType,
+                };
+                let name = arg.name.as_str().to_owned();
+                UserSqlFunctionArg { name, r#type }
+            })
+            .collect();
+        let returns = statement.returns.as_ref().map(NodeType::from_parser_type);
+        Self {
+            name: statement.name.name.clone(),
+            arguments,
+            returns,
+            body: statement.body.clone(),
+            is_temporary: statement.is_temporary,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Context {
     // Arena
@@ -696,11 +767,13 @@ struct Context {
     script_tables: Vec<ArenaIndex>,
 
     // Routines
+    /// Currently used to store templated functions
+    user_sql_functions: IndexMap<String, UserSqlFunction>,
     source_routines: IndexMap<String, ArenaIndex>,
     script_routines: Vec<ArenaIndex>,
 
-    // Vars
     vars: IndexMap<String, ArenaIndex>,
+    args: IndexMap<String, ArenaIndex>,
 
     // Query context
     query_tables: Vec<IndexMap<String, IndexDepth>>,
@@ -725,8 +798,11 @@ struct IndexDepth {
 
 impl Context {
     fn reset(&mut self) {
-        // Keep the same arena and clear the rest
+        // Keep the same arena, catalog, non-temp objects, and clear the rest
         self.script_tables.clear();
+        self.script_routines.clear();
+        self.user_sql_functions
+            .retain(|_, sql_func| !sql_func.is_temporary);
         self.query_tables.clear();
         self.query_columns.clear();
         self.query_joined_ambiguous_columns.clear();
@@ -791,6 +867,19 @@ impl Context {
         });
         self.add_nested_nodes_from_input_nodes(idx, &input);
         idx
+    }
+
+    fn add_inputs_to_node(
+        &mut self,
+        node_idx: ArenaIndex,
+        input: &[ArenaIndex],
+        add_nested_nodes_from_input_nodes: bool,
+    ) {
+        let node = &mut self.arena_lineage_nodes[node_idx];
+        node.input.extend(input);
+        if add_nested_nodes_from_input_nodes {
+            self.add_nested_nodes_from_input_nodes(node_idx, input);
+        }
     }
 
     fn add_nested_nodes_from_input_nodes(
@@ -1217,21 +1306,23 @@ impl Context {
         self.query_depth -= 1;
     }
 
-    /// Get the node index of a column or variable from the current query context.
-    /// Priority order: columns are checked first, then variables.
+    /// Get the node index of a column or variable or arg from the current query context.
+    /// Priority order: columns are checked first, then variables, then args.
     ///
     /// If not found, an `Err` is returned.
-    fn get_query_col_or_var(&mut self, name: &str) -> anyhow::Result<ArenaIndex> {
+    fn get_query_col_or_var_or_arg(&mut self, name: &str) -> anyhow::Result<ArenaIndex> {
         match self.get_column(None, name) {
             Ok(col_idx) => Ok(col_idx),
             Err(col_err) => match col_err.downcast_ref::<GetColumnError>() {
                 Some(GetColumnError::Ambiguous(_)) => Err(col_err),
-                Some(GetColumnError::NotFound(_)) | None => self.get_var(name).map_err(|_| {
-                    anyhow!(
-                        "Could not get column `{name:?}` \
+                Some(GetColumnError::NotFound(_)) | None => {
+                    self.get_var(name).or(self.get_arg(name)).map_err(|_| {
+                        anyhow!(
+                            "Could not get column `{name:?}` \
                         and could not find a variable with that name either."
-                    )
-                }),
+                        )
+                    })
+                }
             },
         }
     }
@@ -1244,6 +1335,32 @@ impl Context {
             .get(&var_name.to_lowercase())
             .ok_or_else(|| anyhow!("Variable `{}` not found in context.", var_name))
             .copied()
+    }
+
+    fn add_var(&mut self, name: String, object_idx: ArenaIndex) {
+        self.vars.insert(name, object_idx);
+    }
+
+    fn remove_var(&mut self, name: &str) -> Option<ArenaIndex> {
+        self.vars.swap_remove(name)
+    }
+
+    /// Get the node index of an arg from the current query context.
+    ///
+    /// If not found, an `Err` is returned.
+    fn get_arg(&self, arg_name: &str) -> anyhow::Result<ArenaIndex> {
+        self.args
+            .get(&arg_name.to_lowercase())
+            .ok_or_else(|| anyhow!("Argument `{}` not found in context.", arg_name))
+            .copied()
+    }
+
+    fn add_arg(&mut self, name: String, object_idx: ArenaIndex) {
+        self.args.insert(name, object_idx);
+    }
+
+    fn remove_arg(&mut self, name: &str) -> Option<ArenaIndex> {
+        self.args.swap_remove(name)
     }
 
     /// Get the object index of a table from the current query context.
@@ -1585,7 +1702,7 @@ impl LineageExtractor {
                             } else {
                                 // col_struct.field (or var_struct.field)
                                 let col_or_node_idx =
-                                    self.context.get_query_col_or_var(left_ident)?;
+                                    self.context.get_query_col_or_var_or_arg(left_ident)?;
                                 access_path.path.push(AccessOp::Field(right_ident.clone()));
                                 let node = &self.context.arena_lineage_nodes[col_or_node_idx];
                                 let nested_node_idx = node.access(&access_path)?;
@@ -1604,7 +1721,7 @@ impl LineageExtractor {
                                 } else {
                                     // col_struct.field (or var_struct.field)
                                     let col_or_node_idx =
-                                        self.context.get_query_col_or_var(left_ident)?;
+                                        self.context.get_query_col_or_var_or_arg(left_ident)?;
                                     access_path.path.push(AccessOp::Field(right_ident.clone()));
                                     col_or_node_idx
                                 };
@@ -1706,7 +1823,7 @@ impl LineageExtractor {
                             return Ok(col_source_idx);
                         } else {
                             // struct_col.array_field (or struct_var.array_field)
-                            let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
+                            let col_or_var_idx = self.context.get_query_col_or_var_or_arg(ident)?;
                             access_path.path.extend_from_slice(&[
                                 AccessOp::Index,
                                 AccessOp::Field(array_field.clone()),
@@ -1757,7 +1874,7 @@ impl LineageExtractor {
                             ));
                         } else {
                             // col_struct.*
-                            let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
+                            let col_or_var_idx = self.context.get_query_col_or_var_or_arg(ident)?;
                             let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                             let access_path = AccessPath {
                                 path: vec![AccessOp::FieldStar],
@@ -1775,7 +1892,7 @@ impl LineageExtractor {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
-                        let col_or_var_idx = self.context.get_query_col_or_var(ident)?;
+                        let col_or_var_idx = self.context.get_query_col_or_var_or_arg(ident)?;
                         let node = &self.context.arena_lineage_nodes[col_or_var_idx];
                         let nested_node_idx = node.access(&access_path)?;
                         return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
@@ -1931,7 +2048,7 @@ impl LineageExtractor {
 
         let node_type = match op {
             BinaryOperator::Star | BinaryOperator::Slash => match (left_type, right_type) {
-                (left, right) if left == right => left.clone(),
+                (NodeType::Float64, NodeType::Float64) => NodeType::Float64,
                 (NodeType::Int64, NodeType::Float64) | (NodeType::Float64, NodeType::Int64) => {
                     NodeType::Float64
                 }
@@ -1947,8 +2064,14 @@ impl LineageExtractor {
                 }
                 (NodeType::BigNumeric, NodeType::Float64)
                 | (NodeType::Float64, NodeType::BigNumeric) => NodeType::Float64,
-                (left, NodeType::Unknown) => left.clone(),
-                (NodeType::Unknown, right) => right.clone(),
+                (NodeType::Int64, NodeType::Int64) => NodeType::Float64,
+                (known, NodeType::Unknown) | (NodeType::Unknown, known) => {
+                    if *known == NodeType::Int64 {
+                        NodeType::Float64
+                    } else {
+                        known.clone()
+                    }
+                }
                 _ => {
                     return Err(anyhow!(
                         "Cannot apply BinaryOperator::{} with type `{}` from expr `{:?}` with type `{}` from expr `{:?}`",
@@ -2075,7 +2198,7 @@ impl LineageExtractor {
     }
 
     fn add_typed_struct_fields_to_context(&mut self, typ: &Type) {
-        let struct_node_type = NodeType::from_parser_type(typ, &mut vec![]);
+        let struct_node_type = NodeType::from_parser_type(typ);
 
         match struct_node_type {
             NodeType::Struct(struct_node_type) => {
@@ -2230,7 +2353,7 @@ impl LineageExtractor {
 
         let (mut array_type, strict) = if let Some(typ) = &array_expr.r#type {
             let ty = match typ {
-                Type::Array { r#type } => NodeType::from_parser_type(r#type, &mut vec![]),
+                Type::Array { r#type } => NodeType::from_parser_type(r#type),
                 _ => NodeType::Unknown,
             };
             (ty, true)
@@ -2323,15 +2446,66 @@ impl LineageExtractor {
         let (name, return_type) = match self.context.get_routine(&routine_name) {
             Some(routine_idx)
                 if self.context.arena_objects[routine_idx].kind
-                    == ContextObjectKind::UserFunction =>
+                    == ContextObjectKind::UserSqlFunction =>
             {
-                // TODO: check argument types as we do for other calls (need to save routine arguments somewhere)
+                let routine = &self.context.arena_objects[routine_idx];
+                if let Some(sql_function) = self.context.user_sql_functions.get(&routine.name) {
+                    // Evaluate body of templated function
+                    debug_assert!(sql_function.is_templated());
+                    let args = args.iter().map(|&n| n.clone()).collect::<Vec<_>>();
+                    // todo: remove clone()
+                    let sql_function = sql_function.clone();
+                    let return_type = sql_function.returns.clone();
+                    let return_node_idx = self.context.arena_objects[routine_idx].lineage_nodes[0];
+                    let node_idx = self.evaluate_user_sql_function_body(
+                        &sql_function,
+                        &args,
+                        &mut input,
+                        expand_value_table,
+                    )?;
+                    input.push(return_node_idx);
+                    (
+                        routine_name,
+                        return_type
+                            .unwrap_or(self.context.arena_lineage_nodes[node_idx].r#type.clone()),
+                    )
+                } else {
+                    let return_node_idx = self.context.arena_objects[routine_idx].lineage_nodes[0];
+                    input.push(return_node_idx);
+                    (
+                        routine_name,
+                        self.context.arena_lineage_nodes[return_node_idx]
+                            .r#type
+                            .clone(),
+                    )
+                }
+            }
+            Some(routine_idx)
+                if self.context.arena_objects[routine_idx].kind
+                    == ContextObjectKind::TempUserSqlFunction =>
+            {
+                // We evaluate the body of temp functions
+                let args = args.iter().map(|&n| n.clone()).collect::<Vec<_>>();
+                let routine_name = self.context.arena_objects[routine_idx].name.clone();
+                let sql_function = self
+                    .context
+                    .user_sql_functions
+                    .get(&routine_name)
+                    .unwrap()
+                    .clone();
+                let return_type = sql_function.returns.clone();
                 let return_node_idx = self.context.arena_objects[routine_idx].lineage_nodes[0];
+                let node_idx = self.evaluate_user_sql_function_body(
+                    &sql_function,
+                    &args,
+                    &mut input,
+                    expand_value_table,
+                )?;
+                input.push(return_node_idx);
                 (
                     routine_name,
-                    self.context.arena_lineage_nodes[return_node_idx]
-                        .r#type
-                        .clone(),
+                    return_type
+                        .unwrap_or(self.context.arena_lineage_nodes[node_idx].r#type.clone()),
                 )
             }
             _ => {
@@ -2350,6 +2524,66 @@ impl LineageExtractor {
         }
 
         Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, input))
+    }
+
+    fn evaluate_user_sql_function_body(
+        &mut self,
+        user_sql_function: &UserSqlFunction,
+        arg_types: &[NodeType],
+        input: &mut Vec<ArenaIndex>,
+        expand_value_table: bool,
+    ) -> anyhow::Result<ArenaIndex> {
+        let arguments = user_sql_function
+            .arguments
+            .iter()
+            .zip(arg_types)
+            .map(|(sql_arg, arg_ty)| {
+                let name = sql_arg.name.clone();
+                let ty = match sql_arg.node_type() {
+                    NodeType::Unknown => arg_ty.clone(),
+                    t => t,
+                };
+                (name, ty)
+            })
+            .collect::<Vec<_>>();
+        let body = user_sql_function.body.clone();
+
+        // Evaluate body
+        for (arg_name, arg_ty) in &arguments {
+            self.create_new_arg(arg_name, arg_ty.clone(), &[]);
+        }
+        let node_idx = self.expr_lin(&body, expand_value_table, ColumnUsage::UserSqlFunction)?;
+        for (arg_name, _) in &arguments {
+            self.context.remove_arg(arg_name);
+        }
+
+        input.push(node_idx);
+        Ok(node_idx)
+    }
+
+    fn create_new_arg(
+        &mut self,
+        name: &str,
+        node_type: NodeType,
+        input_lineage_nodes: &[ArenaIndex],
+    ) -> ArenaIndex {
+        // Arg names are case insensitive (like column names)
+        let arg_ident = name.to_lowercase();
+        let obj_name = format!("!arg_{}", arg_ident);
+
+        let object_idx = self.context.allocate_object(
+            &obj_name,
+            ContextObjectKind::Arg,
+            vec![(
+                NodeName::Defined(arg_ident.clone()),
+                node_type,
+                input_lineage_nodes.into(),
+            )],
+        );
+        let arg_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
+        self.context.add_arg(arg_ident, arg_node_idx);
+        self.context.add_node_to_output_lineage(arg_node_idx);
+        object_idx
     }
 
     fn expr_lin_to_track_col_usage(
@@ -2435,10 +2669,7 @@ impl LineageExtractor {
             }
             Expr::Range(range_expr) => self.allocate_expr_node(
                 "constant",
-                NodeType::Range(Box::new(NodeType::from_parser_type(
-                    &range_expr.r#type,
-                    &mut vec![],
-                ))),
+                NodeType::Range(Box::new(NodeType::from_parser_type(&range_expr.r#type))),
                 vec![],
             ),
             Expr::Date(_) => self.allocate_expr_node("constant", NodeType::Date, vec![]),
@@ -2496,7 +2727,7 @@ impl LineageExtractor {
                     }
                 } else {
                     // col
-                    let node_idx = self.context.get_query_col_or_var(ident)?;
+                    let node_idx = self.context.get_query_col_or_var_or_arg(ident)?;
                     let node = &self.context.arena_lineage_nodes[node_idx];
                     let allocated_node_idx =
                         self.allocate_expr_node("col", node.r#type.clone(), vec![node_idx]);
@@ -4115,6 +4346,7 @@ impl LineageExtractor {
         };
 
         if table_kind == ContextObjectKind::Table {
+            //todo: handle non temp table creation
             return Ok(());
         }
 
@@ -4261,8 +4493,8 @@ impl LineageExtractor {
             ))?;
 
             let node_idx = self.expr_lin(&update_item.expr, false, ColumnUsage::Update)?;
-            let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
-            col_lineage_node.input.push(node_idx);
+            self.context
+                .add_inputs_to_node(*col_source_idx, &[node_idx], true);
             self.context.add_node_to_output_lineage(*col_source_idx);
         }
 
@@ -4318,8 +4550,7 @@ impl LineageExtractor {
                 .iter()
                 .zip(obj_lineage_nodes)
                 .for_each(|(target_col, value)| {
-                    let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-                    target_lineage_node.input.push(value);
+                    self.context.add_inputs_to_node(*target_col, &[value], true);
                     self.context.add_node_to_output_lineage(*target_col);
                 });
         } else {
@@ -4328,8 +4559,8 @@ impl LineageExtractor {
                 .zip(insert_statement.values.as_ref().unwrap())
             {
                 let node_idx = self.expr_lin(value, false, ColumnUsage::Insert)?;
-                let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-                target_lineage_node.input.push(node_idx);
+                self.context
+                    .add_inputs_to_node(*target_col, &[node_idx], true);
                 self.context.add_node_to_output_lineage(*target_col);
             }
         }
@@ -4362,8 +4593,8 @@ impl LineageExtractor {
         };
         for (target_col, value) in target_columns.iter().zip(&merge_insert.values) {
             let node_idx = self.expr_lin(value, false, ColumnUsage::MergeInsert)?;
-            let target_lineage_node = &mut self.context.arena_lineage_nodes[*target_col];
-            target_lineage_node.input.push(node_idx);
+            self.context
+                .add_inputs_to_node(*target_col, &[node_idx], true);
             self.context.add_node_to_output_lineage(*target_col);
         }
 
@@ -4401,8 +4632,8 @@ impl LineageExtractor {
             ))?;
 
             let node_idx = self.expr_lin(&update_item.expr, false, ColumnUsage::MergeUpdate)?;
-            let col_lineage_node = &mut self.context.arena_lineage_nodes[*col_source_idx];
-            col_lineage_node.input.push(node_idx);
+            self.context
+                .add_inputs_to_node(*col_source_idx, &[node_idx], true);
             self.context.add_node_to_output_lineage(*col_source_idx);
         }
         Ok(())
@@ -4432,8 +4663,8 @@ impl LineageExtractor {
         }
 
         for (target_node, source_node) in target_nodes.into_iter().zip(nodes) {
-            let target_lineage_node = &mut self.context.arena_lineage_nodes[target_node];
-            target_lineage_node.input.push(source_node);
+            self.context
+                .add_inputs_to_node(target_node, &[source_node], true);
             self.context.add_node_to_output_lineage(target_node);
         }
 
@@ -4611,7 +4842,7 @@ impl LineageExtractor {
         Ok(())
     }
 
-    fn add_var_to_scope(
+    fn create_new_var(
         &mut self,
         name: &str,
         node_type: NodeType,
@@ -4631,7 +4862,7 @@ impl LineageExtractor {
             )],
         );
         let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
-        self.context.vars.insert(var_ident, var_node_idx);
+        self.context.add_var(var_ident, var_node_idx);
         self.context.add_node_to_output_lineage(var_node_idx);
         object_idx
     }
@@ -4650,7 +4881,7 @@ impl LineageExtractor {
         };
 
         for var in &declare_var_statement.vars {
-            self.add_var_to_scope(
+            self.create_new_var(
                 var.as_str(),
                 declare_var_statement.r#type.as_ref().map_or_else(
                     || NodeType::Unknown,
@@ -4710,14 +4941,33 @@ impl LineageExtractor {
         drop_table_statement: &DropTableStatement,
     ) -> anyhow::Result<()> {
         let table_name = &drop_table_statement.name.name;
-        let is_source_object = self.context.source_tables.contains_key(table_name);
+        let is_source_table = self.context.source_tables.contains_key(table_name);
 
-        if !is_source_object {
-            // Not a source object, it is a table created in this script
+        if !is_source_table {
+            // Not a source table, it is a table created in this script
             self.context.script_tables.retain(|obj_idx| {
                 let obj = &self.context.arena_objects[*obj_idx];
+                // todo: remove also non temp tables created in this script (need to adapt create table code)
                 !(obj.name == *table_name && obj.kind == ContextObjectKind::TempTable)
             });
+        }
+        Ok(())
+    }
+
+    /// Drop functions
+    fn drop_function_statement_lin(
+        &mut self,
+        drop_table_statement: &DropFunctionStatement,
+    ) -> anyhow::Result<()> {
+        let routine_name = routine_name!(drop_table_statement.name.name);
+        let is_source_routine = self.context.source_tables.contains_key(&routine_name);
+
+        if !is_source_routine {
+            // Not a source routine, it is a function created in this script
+            self.context
+                .script_routines
+                .retain(|obj_idx| self.context.arena_objects[*obj_idx].name != routine_name);
+            self.context.user_sql_functions.swap_remove(&routine_name);
         }
         Ok(())
     }
@@ -4726,8 +4976,12 @@ impl LineageExtractor {
     fn remove_scope_vars(&mut self, vars: &[ArenaIndex]) {
         vars.iter().for_each(|obj_idx| {
             let var_obj = &self.context.arena_objects[*obj_idx];
-            let var_node = &self.context.arena_lineage_nodes[var_obj.lineage_nodes[0]];
-            self.context.vars.swap_remove(var_node.name.string());
+            // todo: remove to_owned
+            let var_node_name = self.context.arena_lineage_nodes[var_obj.lineage_nodes[0]]
+                .name
+                .string()
+                .to_owned();
+            self.context.remove_var(&var_node_name);
         });
     }
 
@@ -4793,7 +5047,7 @@ impl LineageExtractor {
 
         self.context.add_node_to_output_lineage(node_idx);
         let var_idx =
-            self.add_var_to_scope(for_in_statement.var_name.as_str(), struct_node, &[node_idx]);
+            self.create_new_var(for_in_statement.var_name.as_str(), struct_node, &[node_idx]);
 
         for statement in &for_in_statement.statements {
             self.statement_lin(statement)?
@@ -4801,6 +5055,32 @@ impl LineageExtractor {
 
         self.remove_scope_vars(&[var_idx]);
 
+        Ok(())
+    }
+
+    fn create_sql_function_statement_lin(
+        &mut self,
+        create_sql_function_statement: &CreateSqlFunctionStatement,
+    ) -> anyhow::Result<()> {
+        let sql_function = UserSqlFunction::from_create_statement(create_sql_function_statement);
+        let routine_name = routine_name!(sql_function.name);
+        let routine_nodes = vec![(
+            NodeName::Anonymous,
+            sql_function.returns.clone().unwrap_or(NodeType::Unknown),
+            vec![],
+        )];
+        let kind = if sql_function.is_temporary {
+            ContextObjectKind::TempUserSqlFunction
+        } else {
+            ContextObjectKind::UserSqlFunction
+        };
+        let routine_idx = self
+            .context
+            .allocate_object(&routine_name, kind, routine_nodes);
+        self.context
+            .user_sql_functions
+            .insert(routine_name, sql_function);
+        self.context.add_script_routine(routine_idx);
         Ok(())
     }
 
@@ -4828,6 +5108,12 @@ impl LineageExtractor {
                 // To handle temp tables
                 self.create_table_statement_lin(create_table_statement)?
             }
+            Statement::CreateSqlFunction(create_sql_function_statement) => {
+                self.create_sql_function_statement_lin(create_sql_function_statement)?
+            }
+            Statement::CreateJsFunction(_) => {
+                // TODO
+            }
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(declare_var_statement)?;
             }
@@ -4843,6 +5129,9 @@ impl LineageExtractor {
             Statement::DropTableStatement(drop_table_statement) => {
                 // To handle drop of temp tables
                 self.drop_table_statement_lin(drop_table_statement)?
+            }
+            Statement::DropFunctionStatement(drop_function_statement) => {
+                self.drop_function_statement_lin(drop_function_statement)?
             }
             Statement::If(if_statement) => {
                 for statement in &if_statement.r#if.statements {
@@ -4963,69 +5252,6 @@ pub struct ReadyLineage {
     pub objects: Vec<ReadyLineageObject>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct Column {
-    pub name: String,
-    pub dtype: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct SchemaObject {
-    pub name: String, // This is the project.dataset.name uid
-    pub kind: SchemaObjectKind,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Catalog {
-    pub schema_objects: Vec<SchemaObject>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct UserFunctionArg {
-    pub name: String,
-    pub dtype: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum TableFunctionArgument {
-    Standard(TableFunctionStandardArgument),
-    Table(TableFunctionTableArgument),
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct TableFunctionStandardArgument {
-    pub name: String,
-    pub dtype: String,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct TableFunctionTableArgument {
-    pub name: String,
-    pub columns: Vec<Column>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum SchemaObjectKind {
-    // Tables
-    Table {
-        columns: Vec<Column>,
-    },
-    View {
-        columns: Vec<Column>,
-    },
-    // Routines
-    UserFunction {
-        arguments: Vec<UserFunctionArg>,
-        returns: String,
-    },
-    TableFunction {
-        arguments: Vec<TableFunctionArgument>,
-        returns: Vec<Column>,
-    },
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct UsedNode {
     pub name: String,
@@ -5051,12 +5277,27 @@ pub struct Lineage {
     pub used_columns: UsedColumns,
 }
 
-fn parse_dtype(dtype: &str) -> anyhow::Result<NodeType> {
+fn parse_parameterized_dtype(dtype: &str) -> anyhow::Result<NodeType> {
     let mut scanner = Scanner::new(dtype);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
     let r#type = parser.parse_parameterized_bq_type()?;
     Ok(NodeType::from_parser_parameterized_type(&r#type))
+}
+
+fn parse_dtype(dtype: &str) -> anyhow::Result<NodeType> {
+    let mut scanner = Scanner::new(dtype);
+    scanner.scan()?;
+    let mut parser = Parser::new(scanner.tokens());
+    let r#type = parser.parse_bq_type()?;
+    Ok(NodeType::from_parser_type(&r#type))
+}
+
+fn parse_expr(s: &str) -> anyhow::Result<Expr> {
+    let mut scanner = Scanner::new(s);
+    scanner.scan()?;
+    let mut parser = Parser::new(scanner.tokens());
+    parser.parse_expr()
 }
 
 fn columns_to_nodes(
@@ -5082,7 +5323,7 @@ fn columns_to_nodes(
     let mut nodes = vec![];
 
     for col in columns {
-        let node_type = match parse_dtype(&col.dtype) {
+        let node_type = match parse_parameterized_dtype(&col.dtype) {
             Err(err) => {
                 panic!(
                     "Cannot retrieve node type from column {:?} due to: {}",
@@ -5145,6 +5386,7 @@ fn _extract_lineage(
     let mut ctx = Context::default();
     let mut source_tables = IndexMap::new();
     let mut source_routines = IndexMap::new();
+    let mut user_sql_functions = IndexMap::new();
 
     for schema_object in &catalog.schema_objects {
         match &schema_object.kind {
@@ -5160,9 +5402,10 @@ fn _extract_lineage(
                     ctx.allocate_object(&schema_object.name, ContextObjectKind::Table, table_nodes);
                 source_tables.insert(schema_object.name.clone(), table_idx);
             }
-            SchemaObjectKind::UserFunction {
-                arguments: _,
+            SchemaObjectKind::UserSqlFunction {
+                arguments,
                 returns,
+                body,
             } => {
                 if source_routines.contains_key(&schema_object.name) {
                     panic!(
@@ -5170,24 +5413,113 @@ fn _extract_lineage(
                         schema_object.name
                     );
                 }
-                let return_type = match parse_dtype(returns) {
-                    Err(err) => {
+
+                let (arguments, found_any_type) = {
+                    let mut unique_arguments = HashSet::new();
+                    let mut duplicate_arguments = vec![];
+
+                    let are_args_unique = arguments.iter().all(|arg| {
+                        let is_unique = unique_arguments.insert(&arg.name);
+                        if !is_unique {
+                            duplicate_arguments.push(&arg.name);
+                        }
+                        is_unique
+                    });
+                    if !are_args_unique {
                         panic!(
-                            "Cannot retrieve return type {} of routine {} due to: {}",
-                            returns, schema_object.name, err
+                            "Found duplicate columns in schema object `{}`: `{:?}`.",
+                            &schema_object.name, duplicate_arguments
                         );
                     }
-                    Ok(return_type) => return_type,
+
+                    let mut found_any_type = false;
+                    let mut sql_args = vec![];
+                    for arg in arguments {
+                        if arg.dtype.eq_ignore_ascii_case("any type") {
+                            sql_args.push(UserSqlFunctionArg {
+                                name: arg.name.clone(),
+                                r#type: UserSqlFunctionArgType::AnyType,
+                            });
+                            found_any_type = true;
+                        } else {
+                            let arg_type = match parse_dtype(&arg.dtype) {
+                                Err(err) => {
+                                    panic!(
+                                        "Cannot retrieve node type from argument {:?} due to: {}",
+                                        arg, err
+                                    );
+                                }
+                                Ok(node_type) => node_type,
+                            };
+                            sql_args.push(UserSqlFunctionArg {
+                                name: arg.name.clone(),
+                                r#type: UserSqlFunctionArgType::Standard(arg_type),
+                            })
+                        }
+                    }
+                    (sql_args, found_any_type)
+                };
+
+                let returns = match returns {
+                    Some(returns) => match parse_dtype(returns) {
+                        Err(err) => {
+                            panic!(
+                                "Cannot retrieve return type {} of sql function schema object {} due to: {}",
+                                returns, schema_object.name, err
+                            );
+                        }
+                        Ok(return_type) => Some(return_type),
+                    },
+                    None => None,
+                };
+
+                let is_templated = returns.is_none() || found_any_type;
+
+                let body = if is_templated {
+                    let body_expr = match body {
+                        Some(body) => match parse_expr(body) {
+                            Ok(body) => body,
+                            Err(err) => panic!(
+                                "Cannot parse body expression of sql function schema object {} due to: {}",
+                                schema_object.name, err
+                            ),
+                        },
+                        None => panic!(
+                            "Schema object `{}` is a templated SQL function. The definition of the function body is needed.",
+                            schema_object.name
+                        ),
+                    };
+                    Some(body_expr)
+                } else {
+                    None
                 };
 
                 let routine_name = routine_name!(schema_object.name);
-                let routine_nodes = vec![(NodeName::Anonymous, return_type, vec![])];
+                let routine_nodes = vec![(
+                    NodeName::Anonymous,
+                    returns.clone().unwrap_or(NodeType::Unknown),
+                    vec![],
+                )];
                 let routine_idx = ctx.allocate_object(
                     &routine_name,
-                    ContextObjectKind::UserFunction,
+                    ContextObjectKind::UserSqlFunction,
                     routine_nodes,
                 );
                 source_routines.insert(routine_name.clone(), routine_idx);
+
+                if is_templated {
+                    // We only add templated functions because we need to evaluate
+                    // their body (note: we could also add non-templated ones)
+                    let sql_function = UserSqlFunction {
+                        name: schema_object.name.clone(),
+                        arguments,
+                        returns,
+                        body: body.unwrap(),
+                        is_temporary: false,
+                    };
+
+                    user_sql_functions.insert(routine_name, sql_function);
+                }
             }
             SchemaObjectKind::TableFunction {
                 arguments: _,
@@ -5212,6 +5544,7 @@ fn _extract_lineage(
     }
     ctx.source_tables = source_tables;
     ctx.source_routines = source_routines;
+    ctx.user_sql_functions = user_sql_functions;
 
     let mut lineages = vec![];
     let mut lineage_extractor = LineageExtractor {
@@ -5308,11 +5641,6 @@ fn _extract_lineage(
                 let node = &lineage_extractor.context.arena_lineage_nodes[*node_idx];
                 let node_name = node.name.clone();
                 let node_type = node.r#type.clone();
-
-                if node_name.nested_path().contains(['.', '[']) {
-                    // Do not return nested nodes in the final output
-                    continue;
-                }
 
                 let mut node_input = vec![];
                 for (inp_obj_idx, inp_node_idx) in input {

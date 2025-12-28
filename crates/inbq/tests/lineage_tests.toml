@@ -128,6 +128,8 @@ kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name 
 [tests.ready_lineage."proj.dat.out_table"]
 s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
 x = ["proj.dat.in_table->x"]
+"s.x" = ["proj.dat.in_table->x"]
+"s.y" = ["proj.dat.in_table->y"]
 [tests.used_columns."proj.dat.in_table"]
 x = ["select", "unnest"]
 y = ["select", "unnest"]
@@ -162,6 +164,8 @@ kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name 
 [tests.ready_lineage."proj.dat.out_table"]
 s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
 x = ["proj.dat.in_table->x"]
+"s.x" = ["proj.dat.in_table->x"]
+"s.y" = ["proj.dat.in_table->y"]
 [tests.used_columns."proj.dat.in_table"]
 x = ["select", "unnest"]
 y = ["select", "unnest"]
@@ -803,12 +807,14 @@ o1 = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
 o2 = ["proj.dataset.in_table->f1.a"]
 o3 = ["proj.dataset.in_table->f1.b"]
 o4 = ["proj.dataset.in_table->f2.a.x"]
+"o3[]" = ["proj.dataset.in_table->f1.b[]"]
 [tests.used_columns."proj.dataset.in_table"]
 f0 = ["select"]
 "f3.a[].x" = ["select"]
 "f1.a" = ["select"]
 "f1.b" = ["select"]
 "f2.a.x" = ["select"]
+"f1.b[]" = ["select"]
 
 [[tests]]
 sql = """
@@ -1109,6 +1115,17 @@ completed_events = [
     "proj.dataset.user_data->user_events[].properties.session.duration",
     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
 ]
+"completed_events[]" = [
+    "proj.dataset.user_data->user_events[].event_id",
+    "proj.dataset.user_data->user_events[].timestamp",
+    "proj.dataset.user_data->user_events[].properties.page_name",
+    "proj.dataset.user_data->user_events[].properties.session.duration",
+    "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
+]
+"completed_events[].event_id" = ["proj.dataset.user_data->user_events[].event_id"]
+"completed_events[].timestamp" = ["proj.dataset.user_data->user_events[].timestamp"]
+"completed_events[].purchased_products" = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
+"completed_events[].purchased_products[]" = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
 user_profile_summary = [
     "proj.dataset.user_data->profile.demographics.age",
     "proj.dataset.user_data->profile.demographics.country",
@@ -1116,6 +1133,24 @@ user_profile_summary = [
     "proj.dataset.user_data->profile.preferences.theme",
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
+]
+"user_profile_summary.user_age" = ["proj.dataset.user_data->profile.demographics.age"]
+"user_profile_summary.user_country" = ["proj.dataset.user_data->profile.demographics.country"]
+"user_profile_summary.device_count" = ["proj.dataset.user_data->profile.devices[].device_id"]
+"user_profile_summary.preferred_theme" = ["proj.dataset.user_data->profile.preferences.theme"]
+"user_profile_summary.high_affinity_categories" = [
+    "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
+    "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
+]
+"user_profile_summary.high_affinity_categories[]" = [
+    "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
+    "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
+]
+"user_profile_summary.high_affinity_categories[].category_name" = [
+    "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
+]
+"user_profile_summary.high_affinity_categories[].affinity_score" = [
+    "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
 total_spent = [
     "proj.dataset.user_data->user_events[].properties.cart.items[].price",
@@ -1126,6 +1161,14 @@ device_activity = [
     "proj.dataset.user_data->profile.devices[].platform",
     "proj.dataset.user_data->user_events[].timestamp",
 ]
+"device_activity[]" = [
+    "proj.dataset.user_data->profile.devices[].device_id",
+    "proj.dataset.user_data->profile.devices[].platform",
+    "proj.dataset.user_data->user_events[].timestamp",
+]
+"device_activity[].device_id" = ["proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[].platform" = ["proj.dataset.user_data->profile.devices[].platform"]
+"device_activity[].last_active_time" = ["proj.dataset.user_data->user_events[].timestamp"]
 [tests.used_columns."proj.dataset.user_data"]
 user_id = ["select"]
 user_events = ["unnest"]
@@ -1217,6 +1260,7 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
+"arr[]" = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
 [tests.used_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
@@ -1245,6 +1289,7 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->in_arr[]"]
+"arr[]" = ["proj.dat.in_table->in_arr[]"]
 [tests.used_columns."proj.dat.in_table"]
 in_arr = ["unnest"]
 "in_arr[]" = ["select"]
@@ -1777,6 +1822,7 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+"arr[]" = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
 [tests.used_columns."proj.dat.in_table"]
 f0 = ["select"]
 "f1.a.x" = ["select"]
@@ -1983,17 +2029,20 @@ kind.table.columns = [
     { name = "y", dtype = "int64" },
 ]
 [[tests.schema_objects]]
-# NOTE: tables and user_functions can have the same name
+# NOTE: tables and user functions can have the same name
 name = "proj.dat.t1"
-kind.user_function.arguments = [
+kind.user_sql_function.arguments = [
     { name = "s", dtype = "struct<x int64, y int64>" },
 ]
-kind.user_function.returns = "float64"
+kind.user_sql_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.t1->x","proj.dat.t1->y"]
+x = ["proj.dat.t1->x","proj.dat.t1->y","proj.dat.t1(*)->!anonymous"]
 [tests.used_columns."proj.dat.t1"]
 x = ["select"]
 y = ["select"]
+[tests.used_columns."proj.dat.t1(*)"]
+# Currently, we consider scalar functions output as their output column
+"!anonymous" = ["select"]
 
 [[tests]]
 sql="""
@@ -2014,14 +2063,185 @@ kind.table.columns = [
     { name = "y", dtype = "int64" },
 ]
 [[tests.schema_objects]]
-# NOTE: tables and user_functions can have the same name
+# NOTE: tables and user functions can have the same name
 name = "dat.t1"
-kind.user_function.arguments = [
+kind.user_sql_function.arguments = [
     { name = "s", dtype = "struct<x int64, y int64>" },
 ]
-kind.user_function.returns = "float64"
+kind.user_sql_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.t1->x","proj.dat.t1->y"]
+x = ["proj.dat.t1->x","proj.dat.t1->y","dat.t1(*)->!anonymous"]
 [tests.used_columns."proj.dat.t1"]
 x = ["select"]
 y = ["select"]
+[tests.used_columns."dat.t1(*)"]
+# Currently, we consider scalar functions output as their output column
+"!anonymous" = ["select"]
+
+
+[[tests]]
+sql="""
+CREATE TEMP TABLE users
+AS (
+  SELECT
+    id, age
+  from proj.dat.users
+);
+
+CREATE TEMP FUNCTION pickOneOfAge(userAge INT64)
+AS (
+  (SELECT (id,age) FROM users where age = userage limit 1)
+);
+
+insert into proj.dat.out
+SELECT AS VALUE
+  pickOneOfAge(100)
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "id_and_age", dtype = "struct<id int64, age int64>" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.users"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "age", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+id_and_age = ["proj.dat.users->id", "proj.dat.users->age"]
+"id_and_age.id" = ["proj.dat.users->id"]
+"id_and_age.age" = ["proj.dat.users->age"]
+[tests.used_columns."proj.dat.users"]
+id = ["select", "user_sql_function"]
+age = ["select", "user_sql_function", "where"]
+
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION addFourAndDivideAny(x ANY TYPE, y ANY TYPE)
+AS (
+  (x + 4) / y
+);
+
+insert into proj.dat.out
+SELECT
+  addFourAndDivideAny(value, 3.14) AS floating_point_input
+from proj.dat.in
+UNION ALL
+select
+addFourAndDivideAny(value, 4) AS integer_input
+from proj.dat.in
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "value", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.in"
+kind.table.columns = [
+    { name = "value", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+value = ["proj.dat.in->value"]
+[tests.used_columns."proj.dat.in"]
+value = ["select"]
+
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+SELECT
+  `proj.dat.addFourAndDivideAny`(value, 3.14) AS floating_point_input
+from proj.dat.in
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "value", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.in"
+kind.table.columns = [
+    { name = "value", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and user functions can have the same name
+name = "proj.dat.addFourAndDivideAny"
+kind.user_sql_function.arguments = [
+    { name = "x", dtype = "any type" },
+    { name = "y", dtype = "ANY TYPE" },
+]
+kind.user_sql_function.body = "(x + 4) / y"
+[tests.ready_lineage."proj.dat.out"]
+value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+[tests.used_columns."proj.dat.in"]
+value = ["select"]
+[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+"!anonymous"=["select"]  # anonymous return type
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+SELECT
+  `proj.dat.addFourAndDivideAny`(value, 3.14) AS floating_point_input
+from proj.dat.in
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "value", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.in"
+kind.table.columns = [
+    { name = "value", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and user functions can have the same name
+name = "proj.dat.addFourAndDivideAny"
+kind.user_sql_function.arguments = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "float64" },
+]
+kind.user_sql_function.body = "(x + 4) / y"
+[tests.ready_lineage."proj.dat.out"]
+value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+[tests.used_columns."proj.dat.in"]
+value = ["select"]
+[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+"!anonymous"=["select"]  # anonymous return type
+
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+SELECT
+  `proj.dat.addFourAndDivideAny`(value, 3.14) AS floating_point_input
+from proj.dat.in
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "value", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.in"
+kind.table.columns = [
+    { name = "value", dtype = "int64" },
+]
+[[tests.schema_objects]]
+# NOTE: tables and user functions can have the same name
+name = "proj.dat.addFourAndDivideAny"
+kind.user_sql_function.arguments = [
+    { name = "x", dtype = "int64" },
+    { name = "y", dtype = "float64" },
+]
+kind.user_sql_function.returns = "float64"
+[tests.ready_lineage."proj.dat.out"]
+value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+[tests.used_columns."proj.dat.in"]
+value = ["select"]
+[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+"!anonymous"=["select"]  # anonymous return type

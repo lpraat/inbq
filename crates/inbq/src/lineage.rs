@@ -1,3 +1,4 @@
+pub mod catalog;
 mod functions;
 mod lineage;
 

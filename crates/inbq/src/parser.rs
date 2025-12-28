@@ -6,21 +6,23 @@ use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
     CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
-    ColumnToUnpivot, ConcatFunctionExpr, CreateSchemaStatement, CreateTableStatement,
-    CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr,
-    CurrentTimeFunctionExpr, DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
-    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement, DropTableStatement,
-    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr,
-    GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr,
-    GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement,
-    IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement,
-    LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge,
-    MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow,
-    NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+    ColumnToUnpivot, ConcatFunctionExpr, CreateJsFunctionStatement, CreateSchemaStatement,
+    CreateSqlFunctionStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
+    CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr,
+    DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
+    DropFunctionStatement, DropTableStatement, ExecuteImmediateStatement,
+    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
+    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
+    GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr,
+    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
+    LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement,
+    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
+    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
     OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
     PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
     QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
@@ -318,12 +320,32 @@ impl<'a> Parser<'a> {
             let peek = self.peek();
             let statement = match &peek.kind {
                 TokenType::Create => {
-                    if (matches!(&self.peek_next_i(1).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("view"))
-                        || matches!(&self.peek_next_i(3).kind, TokenType::Identifier(ident) if ident.eq_ignore_ascii_case("view")))
-                    {
-                        self.parse_create_view_statement()?
-                    } else {
-                        match &self.peek_next_i(1).kind {
+                    let peek_one = self.peek_next_i(1);
+                    let peek_two = self.peek_next_i(2);
+                    let peek_three = self.peek_next_i(3);
+                    let peek_four = self.peek_next_i(4);
+
+                    match (
+                        &peek_one.kind,
+                        &peek_two.kind,
+                        &peek_three.kind,
+                        &peek_four.kind,
+                    ) {
+                        (TokenType::Identifier(ident), _, _, _)
+                        | (_, _, TokenType::Identifier(ident), _)
+                            if ident.eq_ignore_ascii_case("view") =>
+                        {
+                            self.parse_create_view_statement()?
+                        }
+                        (TokenType::Identifier(ident), _, _, _)
+                        | (_, TokenType::Identifier(ident), _, _)
+                        | (_, _, TokenType::Identifier(ident), _)
+                        | (_, _, _, TokenType::Identifier(ident))
+                            if ident.eq_ignore_ascii_case("function") =>
+                        {
+                            self.parse_create_function_statement()?
+                        }
+                        _ => match &peek_one.kind {
                             TokenType::Identifier(non_reserved_keyword) => {
                                 match non_reserved_keyword.to_lowercase().as_str() {
                                     "schema" => self.parse_create_schema_statement()?,
@@ -331,7 +353,7 @@ impl<'a> Parser<'a> {
                                 }
                             }
                             _ => self.parse_create_table_statement()?,
-                        }
+                        },
                     }
                 }
                 TokenType::Merge => self.parse_merge_statement()?,
@@ -836,6 +858,7 @@ impl<'a> Parser<'a> {
             TokenType::Identifier(non_reserved_keyword) => {
                 match non_reserved_keyword.to_lowercase().as_str() {
                     "table" => self.parse_drop_table_statement()?,
+                    "function" => self.parse_drop_function_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
                             peek,
@@ -869,6 +892,28 @@ impl<'a> Parser<'a> {
         let name = self.parse_path()?;
 
         Ok(Statement::DropTableStatement(DropTableStatement {
+            name,
+            if_exists,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// drop_function_statement -> "DROP" "FUNCTION" ["IF" "EXISTS"] function_name
+    /// ```
+    fn parse_drop_function_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("function")?;
+
+        let if_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_path()?;
+
+        Ok(Statement::DropFunctionStatement(DropFunctionStatement {
             name,
             if_exists,
         }))
@@ -1066,7 +1111,6 @@ impl<'a> Parser<'a> {
     /// column -> column_name parameterized_bq_type ("," column_name parameterized_bq_type)*
     /// ```
     fn parse_create_table_statement(&mut self) -> anyhow::Result<Statement> {
-        // TODO: add collate, partition, etc...
         self.consume(TokenTypeVariant::Create)?;
         let replace = self.match_token_type(TokenTypeVariant::Or);
         if replace {
@@ -1261,6 +1305,135 @@ impl<'a> Parser<'a> {
             options,
             query,
         }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// CREATE [ OR REPLACE ] [ TEMP | TEMPORARY ] FUNCTION [ IF NOT EXISTS ] function_name
+    /// args
+    /// ["RETURNS" type]
+    /// [("DETERMINISTIC" | "NOT" "DETERMINISTIC")]
+    /// ["LANGUAGE" "js"]
+    /// [ddl_options]
+    /// "AS" expr
+    /// where:
+    /// args -> arg_name (type | ANY TYPE) ("," arg_name (type | ANY TYPE))*
+    /// ```
+    fn parse_create_function_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume(TokenTypeVariant::Create)?;
+        let replace = self.match_token_type(TokenTypeVariant::Or);
+        if replace {
+            self.consume_non_reserved_keyword("replace")?;
+        }
+
+        let is_temporary =
+            self.match_non_reserved_keyword("temp") || self.match_non_reserved_keyword("temporary");
+        self.consume_non_reserved_keyword("function")?;
+
+        let if_not_exists = self.match_token_type(TokenTypeVariant::If);
+        if if_not_exists {
+            self.consume(TokenTypeVariant::Not)?;
+            self.consume(TokenTypeVariant::Exists)?;
+        }
+
+        let name = self.parse_path()?;
+
+        let arguments = {
+            self.consume(TokenTypeVariant::LeftParen)?;
+            if self.match_token_type(TokenTypeVariant::RightParen) {
+                vec![]
+            } else {
+                let mut arguments = vec![];
+                loop {
+                    let arg_name = self.consume_identifier_into_name()?;
+                    let arg_ty = if self.match_token_type(TokenTypeVariant::Any) {
+                        self.consume_non_reserved_keyword("type")?;
+                        FunctionArgumentType::AnyType
+                    } else {
+                        FunctionArgumentType::Standard(self.parse_bq_type()?)
+                    };
+                    arguments.push(FunctionArgument {
+                        name: arg_name,
+                        r#type: arg_ty,
+                    });
+                    if !self.match_token_type(TokenTypeVariant::Comma) {
+                        break;
+                    }
+                }
+                self.consume(TokenTypeVariant::RightParen)?;
+                arguments
+            }
+        };
+
+        let returns = if self.match_non_reserved_keyword("returns") {
+            Some(self.parse_bq_type()?)
+        } else {
+            None
+        };
+
+        let is_deterministic = if self.match_token_type(TokenTypeVariant::Not) {
+            self.consume_non_reserved_keyword("deterministic")?;
+            Some(false)
+        } else if self.match_non_reserved_keyword("deterministic") {
+            Some(true)
+        } else {
+            None
+        };
+
+        let language = if self.match_non_reserved_keyword("language") {
+            self.consume_non_reserved_keyword("js")?;
+            Some(())
+        } else {
+            None
+        };
+
+        let options = self.parse_ddl_options()?;
+
+        self.consume(TokenTypeVariant::As)?;
+
+        let curr = self.peek().clone();
+        let body = self.parse_expr()?;
+        if language.is_some() {
+            match body {
+                Expr::String(_) | Expr::RawString(_) => {}
+                _ => {
+                    return Err(anyhow!(
+                        self.error(&curr, "Javascript UDF must be a string literal.")
+                    ));
+                }
+            }
+        }
+
+        Ok(if language.is_some() {
+            if returns.is_none() {
+                return Err(anyhow!(self.error(
+                    &curr,
+                    "Return type is required when creating a new Javascript UDF."
+                )));
+            }
+            Statement::CreateJsFunction(CreateJsFunctionStatement {
+                replace,
+                is_temporary,
+                if_not_exists,
+                name,
+                arguments,
+                returns: returns.unwrap(),
+                is_deterministic,
+                options,
+                body,
+            })
+        } else {
+            Statement::CreateSqlFunction(CreateSqlFunctionStatement {
+                replace,
+                is_temporary,
+                if_not_exists,
+                name,
+                arguments,
+                returns,
+                options,
+                body,
+            })
+        })
     }
 
     /// Rule:
@@ -2938,7 +3111,7 @@ impl<'a> Parser<'a> {
     /// ```text
     /// expr -> or_expr
     /// ```
-    fn parse_expr(&mut self) -> anyhow::Result<Expr> {
+    pub(crate) fn parse_expr(&mut self) -> anyhow::Result<Expr> {
         self.parse_or_expr()
     }
 
@@ -3539,7 +3712,7 @@ impl<'a> Parser<'a> {
     /// | "BIGNUMERIC" | "NUMERIC" | "BOOL" | "BYTES" | "DATE"" | "DATETIME" "FLOAT64" | "GEOGRAPHY"
     /// | "INT64" | "INTERVAL"" | "JSON" | "NUMERIC" | "RANGE" | "STRING" | "TIME"" | "TIMESTAMP"
     /// ```
-    fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
+    pub(crate) fn parse_bq_type(&mut self) -> anyhow::Result<Type> {
         let peek_token = self.advance().clone();
 
         match &peek_token.kind {

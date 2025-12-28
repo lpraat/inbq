@@ -16,42 +16,44 @@ use inbq::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
         CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema,
-        ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr, CreateSchemaStatement,
-        CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+        ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr, CreateJsFunctionStatement,
+        CreateSchemaStatement, CreateSqlFunctionStatement, CreateTableStatement,
+        CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
         CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr, DateDiffFunctionExpr,
         DateTruncFunctionExpr, DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption,
-        DeclareVarStatement, DeleteStatement, DropTableStatement, ExecuteImmediateStatement,
-        ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
-        FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
-        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-        FunctionAggregateOrderBy, FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg,
-        Granularity, GroupBy, GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr,
-        Having, Identifier, IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr,
-        IntervalPart, JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr,
-        LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource,
-        MergeStatement, MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr,
-        NonRecursiveCte, NormalizationMode, NormalizeAndCasefoldFunctionExpr,
-        NormalizeFunctionExpr, Number, OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection,
-        ParameterizedType, PathName, PathPart, Pivot, PivotAggregate, PivotColumn,
-        PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr, QuantifiedLikeExprPattern,
-        QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement, RangeExpr, RecursiveCte,
-        RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select, SelectAllExpr,
-        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-        SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
-        Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
-        StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
-        TableFunctionExpr, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
-        TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement,
-        Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem,
-        UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource,
-        WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window, WindowFrame,
-        WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+        DeclareVarStatement, DeleteStatement, DropFunctionStatement, DropTableStatement,
+        ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
+        ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
+        FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
+        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
+        FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy,
+        GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier,
+        IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
+        JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr,
+        LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
+        MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte,
+        NormalizationMode, NormalizeAndCasefoldFunctionExpr, NormalizeFunctionExpr, Number,
+        OrderBy, OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName,
+        PathPart, Pivot, PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify,
+        QuantifiedLikeExpr, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+        RaiseStatement, RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr,
+        SafeCastFunctionExpr, Select, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
+        SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
+        StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
+        TableConstraint, TableFunctionArgument, TableFunctionExpr, TableSample,
+        TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
+        TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
+        UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
+        ViewColumn, WeekBegin, When, WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget,
+        WhenThen, Where, WhileStatement, Window, WindowFrame, WindowFrameKind, WindowOrderByExpr,
+        WindowSpec, With, WithExpr, WithExprVar,
     },
     lineage::{
-        Catalog, Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage,
-        ReadyLineageNode, ReadyLineageNodeInput, ReadyLineageObject, UsedColumns, UsedNode,
-        UsedObject, extract_lineage,
+        Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage, ReadyLineageNode,
+        ReadyLineageNodeInput, ReadyLineageObject, UsedColumns, UsedNode, UsedObject,
+        catalog::Catalog, extract_lineage,
     },
 };
 
@@ -3766,6 +3768,91 @@ impl RsToPyObject for CreateSchemaStatement {
     }
 }
 
+impl RsToPyObject for FunctionArgumentType {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            FunctionArgumentType::Standard(standard_ty) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, standard_ty)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionArgumentType::Standard)?,
+                    kwargs,
+                )
+            }
+            FunctionArgumentType::AnyType => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, FunctionArgumentType::AnyType)?,
+                &[],
+            ),
+        }
+    }
+}
+
+impl RsToPyObject for FunctionArgument {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "type_", self.r#type),
+        ];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionArgument)?, kwargs)
+    }
+}
+
+impl RsToPyObject for CreateSqlFunctionStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "replace", self.replace),
+            kwarg!(py_ctx, "is_temporary", self.is_temporary),
+            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "arguments", self.arguments),
+            kwarg!(py_ctx, "returns", self.returns),
+            kwarg!(py_ctx, "options", self.options),
+            kwarg!(py_ctx, "body", self.body),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CreateSqlFunctionStatement)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for DropFunctionStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "if_exists", self.if_exists),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DropFunctionStatement)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for CreateJsFunctionStatement {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "replace", self.replace),
+            kwarg!(py_ctx, "is_temporary", self.is_temporary),
+            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "arguments", self.arguments),
+            kwarg!(py_ctx, "returns", self.returns),
+            kwarg!(py_ctx, "is_deterministic", self.is_deterministic),
+            kwarg!(py_ctx, "options", self.options),
+            kwarg!(py_ctx, "body", self.body),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, CreateJsFunctionStatement)?,
+            kwargs,
+        )
+    }
+}
+
 impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
@@ -3838,6 +3925,14 @@ impl RsToPyObject for Statement {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::DropTableStatement)?,
+                    kwargs,
+                )
+            }
+            Statement::DropFunctionStatement(drop_function_statement) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_function_statement)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::DropFunctionStatement)?,
                     kwargs,
                 )
             }
@@ -3916,6 +4011,30 @@ impl RsToPyObject for Statement {
                 instantiate_py_class(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::ExecuteImmediate)?,
+                    kwargs,
+                )
+            }
+            Statement::CreateSqlFunction(create_sql_function_statement) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    create_sql_function_statement
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::CreateSqlFunction)?,
+                    kwargs,
+                )
+            }
+            Statement::CreateJsFunction(create_js_function_statement) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    create_js_function_statement
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::CreateJsFunction)?,
                     kwargs,
                 )
             }

@@ -1012,6 +1012,68 @@ DEFAULT COLLATE 'und:ci'
 """
 
 [[tests]]
+sql="""
+CREATE FUNCTION mydataset.multiplyInputs(x FLOAT64, y FLOAT64)
+RETURNS FLOAT64
+AS (x * y);
+"""
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION multiplyInputs(x FLOAT64, y FLOAT64)
+RETURNS FLOAT64
+LANGUAGE js
+AS r\"""
+  return x*y;
+\""";
+"""
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION hello()
+RETURNS STRING
+LANGUAGE js
+AS r\"""
+  return "hello";
+\""";
+"""
+
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION addFourAndDivideAny(x ANY TYPE, y ANY TYPE)
+AS (
+  (x + 4) / y
+);
+"""
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION lastArrayElement(arr ANY TYPE)
+AS (
+  arr[ORDINAL(ARRAY_LENGTH(arr))]
+);
+"""
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION countUserByAge(userAge INT64)
+AS (
+  (SELECT COUNT(1) FROM users WHERE age = userAge)
+);
+"""
+
+[[tests]]
+sql="""
+DROP FUNCTION mydataset.parseJsonAsStruct;
+"""
+
+[[tests]]
+sql="""
+DROP FUNCTION IF EXISTS `other_project`.sample_dataset.parseJsonAsStruct;
+"""
+
+[[tests]]
 sql = """
 DROP TABLE some_temp_table
 """

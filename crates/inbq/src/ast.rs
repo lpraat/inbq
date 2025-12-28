@@ -19,8 +19,11 @@ pub enum Statement {
     Block(StatementsBlock),
     CreateSchema(CreateSchemaStatement),
     CreateTable(Box<CreateTableStatement>),
+    CreateSqlFunction(CreateSqlFunctionStatement),
+    CreateJsFunction(CreateJsFunctionStatement),
     CreateView(CreateViewStatement),
     DropTableStatement(DropTableStatement),
+    DropFunctionStatement(DropFunctionStatement),
     If(IfStatement),
     Case(CaseStatement),
     BeginTransaction,
@@ -39,6 +42,49 @@ pub enum Statement {
     Iterate,
     Leave,
     Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropFunctionStatement {
+    pub name: PathName,
+    pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FunctionArgumentType {
+    Standard(Type),
+    AnyType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionArgument {
+    pub name: Name,
+    pub r#type: FunctionArgumentType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSqlFunctionStatement {
+    pub replace: bool,
+    pub is_temporary: bool,
+    pub if_not_exists: bool,
+    pub name: PathName,
+    pub arguments: Vec<FunctionArgument>,
+    pub returns: Option<Type>,
+    pub options: Option<Vec<DdlOption>>,
+    pub body: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateJsFunctionStatement {
+    pub replace: bool,
+    pub is_temporary: bool,
+    pub if_not_exists: bool,
+    pub name: PathName,
+    pub arguments: Vec<FunctionArgument>,
+    pub returns: Type,
+    pub is_deterministic: Option<bool>,
+    pub options: Option<Vec<DdlOption>>,
+    pub body: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,8 @@
 use inbq::{
-    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, extract_lineage},
+    lineage::{
+        catalog::{Catalog, Column, SchemaObject, SchemaObjectKind},
+        extract_lineage,
+    },
     parser::Parser,
     scanner::Scanner,
 };

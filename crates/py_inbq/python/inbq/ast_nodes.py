@@ -37,8 +37,11 @@ class AstNode:
             "Block": "Statement_Block",
             "CreateSchema": "Statement_CreateSchema",
             "CreateTable": "Statement_CreateTable",
+            "CreateSqlFunction": "Statement_CreateSqlFunction",
+            "CreateJsFunction": "Statement_CreateJsFunction",
             "CreateView": "Statement_CreateView",
             "DropTableStatement": "Statement_DropTableStatement",
+            "DropFunctionStatement": "Statement_DropFunctionStatement",
             "If": "Statement_If",
             "Case": "Statement_Case",
             "BeginTransaction": "Statement_BeginTransaction",
@@ -57,6 +60,10 @@ class AstNode:
             "Iterate": "Statement_Iterate",
             "Leave": "Statement_Leave",
             "Labeled": "Statement_Labeled",
+        },
+        "FunctionArgumentType": {
+            "Standard": "FunctionArgumentType_Standard",
+            "AnyType": "FunctionArgumentType_AnyType",
         },
         "Name": {
             "Identifier": "Name_Identifier",
@@ -662,6 +669,43 @@ class AstNode:
 @dataclass
 class Ast(AstNode):
     statements: "list[Statement]"
+
+
+@dataclass
+class DropFunctionStatement(AstNode):
+    name: "PathName"
+    if_exists: "bool"
+
+
+@dataclass
+class FunctionArgument(AstNode):
+    name: "Name"
+    type_: "FunctionArgumentType"
+
+
+@dataclass
+class CreateSqlFunctionStatement(AstNode):
+    replace: "bool"
+    is_temporary: "bool"
+    if_not_exists: "bool"
+    name: "PathName"
+    arguments: "list[FunctionArgument]"
+    returns: "Optional[Type]"
+    options: "Optional[list[DdlOption]]"
+    body: "Expr"
+
+
+@dataclass
+class CreateJsFunctionStatement(AstNode):
+    replace: "bool"
+    is_temporary: "bool"
+    if_not_exists: "bool"
+    name: "PathName"
+    arguments: "list[FunctionArgument]"
+    returns: "Type"
+    is_deterministic: "Optional[bool]"
+    options: "Optional[list[DdlOption]]"
+    body: "Expr"
 
 
 @dataclass
@@ -1556,6 +1600,16 @@ class Statement_CreateTable(AstNode):
 
 
 @dataclass
+class Statement_CreateSqlFunction(AstNode):
+    vty: "CreateSqlFunctionStatement"
+
+
+@dataclass
+class Statement_CreateJsFunction(AstNode):
+    vty: "CreateJsFunctionStatement"
+
+
+@dataclass
 class Statement_CreateView(AstNode):
     vty: "CreateViewStatement"
 
@@ -1563,6 +1617,11 @@ class Statement_CreateView(AstNode):
 @dataclass
 class Statement_DropTableStatement(AstNode):
     vty: "DropTableStatement"
+
+
+@dataclass
+class Statement_DropFunctionStatement(AstNode):
+    vty: "DropFunctionStatement"
 
 
 @dataclass
@@ -1645,6 +1704,15 @@ class Statement_Leave(AstNode): ...
 @dataclass
 class Statement_Labeled(AstNode):
     vty: "LabeledStatement"
+
+
+@dataclass
+class FunctionArgumentType_Standard(AstNode):
+    vty: "Type"
+
+
+@dataclass
+class FunctionArgumentType_AnyType(AstNode): ...
 
 
 @dataclass
@@ -3432,8 +3500,11 @@ Statement: TypeAlias = (
     | Statement_Block
     | Statement_CreateSchema
     | Statement_CreateTable
+    | Statement_CreateSqlFunction
+    | Statement_CreateJsFunction
     | Statement_CreateView
     | Statement_DropTableStatement
+    | Statement_DropFunctionStatement
     | Statement_If
     | Statement_Case
     | Statement_BeginTransaction
@@ -3452,6 +3523,9 @@ Statement: TypeAlias = (
     | Statement_Iterate
     | Statement_Leave
     | Statement_Labeled
+)
+FunctionArgumentType: TypeAlias = (
+    FunctionArgumentType_Standard | FunctionArgumentType_AnyType
 )
 Name: TypeAlias = Name_Identifier | Name_QuotedIdentifier
 PathPart: TypeAlias = (

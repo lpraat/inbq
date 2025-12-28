@@ -4,6 +4,7 @@ A library for parsing BigQuery queries and extracting schema-aware, column-level
 ### Features
 - Parse BigQuery queries into well-structured ASTs with easy-to-navigate nodes.
 - Extract schema-aware, column-level lineage.
+- Capture used columns and the specific query components (e.g., select, where, joins) they influence.
 - Trace data flow through nested structs and arrays.
 - Support both single and multi-statement queries and procedural language constructs.
 - Built for speed and efficiency, with lightweight Python bindings that add minimal overhead.
@@ -86,7 +87,10 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
 ### Example
 ```rust
 use inbq::{
-    lineage::{Catalog, Column, SchemaObject, SchemaObjectKind, extract_lineage},
+    lineage::{
+        catalog::{Catalog, Column, SchemaObject, SchemaObjectKind},
+        extract_lineage,
+    },
     parser::Parser,
     scanner::Scanner,
 };
