@@ -51,12 +51,14 @@ impl LineageNode {
     fn access(&self, path: &AccessPath) -> anyhow::Result<ArenaIndex> {
         self.nested_nodes
             .get(&path.nested_path())
-            .ok_or(anyhow!(
-                "Cannot find nested node {:?} in {:?} in table {:?}",
-                path,
-                self,
-                &self.name
-            ))
+            .ok_or_else(|| {
+                anyhow!(
+                    "Cannot find nested node {:?} in {:?} in table {:?}",
+                    path,
+                    self,
+                    &self.name
+                )
+            })
             .copied()
     }
 
@@ -202,10 +204,6 @@ pub enum NodeType {
 }
 
 impl NodeType {
-    pub(crate) fn is_same_type_of(&self, other: &Self) -> bool {
-        self.to_string() == other.to_string()
-    }
-
     pub(crate) fn is_groupable(&self) -> bool {
         !matches!(self, NodeType::Geography | NodeType::Json)
     }
@@ -360,7 +358,7 @@ impl NodeType {
             }
             (NodeType::Unknown, t2) => Some(t2.clone()),
             (t1, NodeType::Unknown) => Some(t1.clone()),
-            (t1, t2) if t1.is_same_type_of(t2) => Some(t1.clone()),
+            (t1, t2) if t1 == t2 => Some(t1.clone()),
             _ => None,
         }
     }
@@ -484,10 +482,16 @@ impl Display for NodeType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct ArrayNodeType {
     pub r#type: NodeType,
     pub(crate) input: Vec<ArenaIndex>,
+}
+
+impl PartialEq for ArrayNodeType {
+    fn eq(&self, other: &Self) -> bool {
+        self.r#type == other.r#type
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -513,11 +517,17 @@ impl StructNodeType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct StructNodeFieldType {
     pub name: String,
     pub r#type: NodeType,
     pub(crate) input: Vec<ArenaIndex>,
+}
+
+impl PartialEq for StructNodeFieldType {
+    fn eq(&self, other: &Self) -> bool {
+        self.r#type == other.r#type && self.name.eq(&other.name)
+    }
 }
 
 impl StructNodeFieldType {
@@ -895,7 +905,7 @@ impl LineageContext {
         };
         let new_id = self.arena_objects.allocate(new_obj);
 
-        let mut new_lineage_nodes = vec![];
+        let mut new_lineage_nodes = Vec::with_capacity(nodes.len());
         for (node_name, node_type, items) in nodes.into_iter() {
             let lin = LineageNode {
                 name: node_name,
@@ -1395,7 +1405,7 @@ impl LineageContext {
     fn get_query_table(&self, name: &str) -> anyhow::Result<ArenaIndex> {
         let curr_stack = self
             .curr_query_tables()
-            .ok_or(anyhow!("Table `{}` not found in context.", name))?;
+            .ok_or_else(|| anyhow!("Table `{}` not found in context.", name))?;
 
         if let Some(ctx_table_idx) = curr_stack.get(name) {
             return Ok(ctx_table_idx.arena_index);
@@ -1518,17 +1528,17 @@ impl LineageContext {
     /// Script tables are checked first, then source tables.
     fn get_table(&self, catalog: &LineageCatalog, table_name: &str) -> Option<ArenaIndex> {
         let table_idx = {
-            for i in (0..self.script_tables.len()).rev() {
-                let obj = &self.arena_objects[self.script_tables[i]];
+            for obj_idx in self.script_tables.iter().rev() {
+                let obj = &self.arena_objects[*obj_idx];
 
                 if matches!(obj.kind, ContextObjectKind::Cte)
                     && obj.name.eq_ignore_ascii_case(table_name)
                 {
-                    return Some(self.script_tables[i]);
+                    return Some(*obj_idx);
                 }
 
                 if obj.name == *table_name {
-                    return Some(self.script_tables[i]);
+                    return Some(*obj_idx);
                 }
             }
             None
@@ -1549,9 +1559,9 @@ impl LineageContext {
     /// Script routines are checked first, then source routines.
     fn get_routine(&self, catalog: &LineageCatalog, routine_name: &str) -> Option<ArenaIndex> {
         let routine_idx = {
-            for i in (0..self.script_routines.len()).rev() {
-                if self.arena_objects[self.script_routines[i]].name == *routine_name {
-                    return Some(self.script_routines[i]);
+            for obj_idx in self.script_routines.iter().rev() {
+                if self.arena_objects[*obj_idx].name == *routine_name {
+                    return Some(*obj_idx);
                 }
             }
             None
@@ -2255,8 +2265,8 @@ impl LineageContext {
             self.add_typed_struct_fields_to_context(typ);
         };
 
-        let mut fields = vec![];
-        let mut input = vec![];
+        let mut fields = Vec::with_capacity(struct_expr.fields.len());
+        let mut input = Vec::with_capacity(struct_expr.fields.len());
         for field in struct_expr.fields.iter() {
             let name = field.alias.as_ref().map(|tok| tok.as_str().to_owned());
 
@@ -2298,7 +2308,7 @@ impl LineageContext {
         name: &str,
         nodes: &[ArenaIndex],
     ) -> ArenaIndex {
-        let mut fields = vec![];
+        let mut fields = Vec::with_capacity(nodes.len());
         let mut input = vec![];
         for node_idx in nodes {
             let node = &self.arena_lineage_nodes[*node_idx];
@@ -2348,8 +2358,6 @@ impl LineageContext {
             self.add_typed_struct_fields_to_context(typ);
         }
 
-        let mut input = vec![];
-
         let (mut array_type, strict) = if let Some(typ) = &array_expr.r#type {
             let ty = match typ {
                 Type::Array { r#type } => NodeType::from_parser_type(r#type),
@@ -2360,14 +2368,15 @@ impl LineageContext {
             (NodeType::Unknown, false)
         };
 
+        let mut input = Vec::with_capacity(array_expr.exprs.len());
         for expr in &array_expr.exprs {
             let element_node_idx = self.expr_lin(catalog, expr, false, column_usage)?;
             let element = &self.arena_lineage_nodes[element_node_idx];
 
             if strict {
-                if !element.r#type.is_same_type_of(&array_type) {
+                if element.r#type != array_type {
                     return Err(anyhow!(
-                        "Array element type `{}` does not coerce to type `{}`",
+                        "Array element type `{}` is not equal to type `{}`",
                         element.r#type,
                         array_type
                     ));
@@ -2440,11 +2449,10 @@ impl LineageContext {
             input.push(node_idx);
         }
 
-        let mut args = vec![];
-        for node_idx in &input {
-            let node = &self.arena_lineage_nodes[*node_idx];
-            args.push(&node.r#type);
-        }
+        let args = input
+            .iter()
+            .map(|node_idx| &self.arena_lineage_nodes[*node_idx].r#type)
+            .collect::<Vec<_>>();
 
         let routine_name = routine_name!(name);
         let (name, return_type) = match self.get_routine(catalog, &routine_name) {
@@ -2918,7 +2926,7 @@ impl LineageContext {
                     self.allocate_expr_node("fn_concat", return_type, input)
                 }
                 FunctionExpr::Coalesce(coalesce_fn_expr) => {
-                    let mut input = vec![];
+                    let mut input = Vec::with_capacity(coalesce_fn_expr.exprs.len());
                     let mut return_type = NodeType::Unknown;
                     for coalesce_expr in &coalesce_fn_expr.exprs {
                         let node_idx = self.expr_lin(
@@ -3384,7 +3392,7 @@ impl LineageContext {
         let node_idx = self.expr_lin(catalog, &col_expr.expr, false, ColumnUsage::Select)?;
         let node = &self.arena_lineage_nodes[node_idx];
 
-        let mut new_lineage_nodes = vec![];
+        let mut new_lineage_nodes = Vec::with_capacity(node.input.len());
         for node_idx in &node.input {
             let node = &self.arena_lineage_nodes[*node_idx];
             if except_columns.contains(&node.name.string().to_lowercase()) {
@@ -3473,7 +3481,7 @@ impl LineageContext {
         // If aliased, we create a new object
         let table_like_obj = &self.arena_objects[obj_idx];
 
-        let mut new_lineage_nodes = vec![];
+        let mut new_lineage_nodes = Vec::with_capacity(table_like_obj.lineage_nodes.len());
         for el in &table_like_obj.lineage_nodes {
             let ln = &self.arena_lineage_nodes[*el];
             new_lineage_nodes.push((ln.name.clone(), ln.r#type.clone(), vec![*el]))
@@ -3584,8 +3592,8 @@ impl LineageContext {
         if let Some(table_value) = &select_query_expr.select.table_value {
             match table_value {
                 SelectTableValue::Struct if !expand_value_table => {
-                    let mut struct_node_tyupes = vec![];
-                    let mut input = vec![];
+                    let mut struct_node_tyupes = Vec::with_capacity(lineage_nodes.len());
+                    let mut input = Vec::with_capacity(lineage_nodes.len());
                     for node_idx in &lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
                         struct_node_tyupes.push(StructNodeFieldType::new(
@@ -3815,7 +3823,7 @@ impl LineageContext {
             })
             .collect::<Vec<_>>();
 
-        let mut set_nodes = vec![];
+        let mut set_nodes = Vec::with_capacity(nodes_elems.len());
         for (name, r#type, source_obj, input) in nodes_elems.into_iter() {
             let node_idx = self.allocate_lineage_node(name, r#type, source_obj, input);
             set_nodes.push(node_idx);
@@ -3987,7 +3995,7 @@ impl LineageContext {
 
                 let unnest_nodes = match &nested_node.r#type {
                     NodeType::Struct(struct_node_type) => {
-                        let mut nodes = vec![];
+                        let mut nodes = Vec::with_capacity(struct_node_type.fields.len());
                         for field in &struct_node_type.fields {
                             let inner_node_idx = nested_node.access(&AccessPath {
                                 path: vec![AccessOp::Field(field.name.clone())],
@@ -4134,7 +4142,7 @@ impl LineageContext {
 
                     let unnest_nodes = match &nested_node.r#type {
                         NodeType::Struct(struct_node_type) => {
-                            let mut nodes = vec![];
+                            let mut nodes = Vec::with_capacity(struct_node_type.fields.len());
                             for field in &struct_node_type.fields {
                                 let inner_node_idx = nested_node.access(&AccessPath {
                                     path: vec![AccessOp::Field(field.name.clone())],
@@ -4269,11 +4277,13 @@ impl LineageContext {
                         .iter()
                         .map(|&idx| (&self.arena_lineage_nodes[idx], idx))
                         .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
-                        .ok_or(anyhow!(
-                            "Cannot find column {:?} in table {:?}.",
-                            col_name,
-                            &self.arena_objects[left_join_table_idx].name
-                        ))?
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "Cannot find column {:?} in table {:?}.",
+                                col_name,
+                                &self.arena_objects[left_join_table_idx].name
+                            )
+                        })?
                         .1;
 
                     let right_lineage_node_idx = self.arena_objects[right_join_table_idx]
@@ -4281,11 +4291,13 @@ impl LineageContext {
                         .iter()
                         .map(|&idx| (&self.arena_lineage_nodes[idx], idx))
                         .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
-                        .ok_or(anyhow!(
-                            "Cannot find column {:?} in table {:?}.",
-                            col_name,
-                            &self.arena_objects[right_join_table_idx].name
-                        ))?
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "Cannot find column {:?} in table {:?}.",
+                                col_name,
+                                &self.arena_objects[right_join_table_idx].name
+                            )
+                        })?
                         .1;
 
                     lineage_nodes.push((
@@ -4460,7 +4472,7 @@ impl LineageContext {
             let schema = create_table_statement
                 .schema
                 .as_ref()
-                .ok_or(anyhow!("Schema not found for table: `{:?}`.", table_name))?;
+                .ok_or_else(|| anyhow!("Schema not found for table: `{:?}`.", table_name))?;
             self.allocate_object(
                 table_name,
                 table_kind,
@@ -4583,11 +4595,13 @@ impl LineageContext {
             }
             .to_lowercase();
 
-            let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!(
-                "Cannot find column {} in table {}",
-                column,
-                target_table_alias
-            ))?;
+            let col_source_idx = target_table_nodes.get(&column).ok_or_else(|| {
+                anyhow!(
+                    "Cannot find column {} in table {}",
+                    column,
+                    target_table_alias
+                )
+            })?;
 
             let node_idx = self.expr_lin(catalog, &update_item.expr, false, ColumnUsage::Update)?;
             self.add_inputs_to_node(*col_source_idx, &[node_idx], true);
@@ -4621,14 +4635,12 @@ impl LineageContext {
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
         let target_columns = if let Some(columns) = &insert_statement.columns {
-            let mut filtered_columns = vec![];
+            let mut filtered_columns = Vec::with_capacity(columns.len());
             for col in columns {
                 let col_name = col.as_str().to_lowercase();
-                let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
-                    "Cannot find column {} in table {}",
-                    col_name,
-                    target_table
-                ))?;
+                let col_idx = target_table_nodes.get(&col_name).ok_or_else(|| {
+                    anyhow!("Cannot find column {} in table {}", col_name, target_table)
+                })?;
                 filtered_columns.push(*col_idx);
             }
             filtered_columns
@@ -4677,14 +4689,16 @@ impl LineageContext {
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
 
         let target_columns = if let Some(columns) = &merge_insert.columns {
-            let mut filtered_columns = vec![];
+            let mut filtered_columns = Vec::with_capacity(columns.len());
             for col in columns {
                 let col_name = col.as_str().to_lowercase();
-                let col_idx = target_table_nodes.get(&col_name).ok_or(anyhow!(
-                    "Cannot find column {} in table {}",
-                    col_name,
-                    target_table_obj.name
-                ))?;
+                let col_idx = target_table_nodes.get(&col_name).ok_or_else(|| {
+                    anyhow!(
+                        "Cannot find column {} in table {}",
+                        col_name,
+                        target_table_obj.name
+                    )
+                })?;
                 filtered_columns.push(*col_idx);
             }
             filtered_columns
@@ -4725,11 +4739,13 @@ impl LineageContext {
             }
             .to_lowercase();
 
-            let col_source_idx = target_table_nodes.get(&column).ok_or(anyhow!(
-                "Cannot find column {} in table {}",
-                column,
-                target_table_name
-            ))?;
+            let col_source_idx = target_table_nodes.get(&column).ok_or_else(|| {
+                anyhow!(
+                    "Cannot find column {} in table {}",
+                    column,
+                    target_table_name
+                )
+            })?;
 
             let node_idx =
                 self.expr_lin(catalog, &update_item.expr, false, ColumnUsage::MergeUpdate)?;
@@ -5138,8 +5154,8 @@ impl LineageContext {
         let obj_idx = self.query_expr_lin(catalog, &for_in_statement.table_expr, false)?;
         let obj = &self.arena_objects[obj_idx];
 
-        let mut struct_node_types = vec![];
-        let mut input = vec![];
+        let mut struct_node_types = Vec::with_capacity(obj.lineage_nodes.len());
+        let mut input = Vec::with_capacity(obj.lineage_nodes.len());
         for node_idx in &obj.lineage_nodes {
             let node = &self.arena_lineage_nodes[*node_idx];
             struct_node_types.push(StructNodeFieldType::new(
@@ -5489,7 +5505,7 @@ fn columns_to_nodes(
         );
     }
 
-    let mut nodes = vec![];
+    let mut nodes = Vec::with_capacity(columns.len());
 
     for col in columns {
         let node_type = match parse_parameterized_dtype(&col.dtype) {
@@ -5605,7 +5621,7 @@ fn _extract_lineage(
                     }
 
                     let mut found_any_type = false;
-                    let mut sql_args = vec![];
+                    let mut sql_args = Vec::with_capacity(arguments.len());
                     for arg in arguments {
                         if arg.dtype.eq_ignore_ascii_case("any type") {
                             sql_args.push(UserSqlFunctionArg {

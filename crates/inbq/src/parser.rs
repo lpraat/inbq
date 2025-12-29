@@ -2966,7 +2966,7 @@ impl<'a> Parser<'a> {
             // We first try to parse a frame bound, then we return an error if it's not a valid frame bound given the context
             let start = self
                 .parse_frame_bound()?
-                .ok_or(anyhow!("Expected one of: `UNBOUNDED`, `Number`, `CURRENT`"))?;
+                .ok_or_else(|| anyhow!("Expected one of: `UNBOUNDED`, `Number`, `CURRENT`"))?;
             if let FrameBound::UnboundedFollowing = start {
                 return Err(anyhow!("Expected `PRECEDING`."));
             };
