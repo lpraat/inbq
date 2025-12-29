@@ -57,7 +57,7 @@ impl LineageNode {
                 self,
                 &self.name
             ))
-            .cloned()
+            .copied()
     }
 
     fn pretty_log_lineage_node(node_idx: ArenaIndex, ctx: &LineageContext) {
@@ -741,7 +741,7 @@ impl UserSqlFunction {
                     }
                     crate::ast::FunctionArgumentType::AnyType => UserSqlFunctionArgType::AnyType,
                 };
-                let name = arg.name.as_str().to_owned();
+                let name = arg.name.as_str().to_lowercase();
                 UserSqlFunctionArg { name, r#type }
             })
             .collect();
@@ -967,8 +967,7 @@ impl LineageContext {
         input_node
             .nested_nodes
             .get(&access_path.nested_path())
-            .cloned()
-            .map_or(vec![], |el| vec![el])
+            .map_or(vec![], |el| vec![*el])
     }
 
     fn _add_nested_nodes_from_input_nodes(
@@ -1480,10 +1479,8 @@ impl LineageContext {
                             column,
                             target_tables
                                 .iter()
-                                .map(|source_idx| self.arena_objects[source_idx.arena_index]
-                                    .name
-                                    .clone())
-                                .collect::<Vec<String>>()
+                                .map(|source_idx| &self.arena_objects[source_idx.arena_index].name)
+                                .collect::<Vec<_>>()
                         ))));
                     }
 
@@ -1537,7 +1534,7 @@ impl LineageContext {
             None
         };
 
-        table_idx.map_or(catalog.source_tables.get(table_name).cloned(), Some)
+        table_idx.map_or(catalog.source_tables.get(table_name).copied(), Some)
     }
 
     fn add_script_table(&mut self, object_idx: ArenaIndex) {
@@ -1560,17 +1557,11 @@ impl LineageContext {
             None
         };
 
-        routine_idx.map_or(catalog.source_routines.get(routine_name).cloned(), Some)
+        routine_idx.map_or(catalog.source_routines.get(routine_name).copied(), Some)
     }
 
-    #[allow(dead_code)]
     fn add_script_routine(&mut self, object_idx: ArenaIndex) {
         self.script_routines.push(object_idx);
-    }
-
-    #[allow(dead_code)]
-    fn pop_script_routine(&mut self) {
-        self.script_routines.pop();
     }
 
     fn add_node_to_output_lineage(&mut self, node_idx: ArenaIndex) {
@@ -2494,7 +2485,6 @@ impl LineageContext {
             {
                 // We evaluate the body of temp functions
                 let args = args.iter().map(|&n| n.clone()).collect::<Vec<_>>();
-                let routine_name = self.arena_objects[routine_idx].name.clone();
                 let sql_function = catalog.user_sql_functions.get(&routine_name).unwrap();
                 let return_type = sql_function.returns.clone();
                 let return_node_idx = self.arena_objects[routine_idx].lineage_nodes[0];
@@ -2550,7 +2540,6 @@ impl LineageContext {
                 (name, ty)
             })
             .collect::<Vec<_>>();
-        let body = user_sql_function.body.clone();
 
         // Evaluate body
         for (arg_name, arg_ty) in &arguments {
@@ -2558,7 +2547,7 @@ impl LineageContext {
         }
         let node_idx = self.expr_lin(
             catalog,
-            &body,
+            &user_sql_function.body,
             expand_value_table,
             ColumnUsage::UserSqlFunction,
         )?;
@@ -5620,7 +5609,7 @@ fn _extract_lineage(
                     for arg in arguments {
                         if arg.dtype.eq_ignore_ascii_case("any type") {
                             sql_args.push(UserSqlFunctionArg {
-                                name: arg.name.clone(),
+                                name: arg.name.to_lowercase(),
                                 r#type: UserSqlFunctionArgType::AnyType,
                             });
                             found_any_type = true;
@@ -5635,7 +5624,7 @@ fn _extract_lineage(
                                 Ok(node_type) => node_type,
                             };
                             sql_args.push(UserSqlFunctionArg {
-                                name: arg.name.clone(),
+                                name: arg.name.to_lowercase(),
                                 r#type: UserSqlFunctionArgType::Standard(arg_type),
                             })
                         }
