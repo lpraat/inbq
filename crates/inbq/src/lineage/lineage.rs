@@ -756,6 +756,62 @@ impl UserSqlFunction {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+struct Vars {
+    vars: IndexMap<String, ArenaIndex>,
+}
+impl Vars {
+    /// Get the node index of a variable.
+    ///
+    /// If not found, an `Err` is returned.
+    fn get(&self, var_name: &str) -> anyhow::Result<ArenaIndex> {
+        self.vars
+            .get(&var_name.to_lowercase())
+            .ok_or_else(|| anyhow!("Variable `{}` not found.", var_name))
+            .copied()
+    }
+
+    fn add(&mut self, name: String, object_idx: ArenaIndex) {
+        self.vars.insert(name, object_idx);
+    }
+
+    fn remove(&mut self, name: &str) -> Option<ArenaIndex> {
+        self.vars.swap_remove(name)
+    }
+
+    fn clear(&mut self) {
+        self.vars.clear()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct Args {
+    args: IndexMap<String, ArenaIndex>,
+}
+impl Args {
+    /// Get the node index of an arg.
+    ///
+    /// If not found, an `Err` is returned.
+    fn get(&self, arg_name: &str) -> anyhow::Result<ArenaIndex> {
+        self.args
+            .get(&arg_name.to_lowercase())
+            .ok_or_else(|| anyhow!("Argument `{}` not found.", arg_name))
+            .copied()
+    }
+
+    fn add(&mut self, name: String, object_idx: ArenaIndex) {
+        self.args.insert(name, object_idx);
+    }
+
+    fn remove(&mut self, name: &str) -> Option<ArenaIndex> {
+        self.args.swap_remove(name)
+    }
+
+    fn clear(&mut self) {
+        self.args.clear()
+    }
+}
+
 #[derive(Debug, Default)]
 struct Context {
     // Arena
@@ -772,8 +828,8 @@ struct Context {
     source_routines: IndexMap<String, ArenaIndex>,
     script_routines: Vec<ArenaIndex>,
 
-    vars: IndexMap<String, ArenaIndex>,
-    args: IndexMap<String, ArenaIndex>,
+    vars: Vars,
+    args: Args,
 
     // Query context
     query_tables: Vec<IndexMap<String, IndexDepth>>,
@@ -807,6 +863,7 @@ impl Context {
         self.query_columns.clear();
         self.query_joined_ambiguous_columns.clear();
         self.query_depth = 0;
+        self.args.clear();
         self.vars.clear();
         self.typed_struct_fields.clear();
         self.output.clear();
@@ -1316,7 +1373,7 @@ impl Context {
             Err(col_err) => match col_err.downcast_ref::<GetColumnError>() {
                 Some(GetColumnError::Ambiguous(_)) => Err(col_err),
                 Some(GetColumnError::NotFound(_)) | None => {
-                    self.get_var(name).or(self.get_arg(name)).map_err(|_| {
+                    self.vars.get(name).or(self.args.get(name)).map_err(|_| {
                         anyhow!(
                             "Could not get column `{name:?}` \
                         and could not find a variable with that name either."
@@ -1325,42 +1382,6 @@ impl Context {
                 }
             },
         }
-    }
-
-    /// Get the node index of a variable from the current query context.
-    ///
-    /// If not found, an `Err` is returned.
-    fn get_var(&self, var_name: &str) -> anyhow::Result<ArenaIndex> {
-        self.vars
-            .get(&var_name.to_lowercase())
-            .ok_or_else(|| anyhow!("Variable `{}` not found in context.", var_name))
-            .copied()
-    }
-
-    fn add_var(&mut self, name: String, object_idx: ArenaIndex) {
-        self.vars.insert(name, object_idx);
-    }
-
-    fn remove_var(&mut self, name: &str) -> Option<ArenaIndex> {
-        self.vars.swap_remove(name)
-    }
-
-    /// Get the node index of an arg from the current query context.
-    ///
-    /// If not found, an `Err` is returned.
-    fn get_arg(&self, arg_name: &str) -> anyhow::Result<ArenaIndex> {
-        self.args
-            .get(&arg_name.to_lowercase())
-            .ok_or_else(|| anyhow!("Argument `{}` not found in context.", arg_name))
-            .copied()
-    }
-
-    fn add_arg(&mut self, name: String, object_idx: ArenaIndex) {
-        self.args.insert(name, object_idx);
-    }
-
-    fn remove_arg(&mut self, name: &str) -> Option<ArenaIndex> {
-        self.args.swap_remove(name)
     }
 
     /// Get the object index of a table from the current query context.
@@ -2554,7 +2575,7 @@ impl LineageExtractor {
         }
         let node_idx = self.expr_lin(&body, expand_value_table, ColumnUsage::UserSqlFunction)?;
         for (arg_name, _) in &arguments {
-            self.context.remove_arg(arg_name);
+            self.context.args.remove(arg_name);
         }
 
         input.push(node_idx);
@@ -2581,7 +2602,7 @@ impl LineageExtractor {
             )],
         );
         let arg_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
-        self.context.add_arg(arg_ident, arg_node_idx);
+        self.context.args.add(arg_ident, arg_node_idx);
         self.context.add_node_to_output_lineage(arg_node_idx);
         object_idx
     }
@@ -4862,7 +4883,7 @@ impl LineageExtractor {
             )],
         );
         let var_node_idx = self.context.arena_objects[object_idx].lineage_nodes[0];
-        self.context.add_var(var_ident, var_node_idx);
+        self.context.vars.add(var_ident, var_node_idx);
         self.context.add_node_to_output_lineage(var_node_idx);
         object_idx
     }
@@ -4910,9 +4931,9 @@ impl LineageExtractor {
             for (i, var) in set_var_statement.vars.iter().enumerate() {
                 match var {
                     SetVariable::UserVariable(var_name) => {
-                        let var_node_idx = self.context.get_var(var_name.as_str())?;
-                        let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
-                        var_node.input = inputs[i].clone();
+                        let var_node_idx = self.context.vars.get(var_name.as_str())?;
+                        self.context
+                            .add_inputs_to_node(var_node_idx, &inputs[i], true);
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -4923,9 +4944,9 @@ impl LineageExtractor {
                 match var {
                     SetVariable::UserVariable(var_name) => {
                         let node_idx = self.expr_lin(expr, false, ColumnUsage::SetVar)?;
-                        let var_node_idx = self.context.get_var(var_name.as_str())?;
-                        let var_node = &mut self.context.arena_lineage_nodes[var_node_idx];
-                        var_node.input = vec![node_idx];
+                        let var_node_idx = self.context.vars.get(var_name.as_str())?;
+                        self.context
+                            .add_inputs_to_node(var_node_idx, &[node_idx], true);
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -4976,12 +4997,10 @@ impl LineageExtractor {
     fn remove_scope_vars(&mut self, vars: &[ArenaIndex]) {
         vars.iter().for_each(|obj_idx| {
             let var_obj = &self.context.arena_objects[*obj_idx];
-            // todo: remove to_owned
             let var_node_name = self.context.arena_lineage_nodes[var_obj.lineage_nodes[0]]
                 .name
-                .string()
-                .to_owned();
-            self.context.remove_var(&var_node_name);
+                .string();
+            self.context.vars.remove(var_node_name);
         });
     }
 
