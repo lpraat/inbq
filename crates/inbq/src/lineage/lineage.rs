@@ -3592,11 +3592,11 @@ impl LineageContext {
         if let Some(table_value) = &select_query_expr.select.table_value {
             match table_value {
                 SelectTableValue::Struct if !expand_value_table => {
-                    let mut struct_node_tyupes = Vec::with_capacity(lineage_nodes.len());
+                    let mut struct_node_types = Vec::with_capacity(lineage_nodes.len());
                     let mut input = Vec::with_capacity(lineage_nodes.len());
                     for node_idx in &lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
-                        struct_node_tyupes.push(StructNodeFieldType::new(
+                        struct_node_types.push(StructNodeFieldType::new(
                             node.name.string(),
                             node.r#type.clone(),
                             vec![*node_idx],
@@ -3606,7 +3606,7 @@ impl LineageContext {
                     lineage_nodes.drain(..);
 
                     let struct_node = NodeType::Struct(StructNodeType {
-                        fields: struct_node_tyupes,
+                        fields: struct_node_types,
                     });
 
                     let struct_node_idx = self.allocate_lineage_node(
