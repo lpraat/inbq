@@ -27,7 +27,7 @@ use std::{
 use std::{hash::Hash, result::Result::Ok};
 
 use super::{
-    catalog::{Catalog, Column, SchemaObjectKind, UserFunctionArg},
+    catalog::{Catalog, Column, SchemaObjectKind},
     find_matching_function,
 };
 
