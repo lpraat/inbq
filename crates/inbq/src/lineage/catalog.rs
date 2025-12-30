@@ -62,7 +62,10 @@ pub enum SchemaObjectKind {
         /// Body is required for templated functions
         body: Option<String>,
     },
-    // todo: add UserJsFunction
+    UserJsFunction {
+        arguments: Vec<UserFunctionArg>,
+        returns: String,
+    },
     TableFunction {
         arguments: Vec<TableFunctionArgument>,
         returns: Vec<Column>,

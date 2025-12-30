@@ -2,15 +2,15 @@ use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-        CreateSqlFunctionStatement, CreateTableStatement, Cte, DeclareVarStatement,
-        DeleteStatement, DropFunctionStatement, DropTableStatement, Expr, ForInStatement, FromExpr,
-        FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr, GroupingQueryExpr,
-        Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert,
-        MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr, ParameterizedType,
-        QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, SelectAllExpr,
-        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
-        SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr,
-        Type, UnaryOperator, UpdateStatement, When, With,
+        CreateJsFunctionStatement, CreateSqlFunctionStatement, CreateTableStatement, Cte,
+        DeclareVarStatement, DeleteStatement, DropFunctionStatement, DropTableStatement, Expr,
+        ForInStatement, FromExpr, FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr,
+        GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
+        Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr,
+        ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
+        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
+        SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
+        StatementsBlock, StructExpr, Type, UnaryOperator, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -27,7 +27,7 @@ use std::{
 use std::{hash::Hash, result::Result::Ok};
 
 use super::{
-    catalog::{Catalog, Column, SchemaObjectKind},
+    catalog::{Catalog, Column, SchemaObjectKind, UserFunctionArg},
     find_matching_function,
 };
 
@@ -563,7 +563,9 @@ enum ContextObjectKind {
     Unnest,
     Var,
     Arg,
+    UserJsFunction,
     UserSqlFunction,
+    TempUserJsFunction,
     TempUserSqlFunction,
     TableFunction,
 }
@@ -588,6 +590,8 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::TableFunction => "table_function".to_owned(),
             ContextObjectKind::UserSqlFunction => "user_sql_function".to_owned(),
             ContextObjectKind::TempUserSqlFunction => "temp_user_sql_function".to_owned(),
+            ContextObjectKind::UserJsFunction => "user_js_function".to_owned(),
+            ContextObjectKind::TempUserJsFunction => "temp_user_js_function".to_owned(),
         }
     }
 }
@@ -2507,6 +2511,19 @@ impl LineageContext {
                 (
                     routine_name,
                     return_type.unwrap_or(self.arena_lineage_nodes[node_idx].r#type.clone()),
+                )
+            }
+            Some(routine_idx)
+                if matches!(
+                    self.arena_objects[routine_idx].kind,
+                    ContextObjectKind::UserJsFunction | ContextObjectKind::TempUserJsFunction
+                ) =>
+            {
+                let return_node_idx = self.arena_objects[routine_idx].lineage_nodes[0];
+                input.push(return_node_idx);
+                (
+                    routine_name,
+                    self.arena_lineage_nodes[return_node_idx].r#type.clone(),
                 )
             }
             _ => {
@@ -5221,6 +5238,26 @@ impl LineageContext {
         Ok(())
     }
 
+    fn create_js_function_statement_lin(
+        &mut self,
+        create_js_function_statement: &CreateJsFunctionStatement,
+    ) -> anyhow::Result<()> {
+        let routine_name = routine_name!(create_js_function_statement.name.name);
+        let routine_nodes = vec![(
+            NodeName::Anonymous,
+            NodeType::from_parser_type(&create_js_function_statement.returns),
+            vec![],
+        )];
+        let kind = if create_js_function_statement.is_temporary {
+            ContextObjectKind::TempUserJsFunction
+        } else {
+            ContextObjectKind::UserJsFunction
+        };
+        let routine_idx = self.allocate_object(&routine_name, kind, routine_nodes);
+        self.add_script_routine(routine_idx);
+        Ok(())
+    }
+
     fn statement_lin(
         &mut self,
         catalog: &mut LineageCatalog,
@@ -5262,8 +5299,8 @@ impl LineageContext {
             Statement::CreateSqlFunction(create_sql_function_statement) => {
                 self.create_sql_function_statement_lin(catalog, create_sql_function_statement)?
             }
-            Statement::CreateJsFunction(_) => {
-                // TODO
+            Statement::CreateJsFunction(create_js_function_statement) => {
+                self.create_js_function_statement_lin(create_js_function_statement)?
             }
             Statement::DeclareVar(declare_var_statement) => {
                 self.declare_var_statement_lin(catalog, declare_var_statement)?;
@@ -5590,6 +5627,36 @@ fn _extract_lineage(
                 );
                 source_tables.insert(schema_object.name.clone(), table_idx);
             }
+            SchemaObjectKind::UserJsFunction {
+                arguments: _,
+                returns,
+            } => {
+                if source_routines.contains_key(&schema_object.name) {
+                    panic!(
+                        "Found duplicate definition of routine schema object `{}`.",
+                        schema_object.name
+                    );
+                }
+
+                let returns = match parse_dtype(returns) {
+                    Err(err) => {
+                        panic!(
+                            "Cannot retrieve return type {} of js function schema object {} due to: {}",
+                            returns, schema_object.name, err
+                        );
+                    }
+                    Ok(return_type) => return_type,
+                };
+
+                let routine_name = routine_name!(schema_object.name);
+                let routine_nodes = vec![(NodeName::Anonymous, returns, vec![])];
+                let routine_idx = context.allocate_object(
+                    &routine_name,
+                    ContextObjectKind::UserJsFunction,
+                    routine_nodes,
+                );
+                source_routines.insert(routine_name.clone(), routine_idx);
+            }
             SchemaObjectKind::UserSqlFunction {
                 arguments,
                 returns,
@@ -5615,7 +5682,7 @@ fn _extract_lineage(
                     });
                     if !are_args_unique {
                         panic!(
-                            "Found duplicate columns in schema object `{}`: `{:?}`.",
+                            "Found duplicate arguments in schema object `{}`: `{:?}`.",
                             &schema_object.name, duplicate_arguments
                         );
                     }

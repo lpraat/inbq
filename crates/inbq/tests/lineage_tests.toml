@@ -2246,3 +2246,73 @@ value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
 value = ["select"]
 [tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
 "!anonymous"=["select"]  # anonymous return type
+
+[[tests]]
+sql="""
+CREATE TEMP FUNCTION multiplyInputs(x FLOAT64, y FLOAT64)
+RETURNS FLOAT64
+LANGUAGE js
+AS r\"""
+  return x*y;
+\""";
+
+insert into proj.dat.out
+SELECT x, y, multiplyInputs(x, y) AS product
+FROM proj.dat.numbers;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+    { name = "y", dtype = "float64" },
+    { name = "xy", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.numbers"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+    { name = "y", dtype = "float64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+x = ["proj.dat.numbers->x"]
+y = ["proj.dat.numbers->y"]
+xy = ["proj.dat.numbers->x", "proj.dat.numbers->y"]
+[tests.used_columns."proj.dat.numbers"]
+x = ["select"]
+y = ["select"]
+
+[[tests]]
+sql="""
+insert into proj.dat.out
+SELECT x, y, `proj.dat.multiplyInputs`(x, y) AS product
+FROM proj.dat.numbers;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+    { name = "y", dtype = "float64" },
+    { name = "xy", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.numbers"
+kind.table.columns = [
+    { name = "x", dtype = "float64" },
+    { name = "y", dtype = "float64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.multiplyInputs"
+kind.user_js_function.arguments = [
+    { name = "x", dtype = "float64" },
+    { name = "y", dtype = "float64" },
+]
+kind.user_js_function.returns = "float64"
+[tests.ready_lineage."proj.dat.out"]
+x = ["proj.dat.numbers->x"]
+y = ["proj.dat.numbers->y"]
+xy = ["proj.dat.numbers->x", "proj.dat.numbers->y", "proj.dat.multiplyInputs(*)->!anonymous"]
+[tests.used_columns."proj.dat.numbers"]
+x = ["select"]
+y = ["select"]
+[tests.used_columns."proj.dat.multiplyInputs(*)"]
+"!anonymous" = ["select"]
