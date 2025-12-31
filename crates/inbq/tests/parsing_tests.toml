@@ -84,6 +84,49 @@ SELECT
 
 [[tests]]
 sql = """
+with professors AS (
+  SELECT 101 AS id, "pencil" AS item, 24 AS quantity UNION ALL
+  SELECT 123, "pen", 16 UNION ALL
+  SELECT 123, "pencil", 10 UNION ALL
+  SELECT 123, "pencil", 38 UNION ALL
+  SELECT 101, "pen", 19 UNION ALL
+  SELECT 101, "pen", 23 UNION ALL
+  SELECT 130, "scissors", 8 UNION ALL
+  SELECT 150, "pencil", 72)
+
+SELECT
+  WITH DIFFERENTIAL_PRIVACY
+    OPTIONS(epsilon=10, max_groups_contributed=2, privacy_unit_column=id)
+    item,
+    AVG(quantity, contribution_bounds_per_group => (0,100)) AS average_quantity
+FROM professors
+GROUP BY item;
+"""
+
+
+[[tests]]
+sql = """
+with professors AS (
+  SELECT 101 AS id, "pencil" AS item, 24 AS quantity UNION ALL
+  SELECT 123, "pen", 16 UNION ALL
+  SELECT 123, "pencil", 10 UNION ALL
+  SELECT 123, "pencil", 38 UNION ALL
+  SELECT 101, "pen", 19 UNION ALL
+  SELECT 101, "pen", 23 UNION ALL
+  SELECT 130, "scissors", 8 UNION ALL
+  SELECT 150, "pencil", 72)
+
+SELECT
+  WITH `DIFFERENTIAL_PRIVACY`
+    OPTIONS(epsilon=10, max_groups_contributed=2, privacy_unit_column=id)
+    item,
+    AVG(quantity, contribution_bounds_per_group => (0,100)) AS average_quantity
+FROM professors
+GROUP BY item;
+"""
+
+[[tests]]
+sql = """
 SELECT
     NUMERIC,
     BIGNUMERIC,

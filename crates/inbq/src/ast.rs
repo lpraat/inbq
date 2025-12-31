@@ -1151,6 +1151,7 @@ pub struct RecursiveCte {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Select {
+    pub differential_privacy: Option<DifferentialPrivacy>,
     pub distinct: bool,
     pub table_value: Option<SelectTableValue>,
     pub exprs: Vec<SelectExpr>,
@@ -1160,6 +1161,17 @@ pub struct Select {
     pub having: Option<Having>,
     pub qualify: Option<Qualify>,
     pub window: Option<Window>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DifferentialPrivacyOption {
+    pub name: Name,
+    pub value: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DifferentialPrivacy {
+    pub options: Vec<DifferentialPrivacyOption>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

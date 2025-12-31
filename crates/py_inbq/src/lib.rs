@@ -21,16 +21,17 @@ use inbq::{
         CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
         CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr, DateDiffFunctionExpr,
         DateTruncFunctionExpr, DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption,
-        DeclareVarStatement, DeleteStatement, DropFunctionStatement, DropTableStatement,
-        ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
-        ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-        FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
-        FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
-        FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy,
-        GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier,
-        IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
-        JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr,
+        DeclareVarStatement, DeleteStatement, DifferentialPrivacy, DifferentialPrivacyOption,
+        DropFunctionStatement, DropTableStatement, ExecuteImmediateStatement,
+        ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
+        FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+        FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
+        GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr,
+        GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+        IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+        JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr,
         LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
         MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte,
         NormalizationMode, NormalizeAndCasefoldFunctionExpr, NormalizeFunctionExpr, Number,
@@ -3115,9 +3116,31 @@ impl RsToPyObject for Window {
     }
 }
 
+impl RsToPyObject for DifferentialPrivacyOption {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "name", self.name),
+            kwarg!(py_ctx, "value", self.value),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, DifferentialPrivacyOption)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for DifferentialPrivacy {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "options", self.options)];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DifferentialPrivacy)?, kwargs)
+    }
+}
+
 impl RsToPyObject for Select {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
+            kwarg!(py_ctx, "differential_privacy", self.differential_privacy),
             kwarg!(py_ctx, "distinct", self.distinct),
             kwarg!(py_ctx, "table_value", self.table_value),
             kwarg!(py_ctx, "exprs", self.exprs),

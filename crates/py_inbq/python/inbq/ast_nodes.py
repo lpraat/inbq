@@ -1342,6 +1342,7 @@ class RecursiveCte(AstNode):
 
 @dataclass
 class Select(AstNode):
+    differential_privacy: "Optional[DifferentialPrivacy]"
     distinct: "bool"
     table_value: "Optional[SelectTableValue]"
     exprs: "list[SelectExpr]"
@@ -1351,6 +1352,17 @@ class Select(AstNode):
     having: "Optional[Having]"
     qualify: "Optional[Qualify]"
     window: "Optional[Window]"
+
+
+@dataclass
+class DifferentialPrivacyOption(AstNode):
+    name: "Name"
+    value: "Expr"
+
+
+@dataclass
+class DifferentialPrivacy(AstNode):
+    options: "list[DifferentialPrivacyOption]"
 
 
 @dataclass

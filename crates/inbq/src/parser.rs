@@ -11,20 +11,20 @@ use crate::ast::{
     CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr,
     DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
     DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
-    DropFunctionStatement, DropTableStatement, ExecuteImmediateStatement,
-    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
-    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
-    GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr,
-    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-    LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement,
-    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
-    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    DifferentialPrivacy, DifferentialPrivacyOption, DropFunctionStatement, DropTableStatement,
+    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
+    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
+    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
+    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
+    FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr,
+    GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier,
+    Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+    MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot,
+    PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
     QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
     RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
     SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
@@ -2154,8 +2154,41 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// differential_privacy ->
+    /// "WITH" "DIFFERENTIAL_PRIVACY" "OPTIONS" "("
+    ///  "epsilon" "=" expr ","
+    ///  "delta" "=" expr ","
+    ///  ["max_groups_contributed" "=" expr ","]
+    ///  "privacy_unit_column" "=" name
+    /// ")"
+    fn parse_differential_privacy(&mut self) -> anyhow::Result<DifferentialPrivacy> {
+        // DIFFERENTIAL_PRIVACY is an identifier
+        self.consume(TokenTypeVariant::With)?;
+
+        self.consume_identifier()?;
+        self.consume_non_reserved_keyword("options")?;
+
+        self.consume(TokenTypeVariant::LeftParen)?;
+        let mut options = vec![];
+        loop {
+            let name = self.consume_identifier_into_name()?;
+            self.consume(TokenTypeVariant::Equal)?;
+            let value = self.parse_expr()?;
+            options.push(DifferentialPrivacyOption { name, value });
+            if !self.match_token_type(TokenTypeVariant::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenTypeVariant::RightParen)?;
+
+        Ok(DifferentialPrivacy { options })
+    }
+
+    /// Rule:
+    /// ```text
     /// select ->
     /// "SELECT"
+    /// [differential_privacy]
     /// [("ALL" | "DISTINCT")]
     /// ["AS" ("STRUCT" | "VALUE")]
     /// select_col_expr [","] (select_col_expr [","])*
@@ -2169,8 +2202,20 @@ impl<'a> Parser<'a> {
     fn parse_select(&mut self) -> anyhow::Result<Select> {
         self.consume(TokenTypeVariant::Select)?;
 
-        let distinct = self.match_token_type(TokenTypeVariant::Distinct);
-        self.match_token_type(TokenTypeVariant::All);
+        let differential_privacy = if self.check_token_type(TokenTypeVariant::With)
+            && matches!(&self.peek_next_i(1).kind, TokenType::Identifier(ident)|TokenType::QuotedIdentifier(ident) if ident.eq_ignore_ascii_case("differential_privacy"))
+        {
+            Some(self.parse_differential_privacy()?)
+        } else {
+            None
+        };
+
+        let distinct = if self.match_token_type(TokenTypeVariant::Distinct) {
+            true
+        } else {
+            !self.match_token_type(TokenTypeVariant::All)
+        };
+
         let table_value = if self.match_token_type(TokenTypeVariant::As) {
             if self.match_token_type(TokenTypeVariant::Struct) {
                 Some(SelectTableValue::Struct)
@@ -2268,6 +2313,7 @@ impl<'a> Parser<'a> {
         };
 
         Ok(Select {
+            differential_privacy,
             distinct,
             table_value,
             exprs: select_exprs,
