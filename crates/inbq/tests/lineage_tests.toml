@@ -2497,3 +2497,109 @@ product = ["select"]
 sales = ["select", "pivot_aggregate"]
 year = ["select", "pivot_aggregate"]
 quarter = ["pivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM proj.dat.in_table
+UNPIVOT(sales FOR quarter IN (Q1, Q2, Q3, Q4))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "q1", dtype = "int64" },
+    { name = "q2", dtype = "int64" },
+    { name = "q3", dtype = "int64" },
+    { name = "q4", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "quarter", dtype = "string" },
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2","proj.dat.in_table->q3","proj.dat.in_table->q4"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+q1 = ["select", "unpivot_column"]
+q2 = ["select", "unpivot_column"]
+q3 = ["select", "unpivot_column"]
+q4 = ["select", "unpivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM proj.dat.in_table
+  UNPIVOT(
+    (first_half_sales, second_half_sales)
+    FOR semesters
+    IN ((Q1, Q2) AS 'semester_1', (Q3, Q4) AS 'semester_2'))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "q1", dtype = "int64" },
+    { name = "q2", dtype = "int64" },
+    { name = "q3", dtype = "int64" },
+    { name = "q4", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "first_half_sales", dtype = "int64" },
+    { name = "second_half_sales", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+first_half_sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
+second_half_sales = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+q1 = ["select", "unpivot_column"]
+q2 = ["select", "unpivot_column"]
+q3 = ["select", "unpivot_column"]
+q4 = ["select", "unpivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM proj.dat.in_table
+  UNPIVOT(
+    (sales, sales)
+    FOR semesters
+    IN ((Q1, Q2) AS 'semester_1', (Q3, Q4) AS 'semester_2'))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "q1", dtype = "int64" },
+    { name = "q2", dtype = "int64" },
+    { name = "q3", dtype = "int64" },
+    { name = "q4", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "sales_1", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
+sales_1 = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+q1 = ["select", "unpivot_column"]
+q2 = ["select", "unpivot_column"]
+q3 = ["select", "unpivot_column"]
+q4 = ["select", "unpivot_column"]

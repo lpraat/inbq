@@ -11,7 +11,7 @@ use crate::{
         QuotedIdentifier, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
         SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable,
         Statement, StatementsBlock, StructExpr, TableOperator, Type, UnaryExpr, UnaryOperator,
-        UpdateStatement, When, With,
+        UnpivotKind, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -558,6 +558,7 @@ enum ContextObjectKind {
     TableAlias,
     UsingTable,
     PivotTable,
+    UnpivotTable,
     AnonymousQuery,
     AnonymousStruct,
     AnonymousArray,
@@ -582,6 +583,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::TableAlias => "table_alias".to_owned(),
             ContextObjectKind::JoinTable => "join_table".to_owned(),
             ContextObjectKind::PivotTable => "pivot_table".to_owned(),
+            ContextObjectKind::UnpivotTable => "unpivot_table".to_owned(),
             ContextObjectKind::UsingTable => "using_table".to_owned(),
             ContextObjectKind::AnonymousQuery => "anonymous_query".to_owned(),
             ContextObjectKind::AnonymousExpr => "anonymous_expr".to_owned(),
@@ -636,6 +638,7 @@ enum ColumnUsage {
     UserSqlFunction,
     PivotAggregate,
     PivotColumn,
+    UnpivotColumn,
 }
 
 impl From<ColumnUsage> for String {
@@ -660,6 +663,7 @@ impl From<ColumnUsage> for String {
             ColumnUsage::UserSqlFunction => "user_sql_function".into(),
             ColumnUsage::PivotAggregate => "pivot_aggregate".into(),
             ColumnUsage::PivotColumn => "pivot_column".into(),
+            ColumnUsage::UnpivotColumn => "unpivot_column".into(),
         }
     }
 }
@@ -3719,7 +3723,6 @@ impl LineageContext {
                 }
                 new_lineage_nodes.extend(new_nodes);
 
-                // Track usage of pivot column
                 self.add_used_column(
                     *pivot_column_idx
                         .expect("Pivot column not found in table. This should not happen."),
@@ -3737,7 +3740,152 @@ impl LineageContext {
                     new_lineage_nodes,
                 )
             }
-            TableOperator::Unpivot(_) => todo!(),
+            TableOperator::Unpivot(unpivot) => {
+                let unpivot_obj_name = if let Some(alias) = &unpivot.alias {
+                    alias.as_str()
+                } else {
+                    &self.get_anon_obj_name("unpivot")
+                };
+
+                let mut new_lineage_nodes = vec![];
+
+                match &unpivot.kind {
+                    UnpivotKind::SingleColumn(single_column_unpivot) => {
+                        let unpivot_column_names = single_column_unpivot
+                            .columns_to_unpivot
+                            .iter()
+                            .map(|col| col.name.as_str().to_lowercase())
+                            .collect::<HashSet<_>>();
+                        let unpivot_column_indices = self.arena_objects[obj_idx]
+                            .lineage_nodes
+                            .iter()
+                            .filter(|&node_idx| {
+                                unpivot_column_names.contains(
+                                    &self.arena_lineage_nodes[*node_idx]
+                                        .name
+                                        .string()
+                                        .to_lowercase(),
+                                )
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>();
+
+                        for node_idx in &self.arena_objects[obj_idx].lineage_nodes {
+                            let node = &self.arena_lineage_nodes[*node_idx];
+                            if !unpivot_column_names.contains(&node.name.string().to_lowercase()) {
+                                new_lineage_nodes.push((
+                                    node.name.clone(),
+                                    node.r#type.clone(),
+                                    vec![*node_idx],
+                                ));
+                            }
+                        }
+
+                        unpivot_column_indices
+                            .iter()
+                            .for_each(|idx| self.add_used_column(*idx, ColumnUsage::UnpivotColumn));
+
+                        let unpivot_col_ty = self.arena_lineage_nodes[unpivot_column_indices[0]]
+                            .r#type
+                            .clone();
+
+                        new_lineage_nodes.push((
+                            NodeName::Defined(
+                                single_column_unpivot.values_column.as_str().to_owned(),
+                            ),
+                            unpivot_col_ty,
+                            unpivot_column_indices,
+                        ));
+                        new_lineage_nodes.push((
+                            NodeName::Defined(
+                                single_column_unpivot.name_column.as_str().to_owned(),
+                            ),
+                            NodeType::String,
+                            vec![],
+                        ));
+                    }
+                    UnpivotKind::MultiColumn(multi_column_unpivot) => {
+                        let mut new_unpivot_nodes = vec![];
+                        let mut names_with_count: IndexMap<String, u16> = IndexMap::new();
+                        let mut all_unpivot_column_names = HashSet::new();
+                        for (value_column, column_set) in multi_column_unpivot
+                            .values_columns
+                            .iter()
+                            .zip(multi_column_unpivot.column_sets_to_unpivot.iter())
+                        {
+                            let unpivot_column_names = column_set
+                                .names
+                                .iter()
+                                .map(|col| col.as_str().to_lowercase())
+                                .collect::<HashSet<_>>();
+                            let unpivot_column_indices = self.arena_objects[obj_idx]
+                                .lineage_nodes
+                                .iter()
+                                .filter(|&node_idx| {
+                                    unpivot_column_names.contains(
+                                        self.arena_lineage_nodes[*node_idx]
+                                            .name
+                                            .string()
+                                            .to_lowercase()
+                                            .as_str(),
+                                    )
+                                })
+                                .cloned()
+                                .collect::<Vec<_>>();
+                            unpivot_column_indices.iter().for_each(|idx| {
+                                self.add_used_column(*idx, ColumnUsage::UnpivotColumn)
+                            });
+
+                            let unpivot_col_ty = self.arena_lineage_nodes
+                                [unpivot_column_indices[0]]
+                                .r#type
+                                .clone();
+
+                            let entry = names_with_count
+                                .entry(value_column.as_str().to_owned())
+                                .or_insert(0);
+                            let col_name = if *entry == 0 {
+                                value_column.as_str().to_owned()
+                            } else {
+                                format!("{}_{}", value_column.as_str(), *entry)
+                            };
+                            *entry += 1;
+                            new_unpivot_nodes.push((
+                                NodeName::Defined(col_name),
+                                unpivot_col_ty,
+                                unpivot_column_indices,
+                            ));
+                            all_unpivot_column_names.extend(unpivot_column_names);
+                        }
+
+                        new_unpivot_nodes.push((
+                            NodeName::Defined(multi_column_unpivot.name_column.as_str().to_owned()),
+                            NodeType::String,
+                            vec![],
+                        ));
+
+                        for node_idx in &self.arena_objects[obj_idx].lineage_nodes {
+                            let node = &self.arena_lineage_nodes[*node_idx];
+                            if !all_unpivot_column_names
+                                .contains(&node.name.string().to_lowercase())
+                            {
+                                new_lineage_nodes.push((
+                                    node.name.clone(),
+                                    node.r#type.clone(),
+                                    vec![*node_idx],
+                                ));
+                            }
+                        }
+                        new_lineage_nodes.extend(new_unpivot_nodes);
+                    }
+                }
+
+                self.allocate_object(
+                    unpivot_obj_name,
+                    ContextObjectKind::UnpivotTable,
+                    new_lineage_nodes,
+                )
+            }
         };
 
         self.pop_curr_query_ctx();

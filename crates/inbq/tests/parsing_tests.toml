@@ -719,6 +719,15 @@ UNPIVOT(
 
 [[tests]]
 sql = """
+WITH Produce AS (
+  SELECT 'Kale' as product, 'foo' as d, 51 as Q1, 23 as Q2, 45 as Q3, 3 as Q4 UNION ALL
+  SELECT 'Apple', 'foo', 77, 0, 25, 2)
+SELECT * FROM Produce
+UNPIVOT((sales,first_sales,sales,first_sales) FOR quarter IN ((q1, q2, q3, q4) as "k"))
+"""
+
+[[tests]]
+sql = """
 SELECT * FROM dataset.my_table TABLESAMPLE SYSTEM (10 PERCENT)
 """
 
