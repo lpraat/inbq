@@ -1207,9 +1207,12 @@ pub struct SelectAllExpr {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct From {
     pub expr: Box<FromExpr>,
-    pub pivot: Option<Pivot>,
-    pub unpivot: Option<Unpivot>,
-    pub table_sample: Option<TableSample>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TableOperator {
+    Pivot(Pivot),
+    Unpivot(Unpivot),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1301,6 +1304,8 @@ pub struct TableFunctionExpr {
     pub name: PathName,
     pub arguments: Vec<TableFunctionArgument>,
     pub alias: Option<Name>,
+    pub table_operator: Option<TableOperator>,
+    pub table_sample: Option<TableSample>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1350,6 +1355,8 @@ pub struct FromPathExpr {
     pub path: PathName,
     pub alias: Option<Name>,
     pub system_time: Option<Expr>,
+    pub table_operator: Option<TableOperator>,
+    pub table_sample: Option<TableSample>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1361,6 +1368,8 @@ pub struct GroupingFromExpr {
 pub struct FromGroupingQueryExpr {
     pub query: Box<QueryExpr>,
     pub alias: Option<Name>,
+    pub table_operator: Option<TableOperator>,
+    pub table_sample: Option<TableSample>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

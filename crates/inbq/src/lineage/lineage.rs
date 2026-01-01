@@ -7,10 +7,11 @@ use crate::{
         ForInStatement, FromExpr, FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr,
         GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
         Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr,
-        ParameterizedType, QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier,
-        SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr,
-        SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable, Statement,
-        StatementsBlock, StructExpr, Type, UnaryOperator, UpdateStatement, When, With,
+        ParameterizedType, PivotColumn, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
+        QuotedIdentifier, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
+        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable,
+        Statement, StatementsBlock, StructExpr, TableOperator, Type, UnaryExpr, UnaryOperator,
+        UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -556,6 +557,7 @@ enum ContextObjectKind {
     JoinTable,
     TableAlias,
     UsingTable,
+    PivotTable,
     AnonymousQuery,
     AnonymousStruct,
     AnonymousArray,
@@ -579,6 +581,7 @@ impl From<ContextObjectKind> for String {
             ContextObjectKind::Query => "query".to_owned(),
             ContextObjectKind::TableAlias => "table_alias".to_owned(),
             ContextObjectKind::JoinTable => "join_table".to_owned(),
+            ContextObjectKind::PivotTable => "pivot_table".to_owned(),
             ContextObjectKind::UsingTable => "using_table".to_owned(),
             ContextObjectKind::AnonymousQuery => "anonymous_query".to_owned(),
             ContextObjectKind::AnonymousExpr => "anonymous_expr".to_owned(),
@@ -631,6 +634,8 @@ enum ColumnUsage {
     DefaultVar,
     SetVar,
     UserSqlFunction,
+    PivotAggregate,
+    PivotColumn,
 }
 
 impl From<ColumnUsage> for String {
@@ -653,6 +658,8 @@ impl From<ColumnUsage> for String {
             ColumnUsage::DefaultVar => "default_var".into(),
             ColumnUsage::SetVar => "set_var".into(),
             ColumnUsage::UserSqlFunction => "user_sql_function".into(),
+            ColumnUsage::PivotAggregate => "pivot_aggregate".into(),
+            ColumnUsage::PivotColumn => "pivot_column".into(),
         }
     }
 }
@@ -3565,6 +3572,180 @@ impl LineageContext {
         })
     }
 
+    fn pivot_column_alias(pivot_col: &PivotColumn, expr: &Expr) -> anyhow::Result<String> {
+        Ok(match expr {
+            Expr::Null => "NULL".to_owned(),
+            Expr::Number(number) => number.value.clone(),
+            Expr::Numeric(num_str) | Expr::BigNumeric(num_str) => num_str.clone(),
+            Expr::Unary(UnaryExpr {
+                operator: UnaryOperator::Minus,
+                right,
+            }) => match &(**right) {
+                Expr::Number(number) => number.value.clone(),
+                _ => {
+                    return Err(anyhow!(
+                        "An alias must be provided for pivot ovlumn {:?}",
+                        pivot_col
+                    ));
+                }
+            },
+            Expr::String(s) | Expr::RawString(s) => s.clone(),
+            Expr::Bool(b) => (if *b { "TRUE" } else { "FALSE" }).to_owned(),
+            Expr::Date(date) => date.replace("-", "_"),
+            Expr::Struct(s) => {
+                let mut parts = vec![];
+                for field in &s.fields {
+                    if let Some(alias) = &field.alias {
+                        parts.push(format!(
+                            "{}_{}",
+                            alias.as_str(),
+                            Self::pivot_column_alias(pivot_col, &field.expr)?
+                        ))
+                    } else {
+                        parts.push(Self::pivot_column_alias(pivot_col, &field.expr)?)
+                    }
+                }
+                parts.join("_")
+            }
+            _ => {
+                return Err(anyhow!(
+                    "An alias must be provided for pivot ovlumn {:?}",
+                    pivot_col
+                ));
+            }
+        })
+    }
+
+    fn table_operator_lin(
+        &mut self,
+        catalog: &LineageCatalog,
+        obj_idx: ArenaIndex,
+        table_operator: &Option<TableOperator>,
+    ) -> anyhow::Result<ArenaIndex> {
+        if table_operator.is_none() {
+            return Ok(obj_idx);
+        }
+
+        let table_operator = table_operator.as_ref().unwrap();
+
+        let table_name = &self.arena_objects[obj_idx].name;
+        self.push_query_ctx(
+            IndexMap::from([(table_name.to_owned(), obj_idx)]),
+            HashSet::new(),
+            false,
+        );
+
+        let obj_idx = match table_operator {
+            TableOperator::Pivot(pivot) => {
+                if pivot.aggregates.len() > 1
+                    && pivot.aggregates.len()
+                        != pivot
+                            .aggregates
+                            .iter()
+                            .filter(|agg| agg.alias.is_some())
+                            .count()
+                {
+                    return Err(anyhow!(
+                        "Found multiple aggregate function calls. For each aggregate expression an alias must be provided."
+                    ));
+                }
+
+                let mut cols_used_in_aggregates = HashSet::new();
+                let mut types_aggregate = vec![];
+                let mut input = vec![];
+                for agg in &pivot.aggregates {
+                    let node_idx =
+                        self.expr_lin(catalog, &agg.expr, false, ColumnUsage::PivotAggregate)?;
+                    types_aggregate.push(self.arena_lineage_nodes[node_idx].r#type.clone());
+                    input.push(node_idx);
+
+                    let mut agg_nodes = vec![node_idx];
+                    while let Some(agg_node_idx) = agg_nodes.pop() {
+                        let curr = &self.arena_lineage_nodes[agg_node_idx];
+
+                        for inp in &curr.input {
+                            if self.arena_lineage_nodes[*inp].source_obj == obj_idx {
+                                cols_used_in_aggregates.insert(*inp);
+                            } else {
+                                agg_nodes.push(*inp);
+                            }
+                        }
+                    }
+                }
+
+                let mut new_nodes = vec![];
+                for pivot_col in &pivot.pivot_columns {
+                    let pivot_col_name = if let Some(alias) = &pivot_col.alias {
+                        alias.as_str().to_owned()
+                    } else {
+                        Self::pivot_column_alias(pivot_col, &pivot_col.expr)?
+                    };
+
+                    for ((aggregate, input), ty) in
+                        pivot.aggregates.iter().zip(&input).zip(&types_aggregate)
+                    {
+                        let new_column_name = if let Some(alias) = &aggregate.alias {
+                            format!("{}_{}", alias.as_str(), pivot_col_name)
+                        } else {
+                            pivot_col_name.to_owned()
+                        };
+
+                        new_nodes.push((
+                            NodeName::Defined(new_column_name),
+                            ty.clone(),
+                            vec![*input],
+                        ));
+                    }
+                }
+
+                let mut new_lineage_nodes = vec![];
+                let mut pivot_column_idx = None;
+                let obj = &self.arena_objects[obj_idx];
+                for node_idx in &obj.lineage_nodes {
+                    if self.arena_lineage_nodes[*node_idx]
+                        .name
+                        .string()
+                        .eq_ignore_ascii_case(pivot.input_column.as_str())
+                    {
+                        pivot_column_idx = Some(node_idx);
+                    } else if !cols_used_in_aggregates.contains(node_idx) {
+                        let node = &self.arena_lineage_nodes[*node_idx];
+                        new_lineage_nodes.push((
+                            node.name.clone(),
+                            node.r#type.clone(),
+                            vec![*node_idx],
+                        ));
+                    }
+                }
+                new_lineage_nodes.extend(new_nodes);
+
+                // Track usage of pivot column
+                self.add_used_column(
+                    *pivot_column_idx
+                        .expect("Pivot column not found in table. This should not happen."),
+                    ColumnUsage::PivotColumn,
+                );
+
+                let pivot_obj_name = if let Some(alias) = &pivot.alias {
+                    alias.as_str()
+                } else {
+                    &self.get_anon_obj_name("pivot")
+                };
+                self.allocate_object(
+                    pivot_obj_name,
+                    ContextObjectKind::PivotTable,
+                    new_lineage_nodes,
+                )
+            }
+            TableOperator::Unpivot(_) => todo!(),
+        };
+
+        self.pop_curr_query_ctx();
+        self.add_object_nodes_to_output_lineage(obj_idx);
+
+        Ok(obj_idx)
+    }
+
     fn select_query_expr_lin(
         &mut self,
         catalog: &LineageCatalog,
@@ -4055,7 +4236,7 @@ impl LineageContext {
                     self.query_expr_lin(catalog, &from_grouping_query_expr.query, true)?;
                 let obj = &self.arena_objects[obj_idx];
 
-                let table_like_idx = self.allocate_object(
+                let table_idx = self.allocate_object(
                     new_source_name,
                     ContextObjectKind::Query,
                     obj.lineage_nodes
@@ -4066,8 +4247,14 @@ impl LineageContext {
                         })
                         .collect(),
                 );
-                self.add_object_nodes_to_output_lineage(table_like_idx);
-                self.add_new_from_table(from_tables, table_like_idx)?;
+                self.add_object_nodes_to_output_lineage(table_idx);
+
+                let table_idx = self.table_operator_lin(
+                    catalog,
+                    table_idx,
+                    &from_grouping_query_expr.table_operator,
+                )?;
+                self.add_new_from_table(from_tables, table_idx)?;
             }
             FromExpr::GroupingFrom(grouping_from_expr) => self.from_expr_lin(
                 catalog,
@@ -4094,14 +4281,21 @@ impl LineageContext {
                             routine_name
                         ));
                     };
-                if let Some(alias) = &table_function_expr.alias {
+                let table_idx = if let Some(alias) = &table_function_expr.alias {
                     let table_alias_idx =
                         self.create_table_alias_from_table(alias.as_str(), routine_idx);
                     self.add_object_nodes_to_output_lineage(table_alias_idx);
-                    self.add_new_from_table(from_tables, table_alias_idx)?;
+                    table_alias_idx
                 } else {
-                    self.add_new_from_table(from_tables, routine_idx)?;
-                }
+                    routine_idx
+                };
+
+                let table_idx = self.table_operator_lin(
+                    catalog,
+                    table_idx,
+                    &table_function_expr.table_operator,
+                )?;
+                self.add_new_from_table(from_tables, table_idx)?;
             }
         }
         Ok(())
@@ -4117,10 +4311,10 @@ impl LineageContext {
         check_unnest: bool,
     ) -> anyhow::Result<()> {
         let table_name = &from_path_expr.path.name;
-        let table_like_obj_id = self.get_table(catalog, table_name);
+        let table_idx = self.get_table(catalog, table_name);
         let path_identifiers = from_path_expr.path.identifiers();
 
-        if table_like_obj_id.is_none() {
+        if table_idx.is_none() {
             if check_unnest {
                 if path_identifiers.len() > 1 {
                     let table = path_identifiers[0];
@@ -4193,17 +4387,19 @@ impl LineageContext {
             ));
         }
 
-        let table_like_obj_id = table_like_obj_id.unwrap();
-
-        if let Some(alias) = &from_path_expr.alias {
+        let table_idx = table_idx.unwrap();
+        let table_idx = if let Some(alias) = &from_path_expr.alias {
             // If aliased, we create a new object
-            let table_alias_idx =
-                self.create_table_alias_from_table(alias.as_str(), table_like_obj_id);
+            let table_alias_idx = self.create_table_alias_from_table(alias.as_str(), table_idx);
             self.add_object_nodes_to_output_lineage(table_alias_idx);
-            self.add_new_from_table(from_tables, table_alias_idx)?;
+            table_alias_idx
         } else {
-            self.add_new_from_table(from_tables, table_like_obj_id)?;
-        }
+            table_idx
+        };
+
+        let table_idx =
+            self.table_operator_lin(catalog, table_idx, &from_path_expr.table_operator)?;
+        self.add_new_from_table(from_tables, table_idx)?;
 
         Ok(())
     }

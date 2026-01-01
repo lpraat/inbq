@@ -126,6 +126,53 @@ GROUP BY item;
 """
 
 [[tests]]
+sql="""
+SELECT * FROM
+    ((select * from Produce) inner join (select * from pro) on true)
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM
+    (select * from Produce) inner join (select * from pro) on true
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM
+       ((((select * from Produce))))
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM (select * from Produce)
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM
+  (select * from Produce)
+  PIVOT(SUM(sales) total_sales, max(product) mp FOR quarter IN ("Q1", "Q2"))
+  ,
+  (select * from pro)
+  PIVOT(SUM(sales) total_sales, max(product) mp FOR quarter IN ("Q1", "Q2")) p
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM
+  ((((select * from Produce))))
+  PIVOT(SUM(sales) total_sales, max(product) mp FOR quarter IN ("Q1", "Q2"))
+"""
+
+[[tests]]
+sql="""
+SELECT * FROM
+  `proj.dat.t_func`(current_date)
+  PIVOT(SUM(sales) total_sales, max(product) mp FOR quarter IN ("Q1", "Q2"))
+"""
+
+[[tests]]
 sql = """
 SELECT
     NUMERIC,

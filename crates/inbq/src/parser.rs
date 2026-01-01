@@ -31,7 +31,7 @@ use crate::ast::{
     SetQueryOperator, SetSelectQueryExpr, SetVarStatement, SetVariable, SingleColumnUnpivot,
     Statement, StatementsBlock, StringConcatExpr, StructExpr, StructField, StructFieldType,
     StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
-    TableFunctionExpr, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
+    TableFunctionExpr, TableOperator, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
     TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant,
     TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
     UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
@@ -2328,27 +2328,12 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// from -> "FROM" from_expr [pivot | unpivot] [tablesample]
+    /// from -> "FROM" from_expr
     /// ```
     fn parse_from(&mut self) -> anyhow::Result<Option<From>> {
         Ok(if self.match_token_type(TokenTypeVariant::From) {
-            let from_expr = self.parse_from_expr()?;
-
-            let (pivot, unpivot) = if self.check_non_reserved_keyword("pivot") {
-                (Some(self.parse_pivot()?), None)
-            } else if self.check_non_reserved_keyword("unpivot") {
-                (None, Some(self.parse_unpivot()?))
-            } else {
-                (None, None)
-            };
-
-            let table_sample = self.parse_tablesample()?;
-
             Some(crate::parser::From {
-                expr: Box::new(from_expr),
-                pivot,
-                unpivot,
-                table_sample,
+                expr: Box::new(self.parse_from_expr()?),
             })
         } else {
             None
@@ -2703,30 +2688,26 @@ impl<'a> Parser<'a> {
     /// | path "(" ("TABLE" path | expr) ("," ("TABLE" path | expr))* ")"
     /// ```
     fn parse_from_item_expr(&mut self) -> anyhow::Result<FromExpr> {
+        let fn_parse_table_operator =
+            |parser: &mut Parser| -> anyhow::Result<Option<TableOperator>> {
+                Ok(if parser.check_non_reserved_keyword("pivot") {
+                    Some(TableOperator::Pivot(parser.parse_pivot()?))
+                } else if parser.check_non_reserved_keyword("unpivot") {
+                    Some(TableOperator::Unpivot(parser.parse_unpivot()?))
+                } else {
+                    None
+                })
+            };
+
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             let curr = self.curr;
-            // lookahead to check whether we can parse a query expr
-            while self.peek().kind == TokenType::LeftParen {
-                self.curr += 1;
-            }
-            let lookahead = self.peek();
-            if lookahead.kind == TokenType::Select || lookahead.kind == TokenType::With {
-                self.curr = curr;
-                let query_expr = self.parse_query_expr()?;
-                self.consume(TokenTypeVariant::RightParen)?;
-                let alias = self.parse_from_item_alias()?;
-                Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
-                    query: Box::new(query_expr),
-                    alias,
-                }))
-            } else {
-                self.curr = curr;
-                let parse_from_expr = self.parse_from_expr()?;
-                match parse_from_expr {
+            match self.parse_from_expr() {
+                Ok(parse_from_expr) => match parse_from_expr {
                     FromExpr::Join(_)
                     | FromExpr::LeftJoin(_)
                     | FromExpr::RightJoin(_)
-                    | FromExpr::FullJoin(_) => {
+                    | FromExpr::FullJoin(_)
+                    | FromExpr::GroupingQuery(_) => {
                         // Only these from expressions can be parenthesized
                         self.consume(TokenTypeVariant::RightParen)?;
                         Ok(FromExpr::GroupingFrom(GroupingFromExpr {
@@ -2734,6 +2715,20 @@ impl<'a> Parser<'a> {
                         }))
                     }
                     _ => Err(anyhow!(self.error(self.peek(), "Expected `JOIN`."))),
+                },
+                Err(_) => {
+                    self.curr = curr;
+                    let query_expr = self.parse_query_expr()?;
+                    self.consume(TokenTypeVariant::RightParen)?;
+                    let alias = self.parse_from_item_alias()?;
+                    let table_sample = self.parse_tablesample()?;
+                    let table_operator = fn_parse_table_operator(self)?;
+                    Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
+                        query: Box::new(query_expr),
+                        alias,
+                        table_operator,
+                        table_sample,
+                    }))
                 }
             }
         } else if self.check_token_type(TokenTypeVariant::Unnest) {
@@ -2757,10 +2752,14 @@ impl<'a> Parser<'a> {
                 }
                 self.consume(TokenTypeVariant::RightParen)?;
                 let alias = self.parse_from_item_alias()?;
+                let table_sample = self.parse_tablesample()?;
+                let table_operator = fn_parse_table_operator(self)?;
                 Ok(FromExpr::TableFunction(TableFunctionExpr {
                     name: path,
                     arguments,
                     alias,
+                    table_operator,
+                    table_sample,
                 }))
             } else {
                 let alias = self.parse_from_item_alias()?;
@@ -2772,10 +2771,14 @@ impl<'a> Parser<'a> {
                 } else {
                     None
                 };
+                let table_sample = self.parse_tablesample()?;
+                let table_operator = fn_parse_table_operator(self)?;
                 Ok(FromExpr::Path(FromPathExpr {
                     path,
                     alias,
                     system_time,
+                    table_operator,
+                    table_sample,
                 }))
             }
         }

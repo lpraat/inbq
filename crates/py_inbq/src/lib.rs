@@ -43,7 +43,7 @@ use inbq::{
         SelectQueryExpr, SelectTableValue, SetQueryOperator, SetSelectQueryExpr, SetVarStatement,
         SetVariable, SingleColumnUnpivot, Statement, StatementsBlock, StringConcatExpr, StructExpr,
         StructField, StructFieldType, StructParameterizedFieldType, SystemVariable,
-        TableConstraint, TableFunctionArgument, TableFunctionExpr, TableSample,
+        TableConstraint, TableFunctionArgument, TableFunctionExpr, TableOperator, TableSample,
         TimeDiffFunctionExpr, TimeTruncFunctionExpr, TimestampDiffFunctionExpr,
         TimestampTruncFunctionExpr, Token, TokenType, TruncateStatement, Type, UnaryExpr,
         UnaryOperator, UnnestExpr, Unpivot, UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement,
@@ -2782,6 +2782,8 @@ impl RsToPyObject for FromPathExpr {
             kwarg!(py_ctx, "path", self.path),
             kwarg!(py_ctx, "alias", self.alias),
             kwarg!(py_ctx, "system_time", self.system_time),
+            kwarg!(py_ctx, "table_operator", self.table_operator),
+            kwarg!(py_ctx, "table_sample", self.table_sample),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromPathExpr)?, kwargs)
     }
@@ -2804,6 +2806,8 @@ impl RsToPyObject for FromGroupingQueryExpr {
         let kwargs = &[
             kwarg!(py_ctx, "query", self.query),
             kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "table_operator", self.table_operator),
+            kwarg!(py_ctx, "table_sample", self.table_sample),
         ];
         instantiate_py_class(
             py_ctx,
@@ -2849,6 +2853,8 @@ impl RsToPyObject for TableFunctionExpr {
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "arguments", self.arguments),
             kwarg!(py_ctx, "alias", self.alias),
+            kwarg!(py_ctx, "table_operator", self.table_operator),
+            kwarg!(py_ctx, "table_sample", self.table_sample),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TableFunctionExpr)?, kwargs)
     }
@@ -3045,14 +3051,32 @@ impl RsToPyObject for TableSample {
     }
 }
 
+impl RsToPyObject for TableOperator {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        match self {
+            TableOperator::Pivot(pivot) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, pivot)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableOperator::Pivot)?,
+                    kwargs,
+                )
+            }
+            TableOperator::Unpivot(unpivot) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unpivot)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TableOperator::Unpivot)?,
+                    kwargs,
+                )
+            }
+        }
+    }
+}
+
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "pivot", self.pivot),
-            kwarg!(py_ctx, "unpivot", self.unpivot),
-            kwarg!(py_ctx, "table_sample", self.table_sample),
-        ];
+        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, From)?, kwargs)
     }
 }

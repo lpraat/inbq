@@ -53,6 +53,17 @@ fn test_should_not_parse() {
         r#"
         select "foo" b"foo"
       "#,
+        // Cannot group again join op
+        r#"
+      SELECT * FROM
+        (((select * from Produce) inner join (select * from pro) on true))
+      "#,
+        // Cannot pivot grouped from expr
+        r#"
+      SELECT * FROM
+        ((produce inner join pro on true))
+        PIVOT(SUM(sales) total_sales, max(product) mp FOR quarter IN ("Q1", "Q2"))
+      "#,
     ];
     for sql in sqls {
         println!("Testing parsing error for SQL: {}", sql);

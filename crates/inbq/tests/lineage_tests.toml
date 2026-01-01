@@ -2316,3 +2316,184 @@ x = ["select"]
 y = ["select"]
 [tests.used_columns."proj.dat.multiplyInputs(*)"]
 "!anonymous" = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM
+  (select * from `proj.dat.in_table`)
+  PIVOT(SUM(sales) total_sales, max(year) max_year FOR quarter IN ("Q1", "Q2"))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "year", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "total_sales_Q1", dtype = "int64" },
+    { name = "max_year_Q1", dtype = "int64" },
+    { name = "total_sales_Q2", dtype = "int64" },
+    { name = "max_year_Q2", dtype = "int64" }
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+total_sales_q1 = ["proj.dat.in_table->sales"]
+max_year_q1 = ["proj.dat.in_table->year"]
+total_sales_q2 = ["proj.dat.in_table->sales"]
+max_year_q2 = ["proj.dat.in_table->year"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+sales = ["select", "pivot_aggregate"]
+year = ["select", "pivot_aggregate"]
+quarter = ["pivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT piv.product, piv.total_sales_q1, piv.max_year_q1, piv.total_sales_q2, piv.max_year_q2 FROM
+  (select * from `proj.dat.in_table`)
+  PIVOT(SUM(sales) total_sales, max(year) max_year FOR quarter IN ("Q1", "Q2")) piv
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "year", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "total_sales_Q1", dtype = "int64" },
+    { name = "max_year_Q1", dtype = "int64" },
+    { name = "total_sales_Q2", dtype = "int64" },
+    { name = "max_year_Q2", dtype = "int64" }
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+total_sales_q1 = ["proj.dat.in_table->sales"]
+max_year_q1 = ["proj.dat.in_table->year"]
+total_sales_q2 = ["proj.dat.in_table->sales"]
+max_year_q2 = ["proj.dat.in_table->year"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+sales = ["select", "pivot_aggregate"]
+year = ["select", "pivot_aggregate"]
+quarter = ["pivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM
+  `proj.dat.in_table`
+  PIVOT(SUM(sales) total_sales, max(year) max_year FOR quarter IN ("Q1", "Q2"))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "year", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "total_sales_Q1", dtype = "int64" },
+    { name = "max_year_Q1", dtype = "int64" },
+    { name = "total_sales_Q2", dtype = "int64" },
+    { name = "max_year_Q2", dtype = "int64" }
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+total_sales_q1 = ["proj.dat.in_table->sales"]
+max_year_q1 = ["proj.dat.in_table->year"]
+total_sales_q2 = ["proj.dat.in_table->sales"]
+max_year_q2 = ["proj.dat.in_table->year"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+sales = ["select", "pivot_aggregate"]
+year = ["select", "pivot_aggregate"]
+quarter = ["pivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM
+  `proj.dat.in_table`
+  PIVOT(SUM(sales) FOR quarter IN ("Q1", "Q2"))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "year", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "year", dtype = "string" },
+    { name = "Q1", dtype = "int64" },
+    { name = "Q2", dtype = "int64" },
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table->product"]
+year = ["proj.dat.in_table->year"]
+q1 = ["proj.dat.in_table->sales"]
+q2 = ["proj.dat.in_table->sales"]
+[tests.used_columns."proj.dat.in_table"]
+product = ["select"]
+sales = ["select", "pivot_aggregate"]
+year = ["select"]
+quarter = ["pivot_column"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out
+SELECT * FROM
+  `proj.dat.in_table_func`(2022)
+  PIVOT(SUM(sales) total_sales, max(year) max_year FOR quarter IN ("Q1", "Q2"))
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table_func"
+kind.table_function.arguments = [
+    { standard = { name = "year", dtype = "int64" } },
+]
+kind.table_function.returns = [
+    { name = "product", dtype = "string" },
+    { name = "quarter", dtype = "string" },
+    { name = "sales", dtype = "int64" },
+    { name = "year", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out"
+kind.table.columns = [
+    { name = "product", dtype = "string" },
+    { name = "total_sales_Q1", dtype = "int64" },
+    { name = "max_year_Q1", dtype = "int64" },
+    { name = "total_sales_Q2", dtype = "int64" },
+    { name = "max_year_Q2", dtype = "int64" }
+]
+[tests.ready_lineage."proj.dat.out"]
+product = ["proj.dat.in_table_func(*)->product"]
+total_sales_q1 = ["proj.dat.in_table_func(*)->sales"]
+max_year_q1 = ["proj.dat.in_table_func(*)->year"]
+total_sales_q2 = ["proj.dat.in_table_func(*)->sales"]
+max_year_q2 = ["proj.dat.in_table_func(*)->year"]
+[tests.used_columns."proj.dat.in_table_func(*)"]
+product = ["select"]
+sales = ["select", "pivot_aggregate"]
+year = ["select", "pivot_aggregate"]
+quarter = ["pivot_column"]

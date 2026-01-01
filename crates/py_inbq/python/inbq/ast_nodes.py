@@ -367,6 +367,10 @@ class AstNode:
             "ColAll": "SelectExpr_ColAll",
             "All": "SelectExpr_All",
         },
+        "TableOperator": {
+            "Pivot": "TableOperator_Pivot",
+            "Unpivot": "TableOperator_Unpivot",
+        },
         "UnpivotNulls": {
             "Include": "UnpivotNulls_Include",
             "Exclude": "UnpivotNulls_Exclude",
@@ -1385,9 +1389,6 @@ class SelectAllExpr(AstNode):
 @dataclass
 class From(AstNode):
     expr: "FromExpr"
-    pivot: "Optional[Pivot]"
-    unpivot: "Optional[Unpivot]"
-    table_sample: "Optional[TableSample]"
 
 
 @dataclass
@@ -1453,6 +1454,8 @@ class TableFunctionExpr(AstNode):
     name: "PathName"
     arguments: "list[TableFunctionArgument]"
     alias: "Optional[Name]"
+    table_operator: "Optional[TableOperator]"
+    table_sample: "Optional[TableSample]"
 
 
 @dataclass
@@ -1482,6 +1485,8 @@ class FromPathExpr(AstNode):
     path: "PathName"
     alias: "Optional[Name]"
     system_time: "Optional[Expr]"
+    table_operator: "Optional[TableOperator]"
+    table_sample: "Optional[TableSample]"
 
 
 @dataclass
@@ -1493,6 +1498,8 @@ class GroupingFromExpr(AstNode):
 class FromGroupingQueryExpr(AstNode):
     query: "QueryExpr"
     alias: "Optional[Name]"
+    table_operator: "Optional[TableOperator]"
+    table_sample: "Optional[TableSample]"
 
 
 @dataclass
@@ -2799,6 +2806,16 @@ class SelectExpr_All(AstNode):
 
 
 @dataclass
+class TableOperator_Pivot(AstNode):
+    vty: "Pivot"
+
+
+@dataclass
+class TableOperator_Unpivot(AstNode):
+    vty: "Unpivot"
+
+
+@dataclass
 class UnpivotNulls_Include(AstNode): ...
 
 
@@ -3794,6 +3811,7 @@ OrderByNulls: TypeAlias = OrderByNulls_First | OrderByNulls_Last
 Cte: TypeAlias = Cte_NonRecursive | Cte_Recursive
 SelectTableValue: TypeAlias = SelectTableValue_Struct | SelectTableValue_Value
 SelectExpr: TypeAlias = SelectExpr_Col | SelectExpr_ColAll | SelectExpr_All
+TableOperator: TypeAlias = TableOperator_Pivot | TableOperator_Unpivot
 UnpivotNulls: TypeAlias = UnpivotNulls_Include | UnpivotNulls_Exclude
 UnpivotKind: TypeAlias = UnpivotKind_SingleColumn | UnpivotKind_MultiColumn
 FromExpr: TypeAlias = (
