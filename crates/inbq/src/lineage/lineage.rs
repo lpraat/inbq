@@ -5660,11 +5660,11 @@ impl LineageContext {
                     self.statement_lin(catalog, statement)?
                 }
             }
-            Statement::DropTableStatement(drop_table_statement) => {
+            Statement::DropTable(drop_table_statement) => {
                 // To handle drop of temp tables
                 self.drop_table_statement_lin(catalog, drop_table_statement)?
             }
-            Statement::DropFunctionStatement(drop_function_statement) => {
+            Statement::DropFunction(drop_function_statement) => {
                 self.drop_function_statement_lin(catalog, drop_function_statement)?
             }
             Statement::If(if_statement) => {
@@ -5714,7 +5714,11 @@ impl LineageContext {
                 // Execute immediate runs an arbitrary sql string
                 // which may be known only at runtime
             }
-            Statement::CreateSchema(_) | Statement::CreateView(_) => {
+            Statement::CreateSchema(_)
+            | Statement::CreateView(_)
+            | Statement::DropView(_)
+            | Statement::DropSchema(_)
+            | Statement::UndropSchema(_) => {
                 // Ignored DDLs
             }
         }

@@ -40,8 +40,11 @@ class AstNode:
             "CreateSqlFunction": "Statement_CreateSqlFunction",
             "CreateJsFunction": "Statement_CreateJsFunction",
             "CreateView": "Statement_CreateView",
-            "DropTableStatement": "Statement_DropTableStatement",
-            "DropFunctionStatement": "Statement_DropFunctionStatement",
+            "DropTable": "Statement_DropTable",
+            "DropView": "Statement_DropView",
+            "UndropSchema": "Statement_UndropSchema",
+            "DropSchema": "Statement_DropSchema",
+            "DropFunction": "Statement_DropFunction",
             "If": "Statement_If",
             "Case": "Statement_Case",
             "BeginTransaction": "Statement_BeginTransaction",
@@ -60,6 +63,10 @@ class AstNode:
             "Iterate": "Statement_Iterate",
             "Leave": "Statement_Leave",
             "Labeled": "Statement_Labeled",
+        },
+        "DropSchemaMode": {
+            "Restrict": "DropSchemaMode_Restrict",
+            "Cascade": "DropSchemaMode_Cascade",
         },
         "FunctionArgumentType": {
             "Standard": "FunctionArgumentType_Standard",
@@ -676,6 +683,27 @@ class Ast(AstNode):
 
 
 @dataclass
+class DropViewStatement(AstNode):
+    name: "PathName"
+    if_exists: "bool"
+
+
+@dataclass
+class DropSchemaStatement(AstNode):
+    name: "PathName"
+    external: "bool"
+    if_exists: "bool"
+    mode: "Optional[DropSchemaMode]"
+
+
+@dataclass
+class UndropSchemaStatement(AstNode):
+    name: "PathName"
+    if_not_exists: "bool"
+    options: "Optional[list[DdlOption]]"
+
+
+@dataclass
 class DropFunctionStatement(AstNode):
     name: "PathName"
     if_exists: "bool"
@@ -689,10 +717,10 @@ class FunctionArgument(AstNode):
 
 @dataclass
 class CreateSqlFunctionStatement(AstNode):
+    name: "PathName"
     replace: "bool"
     is_temporary: "bool"
     if_not_exists: "bool"
-    name: "PathName"
     arguments: "list[FunctionArgument]"
     returns: "Optional[Type]"
     options: "Optional[list[DdlOption]]"
@@ -701,10 +729,10 @@ class CreateSqlFunctionStatement(AstNode):
 
 @dataclass
 class CreateJsFunctionStatement(AstNode):
+    name: "PathName"
     replace: "bool"
     is_temporary: "bool"
     if_not_exists: "bool"
-    name: "PathName"
     arguments: "list[FunctionArgument]"
     returns: "Type"
     is_deterministic: "Optional[bool]"
@@ -1634,12 +1662,27 @@ class Statement_CreateView(AstNode):
 
 
 @dataclass
-class Statement_DropTableStatement(AstNode):
+class Statement_DropTable(AstNode):
     vty: "DropTableStatement"
 
 
 @dataclass
-class Statement_DropFunctionStatement(AstNode):
+class Statement_DropView(AstNode):
+    vty: "DropViewStatement"
+
+
+@dataclass
+class Statement_UndropSchema(AstNode):
+    vty: "UndropSchemaStatement"
+
+
+@dataclass
+class Statement_DropSchema(AstNode):
+    vty: "DropSchemaStatement"
+
+
+@dataclass
+class Statement_DropFunction(AstNode):
     vty: "DropFunctionStatement"
 
 
@@ -1723,6 +1766,14 @@ class Statement_Leave(AstNode): ...
 @dataclass
 class Statement_Labeled(AstNode):
     vty: "LabeledStatement"
+
+
+@dataclass
+class DropSchemaMode_Restrict(AstNode): ...
+
+
+@dataclass
+class DropSchemaMode_Cascade(AstNode): ...
 
 
 @dataclass
@@ -3532,8 +3583,11 @@ Statement: TypeAlias = (
     | Statement_CreateSqlFunction
     | Statement_CreateJsFunction
     | Statement_CreateView
-    | Statement_DropTableStatement
-    | Statement_DropFunctionStatement
+    | Statement_DropTable
+    | Statement_DropView
+    | Statement_UndropSchema
+    | Statement_DropSchema
+    | Statement_DropFunction
     | Statement_If
     | Statement_Case
     | Statement_BeginTransaction
@@ -3553,6 +3607,7 @@ Statement: TypeAlias = (
     | Statement_Leave
     | Statement_Labeled
 )
+DropSchemaMode: TypeAlias = DropSchemaMode_Restrict | DropSchemaMode_Cascade
 FunctionArgumentType: TypeAlias = (
     FunctionArgumentType_Standard | FunctionArgumentType_AnyType
 )

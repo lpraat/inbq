@@ -1189,6 +1189,41 @@ DROP TABLE proj.dat.table
 
 [[tests]]
 sql = """
+DROP VIEW mydataset.myview
+"""
+
+[[tests]]
+sql = """
+DROP VIEW IF EXISTS mydataset.myview
+"""
+
+[[tests]]
+sql = """
+DROP SCHEMA mydataset
+"""
+
+[[tests]]
+sql = """
+DROP EXTERNAL SCHEMA mydataset
+"""
+
+[[tests]]
+sql = """
+DROP SCHEMA IF EXISTS mydataset CASCADE
+"""
+
+[[tests]]
+sql = """
+UNDROP SCHEMA mydataset
+"""
+
+[[tests]]
+sql = """
+UNDROP SCHEMA IF NOT EXISTS mydataset OPTIONS (location="us");
+"""
+
+[[tests]]
+sql = """
 DECLARE x INT64;
 """
 

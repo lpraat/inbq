@@ -22,8 +22,11 @@ pub enum Statement {
     CreateSqlFunction(CreateSqlFunctionStatement),
     CreateJsFunction(CreateJsFunctionStatement),
     CreateView(CreateViewStatement),
-    DropTableStatement(DropTableStatement),
-    DropFunctionStatement(DropFunctionStatement),
+    DropTable(DropTableStatement),
+    DropView(DropViewStatement),
+    UndropSchema(UndropSchemaStatement),
+    DropSchema(DropSchemaStatement),
+    DropFunction(DropFunctionStatement),
     If(IfStatement),
     Case(CaseStatement),
     BeginTransaction,
@@ -42,6 +45,33 @@ pub enum Statement {
     Iterate,
     Leave,
     Labeled(LabeledStatement),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropViewStatement {
+    pub name: PathName,
+    pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum DropSchemaMode {
+    Restrict,
+    Cascade,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropSchemaStatement {
+    pub name: PathName,
+    pub external: bool,
+    pub if_exists: bool,
+    pub mode: Option<DropSchemaMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UndropSchemaStatement {
+    pub name: PathName,
+    pub if_not_exists: bool,
+    pub options: Option<Vec<DdlOption>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,10 +94,10 @@ pub struct FunctionArgument {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSqlFunctionStatement {
+    pub name: PathName,
     pub replace: bool,
     pub is_temporary: bool,
     pub if_not_exists: bool,
-    pub name: PathName,
     pub arguments: Vec<FunctionArgument>,
     pub returns: Option<Type>,
     pub options: Option<Vec<DdlOption>>,
@@ -76,10 +106,10 @@ pub struct CreateSqlFunctionStatement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateJsFunctionStatement {
+    pub name: PathName,
     pub replace: bool,
     pub is_temporary: bool,
     pub if_not_exists: bool,
-    pub name: PathName,
     pub arguments: Vec<FunctionArgument>,
     pub returns: Type,
     pub is_deterministic: Option<bool>,

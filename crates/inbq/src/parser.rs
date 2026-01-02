@@ -11,20 +11,21 @@ use crate::ast::{
     CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr,
     DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
     DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
-    DifferentialPrivacy, DifferentialPrivacyOption, DropFunctionStatement, DropTableStatement,
-    ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr,
-    ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference,
-    FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr,
-    FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
-    FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr,
-    GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
-    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
-    JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier,
-    Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
-    MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
-    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot,
-    PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    DifferentialPrivacy, DifferentialPrivacyOption, DropFunctionStatement, DropSchemaMode,
+    DropSchemaStatement, DropTableStatement, DropViewStatement, ExecuteImmediateStatement,
+    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
+    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+    FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
+    GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr,
+    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
+    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
+    LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement,
+    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
+    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
+    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
+    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
     QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
     RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
     SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
@@ -33,10 +34,11 @@ use crate::ast::{
     StructParameterizedFieldType, SystemVariable, TableConstraint, TableFunctionArgument,
     TableFunctionExpr, TableOperator, TableSample, TimeDiffFunctionExpr, TimeTruncFunctionExpr,
     TimestampDiffFunctionExpr, TimestampTruncFunctionExpr, Token, TokenType, TokenTypeVariant,
-    TruncateStatement, Type, UnaryExpr, UnaryOperator, UnnestExpr, Unpivot, UnpivotKind,
-    UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When, WhenMatched,
-    WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement, Window,
-    WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr, WithExprVar,
+    TruncateStatement, Type, UnaryExpr, UnaryOperator, UndropSchemaStatement, UnnestExpr, Unpivot,
+    UnpivotKind, UnpivotNulls, UpdateItem, UpdateStatement, ViewColumn, WeekBegin, When,
+    WhenMatched, WhenNotMatchedBySource, WhenNotMatchedByTarget, WhenThen, Where, WhileStatement,
+    Window, WindowFrame, WindowFrameKind, WindowOrderByExpr, WindowSpec, With, WithExpr,
+    WithExprVar,
 };
 use crate::scanner::Scanner;
 
@@ -388,6 +390,7 @@ impl<'a> Parser<'a> {
                         }
                         "raise" => self.parse_raise_statement()?,
                         "drop" => self.parse_drop_statement()?,
+                        "undrop" => self.parse_undrop_statement()?,
                         "call" => self.parse_call_statement()?,
                         "execute" => self.parse_execute_immediate_statement()?,
                         "loop" => self.parse_loop_statement()?,
@@ -848,7 +851,61 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// drop_statement -> drop_table_statement
+    /// undrop_statement -> undrop_schema_statement
+    /// ```
+    fn parse_undrop_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("undrop")?;
+
+        let peek = self.peek();
+        let statement = match &peek.kind {
+            TokenType::Identifier(non_reserved_keyword) => {
+                match non_reserved_keyword.to_lowercase().as_str() {
+                    "schema" => self.parse_undrop_schema_statement()?,
+                    _ => {
+                        return Err(anyhow!(self.error(
+                            peek,
+                            &format!(
+                                "Unexpected non reserved keyword while parsing undrop statement: `{}`.",
+                                non_reserved_keyword
+                            ),
+                        )));
+                    }
+                }
+            }
+            _ => return Err(anyhow!("Unexpected token.")),
+        };
+        Ok(statement)
+    }
+
+    /// Rule:
+    /// ```text
+    /// undrop_schema_statement -> "UNDROP" "SCHEMA" ["IF" "NOT" "EXISTS"] schema_name ddl_options
+    /// ```
+    fn parse_undrop_schema_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("schema")?;
+
+        let if_not_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Not)?;
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_path()?;
+
+        let options = self.parse_ddl_options()?;
+
+        Ok(Statement::UndropSchema(UndropSchemaStatement {
+            name,
+            if_not_exists,
+            options,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// drop_statement -> drop_table_statement | drop_function_statement | drop_view_statement
     /// ```
     fn parse_drop_statement(&mut self) -> anyhow::Result<Statement> {
         self.consume_non_reserved_keyword("drop")?;
@@ -858,7 +915,9 @@ impl<'a> Parser<'a> {
             TokenType::Identifier(non_reserved_keyword) => {
                 match non_reserved_keyword.to_lowercase().as_str() {
                     "table" => self.parse_drop_table_statement()?,
+                    "view" => self.parse_drop_view_statement()?,
                     "function" => self.parse_drop_function_statement()?,
+                    "external" | "schema" => self.parse_drop_schema_statement()?,
                     _ => {
                         return Err(anyhow!(self.error(
                             peek,
@@ -877,6 +936,58 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
+    /// drop_schema_statement -> "DROP" ["EXTERNAL"] "SCHEMA" ["IF" "EXISTS"] dataset_name ["CASCADE" | "RESTRICT"]
+    /// ```
+    fn parse_drop_schema_statement(&mut self) -> anyhow::Result<Statement> {
+        let external = self.match_non_reserved_keyword("external");
+        self.consume_non_reserved_keyword("schema")?;
+
+        let if_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_path()?;
+
+        let mode = if self.match_non_reserved_keyword("cascade") {
+            Some(DropSchemaMode::Cascade)
+        } else if self.match_non_reserved_keyword("restrict") {
+            Some(DropSchemaMode::Restrict)
+        } else {
+            None
+        };
+
+        Ok(Statement::DropSchema(DropSchemaStatement {
+            name,
+            external,
+            if_exists,
+            mode,
+        }))
+    }
+
+    /// Rule:
+    /// ```text
+    /// drop_view_statement -> "DROP" "VIEW" ["IF" "EXISTS"] view_name
+    /// ```
+    fn parse_drop_view_statement(&mut self) -> anyhow::Result<Statement> {
+        self.consume_non_reserved_keyword("view")?;
+
+        let if_exists = if self.match_token_type(TokenTypeVariant::If) {
+            self.consume(TokenTypeVariant::Exists)?;
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_path()?;
+
+        Ok(Statement::DropView(DropViewStatement { name, if_exists }))
+    }
+
+    /// Rule:
+    /// ```text
     /// drop_table_statement -> "DROP" "TABLE" ["IF" "EXISTS"] table_name
     /// ```
     fn parse_drop_table_statement(&mut self) -> anyhow::Result<Statement> {
@@ -891,10 +1002,7 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_path()?;
 
-        Ok(Statement::DropTableStatement(DropTableStatement {
-            name,
-            if_exists,
-        }))
+        Ok(Statement::DropTable(DropTableStatement { name, if_exists }))
     }
 
     /// Rule:
@@ -913,7 +1021,7 @@ impl<'a> Parser<'a> {
 
         let name = self.parse_path()?;
 
-        Ok(Statement::DropFunctionStatement(DropFunctionStatement {
+        Ok(Statement::DropFunction(DropFunctionStatement {
             name,
             if_exists,
         }))
