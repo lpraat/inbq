@@ -1,8 +1,9 @@
 [[tests]]
 sql = """
 insert into proj.dat.out_table
-select * except (c)
+select * except(c)
 from proj.dat.in_table
+where a in ("foo","bar")
 group by a, 2
 order by 1, b
 """
@@ -17,12 +18,43 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
-a = ["select", "group_by", "order_by"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select", "group_by", "where", "order_by"]
 b = ["select", "group_by", "order_by"]
-# Note: c is not considered a used column
+# Note: c is not considered a referenced column
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select a,b
+from proj.dat.in_table
+where a in ("foo","bar")
+group by a, 2
+order by 1, b
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select", "group_by", "where", "order_by"]
+b = ["select", "group_by", "order_by"]
+# Note: c is not considered a referenced column
 
 
 [[tests]]
@@ -44,8 +76,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 
 [[tests]]
@@ -67,8 +100,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "string" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 
 [[tests]]
@@ -94,8 +128,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 
 [[tests]]
@@ -104,6 +139,7 @@ insert into proj.dat.out_table
 with tmp as (
     select [struct(x as x, y as y)] as in_arr
     from proj.dat.in_table
+    where y=4
 )
 
 , foo as (
@@ -126,13 +162,17 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name = "x", dtype = "int64"}]
 [tests.ready_lineage."proj.dat.out_table"]
-s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
-x = ["proj.dat.in_table->x"]
-"s.x" = ["proj.dat.in_table->x"]
-"s.y" = ["proj.dat.in_table->y"]
-[tests.used_columns."proj.dat.in_table"]
-x = ["select", "unnest"]
-y = ["select", "unnest"]
+s.inputs = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+s.side_inputs = ["proj.dat.in_table->y"]
+x.inputs = ["proj.dat.in_table->x"]
+x.side_inputs = ["proj.dat.in_table->y"]
+"s.x".inputs = ["proj.dat.in_table->x"]
+"s.x".side_inputs = ["proj.dat.in_table->y"]
+"s.y".inputs = ["proj.dat.in_table->y"]
+"s.y".side_inputs = ["proj.dat.in_table->y"]
+[tests.referenced_columns."proj.dat.in_table"]
+x = ["select"]
+y = ["select", "where"]
 
 [[tests]]
 sql = """
@@ -162,13 +202,17 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name = "x", dtype = "int64"}]
 [tests.ready_lineage."proj.dat.out_table"]
-s = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
-x = ["proj.dat.in_table->x"]
-"s.x" = ["proj.dat.in_table->x"]
-"s.y" = ["proj.dat.in_table->y"]
-[tests.used_columns."proj.dat.in_table"]
-x = ["select", "unnest"]
-y = ["select", "unnest"]
+s.inputs = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+s.side_inputs =[]
+x.inputs = ["proj.dat.in_table->x"]
+x.side_inputs = []
+"s.x".inputs = ["proj.dat.in_table->x"]
+"s.x".side_inputs = []
+"s.y".inputs = ["proj.dat.in_table->y"]
+"s.y".side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+x = ["select"]
+y = ["select"]
 
 
 [[tests]]
@@ -193,10 +237,11 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{name = "x", dtype = "int64"}]
 [tests.ready_lineage."proj.dat.out_table"]
-x = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
-[tests.used_columns."proj.dat.in_table"]
-x = ["select", "unnest"]
-y = ["select", "unnest"]
+x.inputs = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
+x.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+x = ["select"]
+y = ["select"]
 
 
 [[tests]]
@@ -223,9 +268,11 @@ kind.table.columns = [
     { name = "b", dtype = "int64" }
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 
@@ -253,8 +300,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->b"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 b = ["select"]
 
 [[tests]]
@@ -280,9 +328,11 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a","proj.dat.in_table->c"]
-b = ["proj.dat.in_table->b","proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a","proj.dat.in_table->c"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b","proj.dat.in_table->c"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -310,12 +360,14 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in1->a1", "proj.dat.in2->a2"]
-b = ["proj.dat.in1->b1", "proj.dat.in2->b2"]
-[tests.used_columns."proj.dat.in1"]
+a.inputs = ["proj.dat.in1->a1", "proj.dat.in2->a2"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in1->b1", "proj.dat.in2->b2"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in1"]
 a1 = ["select"]
 b1 = ["select"]
-[tests.used_columns."proj.dat.in2"]
+[tests.referenced_columns."proj.dat.in2"]
 a2 = ["select"]
 b2 = ["select"]
 
@@ -340,10 +392,13 @@ kind.table.columns = [
     { name = "c", dtype = "STRING" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
-c = ["proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = []
+c.inputs = ["proj.dat.in_table->c"]
+c.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -380,10 +435,13 @@ kind.table.columns = [
     { name = "c", dtype = "STRING" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
-c = ["proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = []
+c.inputs = ["proj.dat.in_table->c"]
+c.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -425,15 +483,18 @@ kind.table.columns = [
     { name = "c", dtype = "STRING" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.t1->a", "proj.dat.t2->a"]
-b = ["proj.dat.t1->b", "proj.dat.t2->b"]
-c = ["proj.dat.t2->c"]
-[tests.used_columns."proj.dat.t1"]
-a = ["select", "join"]
-b = ["select", "join"]
-[tests.used_columns."proj.dat.t2"]
-a = ["select", "join"]
-b = ["select", "join"]
+a.inputs = ["proj.dat.t1->a", "proj.dat.t2->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.t1->b", "proj.dat.t2->b"]
+b.side_inputs = []
+c.inputs = ["proj.dat.t2->c"]
+c.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
+a = ["select"]
+b = ["select"]
+[tests.referenced_columns."proj.dat.t2"]
+a = ["select"]
+b = ["select"]
 c = ["select"]
 
 [[tests]]
@@ -500,24 +561,31 @@ kind.table.columns = [
     { name = "avg_salary", dtype = "FLOAT64" }
 ]
 [tests.ready_lineage."proj.dataset.employee_department_report"]
-department_id = ["proj.dataset.departments->department_id"]
-department_name = ["proj.dataset.departments->department_name"]
+department_id.inputs = ["proj.dataset.departments->department_id"]
+department_id.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+department_name.inputs = ["proj.dataset.departments->department_name"]
+department_name.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
 # NOTE: the location_id lineage goes back to all the tables since the column in the select is not qualified
-location_id = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"]
-city = ["proj.dataset.locations->city"]
-country = ["proj.dataset.locations->country"]
-employee_count = ["proj.dataset.employees->employee_id"]
-avg_salary = ["proj.dataset.employees->salary"]
-[tests.used_columns."proj.dataset.employees"]
+location_id.inputs = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"]
+location_id.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+city.inputs = ["proj.dataset.locations->city"]
+city.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+country.inputs = ["proj.dataset.locations->country"]
+country.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+employee_count.inputs = ["proj.dataset.employees->employee_id"]
+employee_count.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+avg_salary.inputs = ["proj.dataset.employees->salary"]
+avg_salary.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+[tests.referenced_columns."proj.dataset.employees"]
 employee_id = ["select"]
 salary = ["select"]
 location_id = ["select", "join"]
 department_id = ["join"]
-[tests.used_columns."proj.dataset.departments"]
+[tests.referenced_columns."proj.dataset.departments"]
 department_id = ["select", "join", "group_by"]
 department_name = ["select", "group_by"]
 location_id = ["select", "join", "group_by"]
-[tests.used_columns."proj.dataset.locations"]
+[tests.referenced_columns."proj.dataset.locations"]
 city = ["select", "group_by"]
 country = ["select", "group_by"]
 location_id = ["select", "join"]
@@ -598,21 +666,27 @@ kind.table.columns = [
     { name = "market_share", dtype = "FLOAT64" }
 ]
 [tests.ready_lineage."proj.dataset.product_region_matrix"]
-product_id = ["proj.dataset.products->product_id"]
-product_name = ["proj.dataset.products->product_name"]
-region_id = ["proj.dataset.sales_regions->region_id"]
-region_name = ["proj.dataset.sales_regions->region_name"]
-total_sales = ["proj.dataset.regional_sales->total_sales"]
-market_share = ["proj.dataset.regional_sales->market_share"]
-[tests.used_columns."proj.dataset.products"]
-product_id = ["select", "join"]
+product_id.inputs = ["proj.dataset.products->product_id"]
+product_id.side_inputs = ["proj.dataset.products->sales_count"]
+product_name.inputs = ["proj.dataset.products->product_name"]
+product_name.side_inputs = ["proj.dataset.products->sales_count"]
+region_id.inputs = ["proj.dataset.sales_regions->region_id"]
+region_id.side_inputs = ["proj.dataset.sales_regions->is_active"]
+region_name.inputs = ["proj.dataset.sales_regions->region_name"]
+region_name.side_inputs = ["proj.dataset.sales_regions->is_active"]
+total_sales.inputs = ["proj.dataset.regional_sales->total_sales"]
+total_sales.side_inputs = []
+market_share.inputs = ["proj.dataset.regional_sales->market_share"]
+market_share.side_inputs = []
+[tests.referenced_columns."proj.dataset.products"]
+product_id = ["select"]
 product_name = ["select"]
 sales_count = ["order_by"]
-[tests.used_columns."proj.dataset.sales_regions"]
-region_id = ["select", "join"]
+[tests.referenced_columns."proj.dataset.sales_regions"]
+region_id = ["select"]
 region_name = ["select"]
 is_active = ["where"]
-[tests.used_columns."proj.dataset.regional_sales"]
+[tests.referenced_columns."proj.dataset.regional_sales"]
 product_id = ["join"]
 region_id = ["join"]
 total_sales = ["select"]
@@ -658,10 +732,13 @@ kind.table.columns = [
     { name = "c", dtype = "STRING" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.t1->a"]
-b = ["proj.dat.t1->b"]
-c = ["proj.dat.t1->c"]
-[tests.used_columns."proj.dat.t1"]
+a.inputs = ["proj.dat.t1->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.t1->b"]
+b.side_inputs = []
+c.inputs = ["proj.dat.t1->c"]
+c.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -680,7 +757,7 @@ kind.table.columns = [
 ]
 [tests.ready_lineage]
 # Empty
-[tests.used_columns."dataset.Inventory"]
+[tests.referenced_columns."dataset.Inventory"]
 product = ["where"]
 
 
@@ -697,7 +774,7 @@ kind.table.columns = [
 ]
 [tests.ready_lineage]
 # Empty
-[tests.used_columns]
+[tests.referenced_columns]
 # Empty
 
 [[tests]]
@@ -723,12 +800,13 @@ kind.table.columns = [
     { name = "arrival_date", dtype = "DATE" },
 ]
 [tests.ready_lineage."dataset.Inventory"]
-quantity = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
-[tests.used_columns."dataset.Inventory"]
+quantity.inputs = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
+quantity.side_inputs = []
+[tests.referenced_columns."dataset.Inventory"]
 product = ["merge_join"]
 # quantity compares as select because it is in the output lineage
 quantity = ["merge_update", "select"]
-[tests.used_columns."dataset.NewArrivals"]
+[tests.referenced_columns."dataset.NewArrivals"]
 product = ["merge_join"]
 quantity = ["merge_update", "select"]
 
@@ -759,12 +837,14 @@ kind.table.columns = [
     { name = "specifications", dtype = "STRING"}
 ]
 [tests.ready_lineage."dataset.DetailedInventory"]
-product = ["dataset.Inventory->product"]
-quantity = ["dataset.Inventory->quantity"]
-[tests.used_columns."dataset.Inventory"]
+product.inputs = ["dataset.Inventory->product"]
+product.side_inputs = []
+quantity.inputs = ["dataset.Inventory->quantity"]
+quantity.side_inputs = []
+[tests.referenced_columns."dataset.Inventory"]
 product = ["select", "merge_insert", "merge_join"]
 quantity = ["select", "merge_insert", "merge_cond"]
-[tests.used_columns."dataset.DetailedInventory"]
+[tests.referenced_columns."dataset.DetailedInventory"]
 product = ["merge_join"]
 quantity = ["merge_cond"]
 
@@ -803,12 +883,17 @@ kind.table.columns = [
     {"name" = "o4", "dtype" = "int64"}
 ]
 [tests.ready_lineage."proj.dataset.out_table"]
-o1 = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
-o2 = ["proj.dataset.in_table->f1.a"]
-o3 = ["proj.dataset.in_table->f1.b"]
-o4 = ["proj.dataset.in_table->f2.a.x"]
-"o3[]" = ["proj.dataset.in_table->f1.b[]"]
-[tests.used_columns."proj.dataset.in_table"]
+o1.inputs = ["proj.dataset.in_table->f0", "proj.dataset.in_table->f3.a[].x"]
+o1.side_inputs = []
+o2.inputs = ["proj.dataset.in_table->f1.a"]
+o2.side_inputs = []
+o3.inputs = ["proj.dataset.in_table->f1.b"]
+o3.side_inputs = []
+o4.inputs = ["proj.dataset.in_table->f2.a.x"]
+o4.side_inputs = []
+"o3[]".inputs = ["proj.dataset.in_table->f1.b[]"]
+"o3[]".side_inputs = []
+[tests.referenced_columns."proj.dataset.in_table"]
 f0 = ["select"]
 "f3.a[].x" = ["select"]
 "f1.a" = ["select"]
@@ -839,9 +924,11 @@ kind.table.columns = [
     { name = "item_value", dtype = "STRING" }
 ]
 [tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.array_table->id"]
-item_value = ["proj.dataset.array_table->array_column[]"]
-[tests.used_columns."proj.dataset.array_table"]
+id.inputs = ["proj.dataset.array_table->id"]
+id.side_inputs = []
+item_value.inputs = ["proj.dataset.array_table->array_column[]"]
+item_value.side_inputs = []
+[tests.referenced_columns."proj.dataset.array_table"]
 "id" = ["select"]
 "array_column[]" = ["select"]
 array_column = ["unnest"]
@@ -878,13 +965,16 @@ kind.table.columns = [
     { name = "field2", dtype = "INT64" }
 ]
 [tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.struct_table->id"]
-field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
-field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
-[tests.used_columns."proj.dataset.struct_table"]
+id.inputs = ["proj.dataset.struct_table->id"]
+id.side_inputs = []
+field1.inputs = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+field1.side_inputs = []
+field2.inputs = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
+field2.side_inputs = []
+[tests.referenced_columns."proj.dataset.struct_table"]
 id = ["select"]
-struct1 = ["select", "unnest"]
-struct2 = ["select", "unnest"]
+struct1 = ["select"]
+struct2 = ["select"]
 "struct1.field1" = ["select"]
 "struct1.field2" = ["select"]
 "struct2.field1" = ["select"]
@@ -922,13 +1012,16 @@ kind.table.columns = [
     { name = "field2", dtype = "INT64" }
 ]
 [tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.struct_table->id"]
-field1 = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
-field2 = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
-[tests.used_columns."proj.dataset.struct_table"]
+id.inputs = ["proj.dataset.struct_table->id"]
+id.side_inputs = []
+field1.inputs = ["proj.dataset.struct_table->struct1.field1", "proj.dataset.struct_table->struct2.field1"]
+field1.side_inputs = []
+field2.inputs = ["proj.dataset.struct_table->struct1.field2", "proj.dataset.struct_table->struct2.field2"]
+field2.side_inputs = []
+[tests.referenced_columns."proj.dataset.struct_table"]
 id = ["select"]
-struct1 = ["select", "unnest"]
-struct2 = ["select", "unnest"]
+struct1 = ["select"]
+struct2 = ["select"]
 "struct1.field1" = ["select"]
 "struct1.field2" = ["select"]
 "struct2.field1" = ["select"]
@@ -967,11 +1060,15 @@ kind.table.columns = [
     { name = "composite_key", dtype = "STRING" }
 ]
 [tests.ready_lineage."proj.dataset.output_table"]
-id = ["proj.dataset.input_table->id"]
-full_name = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->last_name"]
-string_value = ["proj.dataset.input_table->numeric_value"]
-composite_key = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
-[tests.used_columns."proj.dataset.input_table"]
+id.inputs = ["proj.dataset.input_table->id"]
+id.side_inputs = []
+full_name.inputs = ["proj.dataset.input_table->first_name", "proj.dataset.input_table->last_name"]
+full_name.side_inputs = []
+string_value.inputs = ["proj.dataset.input_table->numeric_value"]
+string_value.side_inputs = []
+composite_key.inputs = ["proj.dataset.input_table->id", "proj.dataset.input_table->first_name", "proj.dataset.input_table->numeric_value"]
+composite_key.side_inputs = []
+[tests.referenced_columns."proj.dataset.input_table"]
 id = ["select"]
 first_name = ["select"]
 last_name = ["select"]
@@ -1014,12 +1111,17 @@ kind.table.columns = [
     { name = "expiration_date", dtype = "TIMESTAMP" }
 ]
 [tests.ready_lineage."proj.dataset.analytics_results"]
-category = ["proj.dataset.events->category"]
-unique_users = ["proj.dataset.events->user_id"]
-normalized_value = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
-end_time = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
-expiration_date = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
-[tests.used_columns."proj.dataset.events"]
+category.inputs = ["proj.dataset.events->category"]
+category.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+unique_users.inputs = ["proj.dataset.events->user_id"]
+unique_users.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+normalized_value.inputs = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
+normalized_value.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+end_time.inputs = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
+end_time.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+expiration_date.inputs = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
+expiration_date.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+[tests.referenced_columns."proj.dataset.events"]
 category = ["select", "group_by"]
 user_id = ["select"]
 last_value = ["select", "group_by"]
@@ -1107,26 +1209,41 @@ kind.table.columns = [
     { name = "device_activity", dtype = "ARRAY<STRUCT<device_id STRING, platform STRING, last_active_time TIMESTAMP>>" }
 ]
 [tests.ready_lineage."proj.dataset.user_analytics"]
-user_id = ["proj.dataset.user_data->user_id"]
-completed_events = [
+user_id.inputs = ["proj.dataset.user_data->user_id"]
+user_id.side_inputs = []
+completed_events.inputs = [
     "proj.dataset.user_data->user_events[].event_id",
     "proj.dataset.user_data->user_events[].timestamp",
     "proj.dataset.user_data->user_events[].properties.page_name",
     "proj.dataset.user_data->user_events[].properties.session.duration",
     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
 ]
-"completed_events[]" = [
+completed_events.side_inputs = [
+    "proj.dataset.user_data->user_events[].properties.is_completed", "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+]
+"completed_events[]".inputs = [
     "proj.dataset.user_data->user_events[].event_id",
     "proj.dataset.user_data->user_events[].timestamp",
     "proj.dataset.user_data->user_events[].properties.page_name",
     "proj.dataset.user_data->user_events[].properties.session.duration",
     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
 ]
-"completed_events[].event_id" = ["proj.dataset.user_data->user_events[].event_id"]
-"completed_events[].timestamp" = ["proj.dataset.user_data->user_events[].timestamp"]
-"completed_events[].purchased_products" = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
-"completed_events[].purchased_products[]" = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
-user_profile_summary = [
+"completed_events[]".side_inputs = [
+    "proj.dataset.user_data->user_events[].properties.is_completed", "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+]
+"completed_events[].event_id".inputs = ["proj.dataset.user_data->user_events[].event_id"]
+"completed_events[].event_id".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].timestamp".inputs = ["proj.dataset.user_data->user_events[].timestamp"]
+"completed_events[].timestamp".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].page_name".inputs = ["proj.dataset.user_data->user_events[].properties.page_name"]
+"completed_events[].page_name".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].duration".inputs = ["proj.dataset.user_data->user_events[].properties.session.duration"]
+"completed_events[].duration".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].purchased_products".inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
+"completed_events[].purchased_products".side_inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].quantity", "proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].purchased_products[]".inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
+"completed_events[].purchased_products[]".side_inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].quantity", "proj.dataset.user_data->user_events[].properties.is_completed"]
+user_profile_summary.inputs = [
     "proj.dataset.user_data->profile.demographics.age",
     "proj.dataset.user_data->profile.demographics.country",
     "proj.dataset.user_data->profile.devices[].device_id",
@@ -1134,42 +1251,58 @@ user_profile_summary = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
 ]
-"user_profile_summary.user_age" = ["proj.dataset.user_data->profile.demographics.age"]
-"user_profile_summary.user_country" = ["proj.dataset.user_data->profile.demographics.country"]
-"user_profile_summary.device_count" = ["proj.dataset.user_data->profile.devices[].device_id"]
-"user_profile_summary.preferred_theme" = ["proj.dataset.user_data->profile.preferences.theme"]
-"user_profile_summary.high_affinity_categories" = [
+user_profile_summary.side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.user_age".inputs = ["proj.dataset.user_data->profile.demographics.age"]
+"user_profile_summary.user_age".side_inputs = []
+"user_profile_summary.user_country".inputs = ["proj.dataset.user_data->profile.demographics.country"]
+"user_profile_summary.user_country".side_inputs = []
+"user_profile_summary.device_count".inputs = ["proj.dataset.user_data->profile.devices[].device_id"]
+"user_profile_summary.device_count".side_inputs = []
+"user_profile_summary.preferred_theme".inputs = ["proj.dataset.user_data->profile.preferences.theme"]
+"user_profile_summary.preferred_theme".side_inputs = []
+"user_profile_summary.high_affinity_categories".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-"user_profile_summary.high_affinity_categories[]" = [
+"user_profile_summary.high_affinity_categories".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+
+"user_profile_summary.high_affinity_categories[]".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-"user_profile_summary.high_affinity_categories[].category_name" = [
+"user_profile_summary.high_affinity_categories[]".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories[].category_name".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
 ]
-"user_profile_summary.high_affinity_categories[].affinity_score" = [
+"user_profile_summary.high_affinity_categories[].category_name".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories[].affinity_score".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-total_spent = [
+"user_profile_summary.high_affinity_categories[].affinity_score".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+total_spent.inputs = [
     "proj.dataset.user_data->user_events[].properties.cart.items[].price",
     "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
 ]
-device_activity = [
+total_spent.side_inputs = ["proj.dataset.user_data->user_events[].properties.event_type"]
+device_activity.inputs = [
     "proj.dataset.user_data->profile.devices[].device_id",
     "proj.dataset.user_data->profile.devices[].platform",
     "proj.dataset.user_data->user_events[].timestamp",
 ]
-"device_activity[]" = [
+device_activity.side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[]".inputs = [
     "proj.dataset.user_data->profile.devices[].device_id",
     "proj.dataset.user_data->profile.devices[].platform",
     "proj.dataset.user_data->user_events[].timestamp",
 ]
-"device_activity[].device_id" = ["proj.dataset.user_data->profile.devices[].device_id"]
-"device_activity[].platform" = ["proj.dataset.user_data->profile.devices[].platform"]
-"device_activity[].last_active_time" = ["proj.dataset.user_data->user_events[].timestamp"]
-[tests.used_columns."proj.dataset.user_data"]
+"device_activity[]".side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[].device_id".inputs = ["proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[].device_id".side_inputs = []
+"device_activity[].platform".inputs = ["proj.dataset.user_data->profile.devices[].platform"]
+"device_activity[].platform".side_inputs = []
+"device_activity[].last_active_time".inputs = ["proj.dataset.user_data->user_events[].timestamp"]
+"device_activity[].last_active_time".side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+[tests.referenced_columns."proj.dataset.user_data"]
 user_id = ["select"]
 user_events = ["unnest"]
 "user_events[].event_id" = ["select"]
@@ -1228,9 +1361,11 @@ kind.table.columns = [
     { name = "o2", dtype = "INT64" },
 ]
 [tests.ready_lineage."proj.dataset.output_table"]
-o1 = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
-o2 = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
-[tests.used_columns."proj.dataset.input_table"]
+o1.inputs = ["proj.dataset.input_table->a","proj.dataset.input_table->c"]
+o1.side_inputs = []
+o2.inputs = ["proj.dataset.input_table->b","proj.dataset.input_table->d"]
+o2.side_inputs = []
+[tests.referenced_columns."proj.dataset.input_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -1259,9 +1394,11 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
-"arr[]" = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
+arr.inputs = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
+arr.side_inputs = []
+"arr[]".inputs = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
+"arr[]".side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 
@@ -1288,9 +1425,11 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "arr", dtype = "ARRAY<STRING>" }]
 [tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->in_arr[]"]
-"arr[]" = ["proj.dat.in_table->in_arr[]"]
-[tests.used_columns."proj.dat.in_table"]
+arr.inputs = ["proj.dat.in_table->in_arr[]"]
+arr.side_inputs = []
+"arr[]".inputs = ["proj.dat.in_table->in_arr[]"]
+"arr[]".side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 in_arr = ["unnest"]
 "in_arr[]" = ["select"]
 
@@ -1325,10 +1464,13 @@ kind.table.columns = [
     { name = "f2", dtype = "int64"}
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-f1 = ["proj.dat.in_table->s.f1"]
-f2 = ["proj.dat.in_table->s.f1"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+f1.inputs = ["proj.dat.in_table->s.f1"]
+f1.side_inputs = []
+f2.inputs = ["proj.dat.in_table->s.f1"]
+f2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select", "default_var"]
 s = ["select", "default_var"]
 "s.f1" = ["select", "set_var"]
@@ -1359,9 +1501,11 @@ kind.table.columns = [
     { name = "oy", dtype = "int64"}
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-ox = ["proj.dat.in_table->ix"]
-oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
-[tests.used_columns."proj.dat.in_table"]
+ox.inputs = ["proj.dat.in_table->ix"]
+ox.side_inputs = []
+oy.inputs = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
+oy.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 ix = ["select", "set_var"]
 iy = ["select", "set_var"]
 
@@ -1391,9 +1535,11 @@ kind.table.columns = [
     { name = "oy", dtype = "int64"}
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-ox = ["proj.dat.in_table->ix"]
-oy = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
-[tests.used_columns."proj.dat.in_table"]
+ox.inputs = ["proj.dat.in_table->ix"]
+ox.side_inputs = []
+oy.inputs = ["proj.dat.in_table->iy", "proj.dat.in_table->ix"]
+oy.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 ix = ["select", "set_var"]
 iy = ["select", "set_var"]
 
@@ -1427,13 +1573,14 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
-
 
 [[tests]]
 sql = """
@@ -1457,13 +1604,14 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b", "proj.dat.in_table->c"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
-
 
 [[tests]]
 sql="""
@@ -1499,14 +1647,15 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->b"]
-b = ["proj.dat.in_table->d"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->b"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->d"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
-b = ["select", "join"]
+b = ["select"]
 c = ["select"]
 d = ["select"]
-
 
 [[tests]]
 sql="""
@@ -1533,8 +1682,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
-b = ["proj.dat.in_table->c"]
-[tests.used_columns."proj.dat.in_table"]
+b.inputs = ["proj.dat.in_table->c"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
@@ -1563,9 +1713,11 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a","proj.dat.in_table->b"]
-b = ["proj.dat.in_table->a","proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
+a.inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
 
@@ -1591,11 +1743,13 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
-a = ["proj.dat.in_table->a"]
-b = ["proj.dat.in_table->b"]
-[tests.used_columns."proj.dat.in_table"]
-a = ["select", "unnest"]
-b = ["select", "unnest"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+b.inputs = ["proj.dat.in_table->b"]
+b.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
 
 [[tests]]
 sql="""
@@ -1614,8 +1768,9 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "diff", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
-diff = ["proj.dat.in_table->d1", "proj.dat.in_table->d2"]
-[tests.used_columns."proj.dat.in_table"]
+diff.inputs = ["proj.dat.in_table->d1", "proj.dat.in_table->d2"]
+diff.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 d1 = ["select"]
 d2 = ["select"]
 
@@ -1635,10 +1790,10 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "trunc", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
-trunc = ["proj.dat.in_table->d1"]
-[tests.used_columns."proj.dat.in_table"]
+trunc.inputs = ["proj.dat.in_table->d1"]
+trunc.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 d1 = ["select"]
-
 
 [[tests]]
 sql="""
@@ -1672,15 +1827,16 @@ kind.table.columns = [
 name = "proj.dat.out_table"
 kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
-w = ["proj.dat.in_table->w"]
-z = ["proj.dat.in_table->z"]
-[tests.used_columns."proj.dat.in_table"]
-x = ["select", "join"]
-y = ["select", "join"]
+w.inputs = ["proj.dat.in_table->w"]
+w.side_inputs = []
+z.inputs = ["proj.dat.in_table->z"]
+z.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+x = ["select"]
+y = ["select"]
 z = ["select"]
-w = ["select", "join"]
+w = ["select"]
 f = ["select"]
-
 
 [[tests]]
 sql="""
@@ -1729,21 +1885,24 @@ kind.table.columns = [
     { name = "id", dtype = "int64" },
     { name = "f1", dtype = "string" },
     { name = "f2", dtype = "string" },
-
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-ts = ["proj.dat.t1->ts"]
-id = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
-f1 = ["proj.dat.t2->f1"]
-f2 = ["proj.dat.t3->f2"]
-[tests.used_columns."proj.dat.t1"]
+ts.inputs = ["proj.dat.t1->ts"]
+ts.side_inputs = []
+id.inputs = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
+id.side_inputs = []
+f1.inputs = ["proj.dat.t2->f1"]
+f1.side_inputs = []
+f2.inputs = ["proj.dat.t3->f2"]
+f2.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 ts = ["select"]
-id = ["select", "join"]
-[tests.used_columns."proj.dat.t2"]
-id = ["select", "join"]
+id = ["select"]
+[tests.referenced_columns."proj.dat.t2"]
+id = ["select"]
 f1 = ["select"]
-[tests.used_columns."proj.dat.t3"]
-id = ["select", "join"]
+[tests.referenced_columns."proj.dat.t3"]
+id = ["select"]
 f2 = ["select"]
 
 [[tests]]
@@ -1789,14 +1948,17 @@ kind.table.columns = [
     { name = "f1", dtype = "string" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-ts = ["proj.dat.in_table->ts"]
-id = ["proj.dat.in_table->id"]
-f1 = ["proj.dat.in_table->f1"]
-[tests.used_columns."proj.dat.in_table"]
-ts = ["select", "merge_join", "merge_insert"]
-id = ["select", "merge_join", "merge_insert"]
-f1 = ["select", "merge_insert"]
-[tests.used_columns."proj.dat.out_table"]
+ts.inputs = ["proj.dat.in_table->ts"]
+ts.side_inputs = []
+id.inputs = ["proj.dat.in_table->id"]
+id.side_inputs = []
+f1.inputs = ["proj.dat.in_table->f1"]
+f1.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+ts = ["select"]
+id = ["select"]
+f1 = ["select"]
+[tests.referenced_columns."proj.dat.out_table"]
 ts = ["merge_join"]
 id = ["merge_join"]
 
@@ -1822,9 +1984,11 @@ kind.table.columns = [
     { name = "arr", dtype = "array<int64>" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-arr = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
-"arr[]" = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
-[tests.used_columns."proj.dat.in_table"]
+arr.inputs = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+arr.side_inputs = []
+"arr[]".inputs = ["proj.dat.in_table->f0", "proj.dat.in_table->f1.a.x", "proj.dat.in_table->f1.a.y[]"]
+"arr[]".side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 f0 = ["select"]
 "f1.a.x" = ["select"]
 "f1.a.y[]" = ["select"]
@@ -1847,8 +2011,9 @@ kind.table.columns = [
     { name = "split_index", dtype = "string" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-split_index = ["proj.dat.letters->letter_group", "proj.dat.letters->idx"]
-[tests.used_columns."proj.dat.letters"]
+split_index.inputs = ["proj.dat.letters->letter_group", "proj.dat.letters->idx"]
+split_index.side_inputs = []
+[tests.referenced_columns."proj.dat.letters"]
 letter_group = ["select"]
 idx = ["select"]
 
@@ -1873,8 +2038,9 @@ kind.table.columns = [
     { name = "idx", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-idx = ["proj.dat.indices->idx1", "proj.dat.indices->idx2", "proj.dat.indices->idx3"]
-[tests.used_columns."proj.dat.indices"]
+idx.inputs = ["proj.dat.indices->idx1", "proj.dat.indices->idx2", "proj.dat.indices->idx3"]
+idx.side_inputs = []
+[tests.referenced_columns."proj.dat.indices"]
 idx1 = ["select"]
 idx2 = ["select"]
 idx3 = ["select"]
@@ -1897,8 +2063,9 @@ kind.table.columns = [
     { name = "idx", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-idx = ["proj.dat.indices->idx3"]
-[tests.used_columns."proj.dat.indices"]
+idx.inputs = ["proj.dat.indices->idx3"]
+idx.side_inputs = []
+[tests.referenced_columns."proj.dat.indices"]
 idx3 = ["select"]
 
 [[tests]]
@@ -1929,10 +2096,11 @@ kind.table.columns = [
     { name = "c", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out_table"]
-c = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
-[tests.used_columns."proj.dat.t1"]
+c.inputs = ["proj.dat.t1->c1", "proj.dat.t2->c2"]
+c.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 c1 = ["select"]
-[tests.used_columns."proj.dat.t2"]
+[tests.referenced_columns."proj.dat.t2"]
 c2 = ["select"]
 
 [[tests]]
@@ -1964,11 +2132,12 @@ kind.table_function.returns = [
     { name = "y", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-y = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
-[tests.used_columns."proj.dat.t1"]
+y.inputs = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
+y.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 x = ["join"]
 y = ["select"]
-[tests.used_columns."proj.dat.t1(*)"]
+[tests.referenced_columns."proj.dat.t1(*)"]
 x = ["join"]
 y = ["select"]
 
@@ -2002,12 +2171,14 @@ kind.table_function.returns = [
     { name = "y", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.t1->x", "proj.dat.t1(*)->x"]
-y = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
-[tests.used_columns."proj.dat.t1"]
+x.inputs = ["proj.dat.t1->x", "proj.dat.t1(*)->x"]
+x.side_inputs = []
+y.inputs = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
+y.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 x = ["join", "select"]
 y = ["select"]
-[tests.used_columns."proj.dat.t1(*)"]
+[tests.referenced_columns."proj.dat.t1(*)"]
 x = ["join", "select"]
 y = ["select"]
 
@@ -2037,11 +2208,12 @@ kind.user_sql_function.arguments = [
 ]
 kind.user_sql_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.t1->x","proj.dat.t1->y","proj.dat.t1(*)->!anonymous"]
-[tests.used_columns."proj.dat.t1"]
+x.inputs = ["proj.dat.t1->x","proj.dat.t1->y","proj.dat.t1(*)->!anonymous"]
+x.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 x = ["select"]
 y = ["select"]
-[tests.used_columns."proj.dat.t1(*)"]
+[tests.referenced_columns."proj.dat.t1(*)"]
 # Currently, we consider scalar functions output as their output column
 "!anonymous" = ["select"]
 
@@ -2071,14 +2243,14 @@ kind.user_sql_function.arguments = [
 ]
 kind.user_sql_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.t1->x","proj.dat.t1->y","dat.t1(*)->!anonymous"]
-[tests.used_columns."proj.dat.t1"]
+x.inputs = ["proj.dat.t1->x","proj.dat.t1->y","dat.t1(*)->!anonymous"]
+x.side_inputs = []
+[tests.referenced_columns."proj.dat.t1"]
 x = ["select"]
 y = ["select"]
-[tests.used_columns."dat.t1(*)"]
+[tests.referenced_columns."dat.t1(*)"]
 # Currently, we consider scalar functions output as their output column
 "!anonymous" = ["select"]
-
 
 [[tests]]
 sql="""
@@ -2110,13 +2282,15 @@ kind.table.columns = [
     { name = "age", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-id_and_age = ["proj.dat.users->id", "proj.dat.users->age"]
-"id_and_age.id" = ["proj.dat.users->id"]
-"id_and_age.age" = ["proj.dat.users->age"]
-[tests.used_columns."proj.dat.users"]
-id = ["select", "user_sql_function"]
-age = ["select", "user_sql_function", "where"]
-
+id_and_age.inputs = ["proj.dat.users->id", "proj.dat.users->age"]
+id_and_age.side_inputs = ["proj.dat.users->age"]
+"id_and_age.id".inputs = ["proj.dat.users->id"]
+"id_and_age.id".side_inputs = ["proj.dat.users->age"]
+"id_and_age.age".inputs = ["proj.dat.users->age"]
+"id_and_age.age".side_inputs = ["proj.dat.users->age"]
+[tests.referenced_columns."proj.dat.users"]
+id = ["select"]
+age = ["select"]
 
 [[tests]]
 sql="""
@@ -2145,10 +2319,10 @@ kind.table.columns = [
     { name = "value", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-value = ["proj.dat.in->value"]
-[tests.used_columns."proj.dat.in"]
+value.inputs = ["proj.dat.in->value"]
+value.side_inputs = []
+[tests.referenced_columns."proj.dat.in"]
 value = ["select"]
-
 
 [[tests]]
 sql="""
@@ -2176,10 +2350,11 @@ kind.user_sql_function.arguments = [
 ]
 kind.user_sql_function.body = "(x + 4) / y"
 [tests.ready_lineage."proj.dat.out"]
-value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
-[tests.used_columns."proj.dat.in"]
+value.inputs = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+value.side_inputs = []
+[tests.referenced_columns."proj.dat.in"]
 value = ["select"]
-[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+[tests.referenced_columns."proj.dat.addFourAndDivideAny(*)"]
 "!anonymous"=["select"]  # anonymous return type
 
 [[tests]]
@@ -2208,12 +2383,12 @@ kind.user_sql_function.arguments = [
 ]
 kind.user_sql_function.body = "(x + 4) / y"
 [tests.ready_lineage."proj.dat.out"]
-value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
-[tests.used_columns."proj.dat.in"]
+value.inputs = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+value.side_inputs = []
+[tests.referenced_columns."proj.dat.in"]
 value = ["select"]
-[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+[tests.referenced_columns."proj.dat.addFourAndDivideAny(*)"]
 "!anonymous"=["select"]  # anonymous return type
-
 
 [[tests]]
 sql="""
@@ -2241,10 +2416,11 @@ kind.user_sql_function.arguments = [
 ]
 kind.user_sql_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-value = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
-[tests.used_columns."proj.dat.in"]
+value.inputs = ["proj.dat.in->value", "proj.dat.addFourAndDivideAny(*)->!anonymous"]
+value.side_inputs = []
+[tests.referenced_columns."proj.dat.in"]
 value = ["select"]
-[tests.used_columns."proj.dat.addFourAndDivideAny(*)"]
+[tests.referenced_columns."proj.dat.addFourAndDivideAny(*)"]
 "!anonymous"=["select"]  # anonymous return type
 
 [[tests]]
@@ -2274,10 +2450,13 @@ kind.table.columns = [
     { name = "y", dtype = "float64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.numbers->x"]
-y = ["proj.dat.numbers->y"]
-xy = ["proj.dat.numbers->x", "proj.dat.numbers->y"]
-[tests.used_columns."proj.dat.numbers"]
+x.inputs = ["proj.dat.numbers->x"]
+x.side_inputs = []
+y.inputs = ["proj.dat.numbers->y"]
+y.side_inputs = []
+xy.inputs = ["proj.dat.numbers->x", "proj.dat.numbers->y"]
+xy.side_inputs = []
+[tests.referenced_columns."proj.dat.numbers"]
 x = ["select"]
 y = ["select"]
 
@@ -2308,13 +2487,16 @@ kind.user_js_function.arguments = [
 ]
 kind.user_js_function.returns = "float64"
 [tests.ready_lineage."proj.dat.out"]
-x = ["proj.dat.numbers->x"]
-y = ["proj.dat.numbers->y"]
-xy = ["proj.dat.numbers->x", "proj.dat.numbers->y", "proj.dat.multiplyInputs(*)->!anonymous"]
-[tests.used_columns."proj.dat.numbers"]
+x.inputs = ["proj.dat.numbers->x"]
+x.side_inputs = []
+y.inputs = ["proj.dat.numbers->y"]
+y.side_inputs = []
+xy.inputs = ["proj.dat.numbers->x", "proj.dat.numbers->y", "proj.dat.multiplyInputs(*)->!anonymous"]
+xy.side_inputs = []
+[tests.referenced_columns."proj.dat.numbers"]
 x = ["select"]
 y = ["select"]
-[tests.used_columns."proj.dat.multiplyInputs(*)"]
+[tests.referenced_columns."proj.dat.multiplyInputs(*)"]
 "!anonymous" = ["select"]
 
 [[tests]]
@@ -2342,16 +2524,20 @@ kind.table.columns = [
     { name = "max_year_Q2", dtype = "int64" }
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-total_sales_q1 = ["proj.dat.in_table->sales"]
-max_year_q1 = ["proj.dat.in_table->year"]
-total_sales_q2 = ["proj.dat.in_table->sales"]
-max_year_q2 = ["proj.dat.in_table->year"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+total_sales_q1.inputs = ["proj.dat.in_table->sales"]
+total_sales_q1.side_inputs = []
+max_year_q1.inputs = ["proj.dat.in_table->year"]
+max_year_q1.side_inputs = []
+total_sales_q2.inputs = ["proj.dat.in_table->sales"]
+total_sales_q2.side_inputs = []
+max_year_q2.inputs = ["proj.dat.in_table->year"]
+max_year_q2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
-sales = ["select", "pivot_aggregate"]
-year = ["select", "pivot_aggregate"]
-quarter = ["pivot_column"]
+sales = ["select"]
+year = ["select"]
 
 [[tests]]
 sql = """
@@ -2378,16 +2564,21 @@ kind.table.columns = [
     { name = "max_year_Q2", dtype = "int64" }
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-total_sales_q1 = ["proj.dat.in_table->sales"]
-max_year_q1 = ["proj.dat.in_table->year"]
-total_sales_q2 = ["proj.dat.in_table->sales"]
-max_year_q2 = ["proj.dat.in_table->year"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+total_sales_q1.inputs = ["proj.dat.in_table->sales"]
+total_sales_q1.side_inputs = []
+max_year_q1.inputs = ["proj.dat.in_table->year"]
+max_year_q1.side_inputs = []
+total_sales_q2.inputs = ["proj.dat.in_table->sales"]
+total_sales_q2.side_inputs = []
+max_year_q2.inputs = ["proj.dat.in_table->year"]
+max_year_q2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
-sales = ["select", "pivot_aggregate"]
-year = ["select", "pivot_aggregate"]
-quarter = ["pivot_column"]
+sales = ["select"]
+year = ["select"]
+# sales, year, and quarter usage is not the same as in the next test because there is a source (query expr) in between
 
 [[tests]]
 sql = """
@@ -2414,12 +2605,17 @@ kind.table.columns = [
     { name = "max_year_Q2", dtype = "int64" }
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-total_sales_q1 = ["proj.dat.in_table->sales"]
-max_year_q1 = ["proj.dat.in_table->year"]
-total_sales_q2 = ["proj.dat.in_table->sales"]
-max_year_q2 = ["proj.dat.in_table->year"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+total_sales_q1.inputs = ["proj.dat.in_table->sales"]
+total_sales_q1.side_inputs = []
+max_year_q1.inputs = ["proj.dat.in_table->year"]
+max_year_q1.side_inputs = []
+total_sales_q2.inputs = ["proj.dat.in_table->sales"]
+total_sales_q2.side_inputs = []
+max_year_q2.inputs = ["proj.dat.in_table->year"]
+max_year_q2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
 sales = ["select", "pivot_aggregate"]
 year = ["select", "pivot_aggregate"]
@@ -2449,11 +2645,15 @@ kind.table.columns = [
     { name = "Q2", dtype = "int64" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-year = ["proj.dat.in_table->year"]
-q1 = ["proj.dat.in_table->sales"]
-q2 = ["proj.dat.in_table->sales"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+year.inputs = ["proj.dat.in_table->year"]
+year.side_inputs = []
+q1.inputs = ["proj.dat.in_table->sales"]
+q1.side_inputs = []
+q2.inputs = ["proj.dat.in_table->sales"]
+q2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
 sales = ["select", "pivot_aggregate"]
 year = ["select"]
@@ -2487,12 +2687,17 @@ kind.table.columns = [
     { name = "max_year_Q2", dtype = "int64" }
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table_func(*)->product"]
-total_sales_q1 = ["proj.dat.in_table_func(*)->sales"]
-max_year_q1 = ["proj.dat.in_table_func(*)->year"]
-total_sales_q2 = ["proj.dat.in_table_func(*)->sales"]
-max_year_q2 = ["proj.dat.in_table_func(*)->year"]
-[tests.used_columns."proj.dat.in_table_func(*)"]
+product.inputs = ["proj.dat.in_table_func(*)->product"]
+product.side_inputs = []
+total_sales_q1.inputs = ["proj.dat.in_table_func(*)->sales"]
+total_sales_q1.side_inputs = []
+max_year_q1.inputs = ["proj.dat.in_table_func(*)->year"]
+max_year_q1.side_inputs = []
+total_sales_q2.inputs = ["proj.dat.in_table_func(*)->sales"]
+total_sales_q2.side_inputs = []
+max_year_q2.inputs = ["proj.dat.in_table_func(*)->year"]
+max_year_q2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table_func(*)"]
 product = ["select"]
 sales = ["select", "pivot_aggregate"]
 year = ["select", "pivot_aggregate"]
@@ -2521,9 +2726,11 @@ kind.table.columns = [
     { name = "quarter", dtype = "string" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2","proj.dat.in_table->q3","proj.dat.in_table->q4"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+sales.inputs = ["proj.dat.in_table->q1","proj.dat.in_table->q2","proj.dat.in_table->q3","proj.dat.in_table->q4"]
+sales.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
 q1 = ["select", "unpivot_column"]
 q2 = ["select", "unpivot_column"]
@@ -2557,10 +2764,13 @@ kind.table.columns = [
     { name = "quarter", dtype = "string" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-first_half_sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
-second_half_sales = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+first_half_sales.inputs = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
+first_half_sales.side_inputs = []
+second_half_sales.inputs = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
+second_half_sales.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
 q1 = ["select", "unpivot_column"]
 q2 = ["select", "unpivot_column"]
@@ -2594,12 +2804,59 @@ kind.table.columns = [
     { name = "quarter", dtype = "string" },
 ]
 [tests.ready_lineage."proj.dat.out"]
-product = ["proj.dat.in_table->product"]
-sales = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
-sales_1 = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
-[tests.used_columns."proj.dat.in_table"]
+product.inputs = ["proj.dat.in_table->product"]
+product.side_inputs = []
+sales.inputs = ["proj.dat.in_table->q1","proj.dat.in_table->q2"]
+sales.side_inputs = []
+sales_1.inputs = ["proj.dat.in_table->q3","proj.dat.in_table->q4"]
+sales_1.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
 product = ["select"]
 q1 = ["select", "unpivot_column"]
 q2 = ["select", "unpivot_column"]
 q3 = ["select", "unpivot_column"]
 q4 = ["select", "unpivot_column"]
+
+[[tests]]
+sql = """
+declare default_val float64 default (select min(val) from project.dataset.out);
+
+insert into `project.dataset.out`
+select
+    id,
+    if(x is null or s.x is null, default_val, x + s.x)
+from `project.dataset.t1` inner join `project.dataset.t2` using (id)
+where s.source = "baz";
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "val", dtype = "float64"}
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "x", dtype = "float64"}
+]
+[[tests.schema_objects]]
+name = "project.dataset.t2"
+kind.table.columns = [
+    { name = "id", dtype = "int64" },
+    { name = "s", dtype = "struct<source string, x float64>"}
+]
+[tests.ready_lineage."project.dataset.out"]
+id.inputs = ["project.dataset.t2->id", "project.dataset.t1->id"]
+id.side_inputs = ["project.dataset.t2->s.source"]
+val.inputs = ["project.dataset.t2->s.x", "project.dataset.t1->x", "project.dataset.out->val"]
+val.side_inputs = ["project.dataset.t2->s.source"]
+[tests.referenced_columns."project.dataset.out"]
+val = ["default_var", "select"]
+[tests.referenced_columns."project.dataset.t1"]
+id = ["join", "select"]
+x = ["select"]
+[tests.referenced_columns."project.dataset.t2"]
+id = ["join", "select"]
+"s.x" = ["select"]
+"s.source" = ["where"]

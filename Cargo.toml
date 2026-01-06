@@ -20,6 +20,7 @@ inbq = { version = "0.11.0", path = "crates/inbq" }
 inbq_genpy = { version = "0.11.0", path = "crates/inbq_genpy"}
 
 anyhow = "1.0.100"
+bitflags = "2.10.0"
 clap = { version = "4.5.51" }
 env_logger = "0.11.8"
 indexmap = { version = "2.12.0" }

@@ -23,12 +23,19 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
     print(f"{ast=}")
     print("\nLineage:")
     for object in output_lineage.lineage.objects:
+        print("Inputs:")
         for node in object.nodes:
             print(
-                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.input]}"
+                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.inputs]}"
             )
 
-    print("\nUsed columns:")
-    for object in output_lineage.used_columns.objects:
+        print("\nSide inputs:")
         for node in object.nodes:
-            print(f"{object.name}->{node.name} used in {node.used_in}")
+            print(
+                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.side_inputs]}"
+            )
+
+    print("\nReferenced columns:")
+    for object in output_lineage.referenced_columns.objects:
+        for node in object.nodes:
+            print(f"{object.name}->{node.name} referenced in {node.referenced_in}")

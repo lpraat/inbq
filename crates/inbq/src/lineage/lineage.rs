@@ -18,6 +18,7 @@ use crate::{
 };
 
 use anyhow::anyhow;
+use bitflags::{Flags, bitflags};
 use indexmap::{IndexMap, IndexSet};
 use rayon::prelude::*;
 use serde::Serialize;
@@ -43,6 +44,7 @@ macro_rules! routine_name {
 struct LineageNode {
     name: NodeName,
     r#type: NodeType,
+    origin: NodeOrigin,
     source_obj: ArenaIndex,
     input: Vec<ArenaIndex>,
     nested_nodes: IndexMap<String, ArenaIndex>,
@@ -72,10 +74,11 @@ impl LineageNode {
             .map(|idx| {
                 let in_node = &ctx.arena_lineage_nodes[*idx];
                 format!(
-                    "[{}]{}->{}",
+                    "[{}]{}->{}${}",
                     in_node.source_obj.index,
                     ctx.arena_objects[in_node.source_obj].name,
-                    in_node.name.nested_path()
+                    in_node.name.nested_path(),
+                    <NodeOrigin as Into<String>>::into(in_node.origin),
                 )
             })
             .fold((0, String::from("")), |acc, el| {
@@ -87,10 +90,11 @@ impl LineageNode {
             })
             .1;
         log::debug!(
-            "[{}]{}->{} <-[{}]",
+            "[{}]{}->{}${} <-[{}]",
             node.source_obj.index,
             node_source_name,
             node.name.nested_path(),
+            <NodeOrigin as Into<String>>::into(node.origin),
             in_str
         )
     }
@@ -548,6 +552,101 @@ struct ContextObject {
     kind: ContextObjectKind,
 }
 
+bitflags! {
+    #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+    pub struct NodeOrigin: u64 {
+        const Source = 1 << 0;
+        const Select = 1 << 1;
+        const Join = 1 << 2;
+        const Where = 1 << 3;
+        const GroupBy = 1 << 4;
+        const Having = 1 << 5;
+        const Qualify = 1 << 6;
+        const Window = 1 << 7;
+        const OrderBy = 1 << 8;
+        const Unnest = 1 << 9;
+        const Insert = 1 << 10;
+        const Update = 1 << 11;
+        const MergeJoin = 1 << 12;
+        const MergeCond = 1 << 13;
+        const MergeUpdate = 1 << 14;
+        const MergeInsert = 1 << 15;
+        const Var = 1 << 16;
+        const DefaultVar = 1 << 17;
+        const SetVar = 1 << 18;
+        const UserSqlFunction = 1 << 19;
+        const PivotAggregate = 1 << 20;
+        const PivotColumn = 1 << 21;
+        const UnpivotColumn = 1 << 22;
+        const Argument = 1 << 23;
+    }
+}
+
+impl NodeOrigin {
+    // todo: use macro to sync this
+    const NODE_ORIGIN_NAMES: [&'static str; NodeOrigin::FLAGS.len()] = [
+        "source",
+        "select",
+        "join",
+        "where",
+        "group_by",
+        "having",
+        "qualify",
+        "window",
+        "order_by",
+        "unnest",
+        "insert",
+        "update",
+        "merge_join",
+        "merge_cond",
+        "merge_update",
+        "merge_insert",
+        "var",
+        "default_var",
+        "set_var",
+        "user_sql_function",
+        "pivot_aggregate",
+        "pivot_column",
+        "unpivot_column",
+        "argument",
+    ];
+
+    fn single_bit_snake_case(&self) -> &'static str {
+        debug_assert!(self.bits().count_ones() == 1);
+        Self::NODE_ORIGIN_NAMES[self.bits().trailing_zeros() as usize]
+    }
+
+    fn is_output(&self) -> bool {
+        self.contains(NodeOrigin::Source)
+            && (self.bits()
+                & (NodeOrigin::Source
+                    | NodeOrigin::Select
+                    | NodeOrigin::Unnest
+                    | NodeOrigin::MergeUpdate
+                    | NodeOrigin::MergeInsert
+                    | NodeOrigin::Insert
+                    | NodeOrigin::Update
+                    | NodeOrigin::Var
+                    | NodeOrigin::DefaultVar
+                    | NodeOrigin::SetVar
+                    | NodeOrigin::UserSqlFunction
+                    | NodeOrigin::PivotAggregate)
+                    .complement()
+                    .bits()
+                == 0)
+    }
+}
+
+impl From<NodeOrigin> for String {
+    fn from(value: NodeOrigin) -> Self {
+        value
+            .iter()
+            .map(|n| n.single_bit_snake_case())
+            .collect::<Vec<&'static str>>()
+            .join(", ")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ContextObjectKind {
     TempTable,
@@ -617,104 +716,32 @@ impl Display for GetColumnError {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum ColumnUsage {
-    Select,
-    Join,
-    Where,
-    GroupBy,
-    Having,
-    Window,
-    OrderBy,
-    Unnest,
-    Insert,
-    Update,
-    MergeJoin,
-    MergeCond,
-    MergeUpdate,
-    MergeInsert,
-    DefaultVar,
-    SetVar,
-    UserSqlFunction,
-    PivotAggregate,
-    PivotColumn,
-    UnpivotColumn,
-}
-
-impl From<ColumnUsage> for String {
-    fn from(val: ColumnUsage) -> Self {
-        match val {
-            ColumnUsage::Select => "select".into(),
-            ColumnUsage::Join => "join".into(),
-            ColumnUsage::Where => "where".into(),
-            ColumnUsage::GroupBy => "group_by".into(),
-            ColumnUsage::Having => "having".into(),
-            ColumnUsage::Window => "window".into(),
-            ColumnUsage::OrderBy => "order_by".into(),
-            ColumnUsage::Unnest => "unnest".into(),
-            ColumnUsage::Insert => "insert".into(),
-            ColumnUsage::Update => "update".into(),
-            ColumnUsage::MergeCond => "merge_cond".into(),
-            ColumnUsage::MergeJoin => "merge_join".into(),
-            ColumnUsage::MergeUpdate => "merge_update".into(),
-            ColumnUsage::MergeInsert => "merge_insert".into(),
-            ColumnUsage::DefaultVar => "default_var".into(),
-            ColumnUsage::SetVar => "set_var".into(),
-            ColumnUsage::UserSqlFunction => "user_sql_function".into(),
-            ColumnUsage::PivotAggregate => "pivot_aggregate".into(),
-            ColumnUsage::PivotColumn => "pivot_column".into(),
-            ColumnUsage::UnpivotColumn => "unpivot_column".into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-struct ColumnUsed {
-    arena_index: ArenaIndex,
-    kind: ColumnUsage,
-}
-
 #[derive(Debug)]
-struct ColumnsUsed {
-    set: IndexSet<ColumnUsed>,
+struct ColumnsReferenced {
+    map: IndexMap<ArenaIndex, NodeOrigin>,
 }
 
-impl ColumnsUsed {
+impl ColumnsReferenced {
     fn new() -> Self {
         Self {
-            set: IndexSet::new(),
+            map: IndexMap::new(),
         }
     }
 }
 
-impl Default for ColumnsUsed {
+impl Default for ColumnsReferenced {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ColumnsUsed {
-    fn add_column(&mut self, node: ArenaIndex, kind: ColumnUsage) {
-        self.set.insert(ColumnUsed {
-            arena_index: node,
-            kind,
-        });
+impl ColumnsReferenced {
+    fn add_column(&mut self, node_idx: ArenaIndex, origin: NodeOrigin) {
+        self.map.insert(node_idx, origin);
     }
 }
 
 impl std::error::Error for GetColumnError {}
-
-#[derive(Debug, Clone, Copy)]
-enum ContextState {
-    TrackingOutputLineage,
-    TrackingColumns,
-}
-
-impl Default for ContextState {
-    fn default() -> Self {
-        Self::TrackingOutputLineage
-    }
-}
 
 #[derive(Debug, Clone)]
 enum UserSqlFunctionArgType {
@@ -860,13 +887,12 @@ struct LineageContext {
     query_depth: u16,
     query_joined_ambiguous_columns: Vec<HashSet<String>>,
 
-    state: ContextState,
     typed_struct_fields: Vec<StructNodeFieldType>,
 
     // Output
     output: Vec<ArenaIndex>,
     last_select_statement: Option<String>,
-    columns_used: ColumnsUsed,
+    columns_referenced: ColumnsReferenced,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -889,8 +915,7 @@ impl LineageContext {
         self.typed_struct_fields.clear();
         self.output.clear();
         self.last_select_statement = None;
-        self.columns_used = ColumnsUsed::new();
-        self.state = ContextState::default();
+        self.columns_referenced = ColumnsReferenced::default();
     }
 
     fn get_anon_obj_id(&mut self) -> u64 {
@@ -911,7 +936,7 @@ impl LineageContext {
         &mut self,
         name: &str,
         kind: ContextObjectKind,
-        nodes: Vec<(NodeName, NodeType, Vec<ArenaIndex>)>,
+        nodes: Vec<(NodeName, NodeType, NodeOrigin, Vec<ArenaIndex>)>,
     ) -> ArenaIndex {
         let new_obj = ContextObject {
             name: name.to_owned(),
@@ -921,10 +946,11 @@ impl LineageContext {
         let new_id = self.arena_objects.allocate(new_obj);
 
         let mut new_lineage_nodes = Vec::with_capacity(nodes.len());
-        for (node_name, node_type, items) in nodes.into_iter() {
+        for (node_name, node_type, node_origin, items) in nodes.into_iter() {
             let lin = LineageNode {
                 name: node_name,
                 r#type: node_type,
+                origin: node_origin,
                 source_obj: new_id,
                 input: items.clone(),
                 nested_nodes: IndexMap::new(),
@@ -943,12 +969,14 @@ impl LineageContext {
         &mut self,
         name: NodeName,
         r#type: NodeType,
+        origin: NodeOrigin,
         source_obj: ArenaIndex,
         input: Vec<ArenaIndex>,
     ) -> ArenaIndex {
         let idx = self.arena_lineage_nodes.allocate(LineageNode {
             name,
             r#type,
+            origin,
             source_obj,
             input: input.clone(),
             nested_nodes: IndexMap::new(),
@@ -957,16 +985,33 @@ impl LineageContext {
         idx
     }
 
-    fn add_inputs_to_node(
-        &mut self,
-        node_idx: ArenaIndex,
-        input: &[ArenaIndex],
-        add_nested_nodes_from_input_nodes: bool,
-    ) {
+    fn add_inputs_to_node(&mut self, node_idx: ArenaIndex, input: &[ArenaIndex]) {
         let node = &mut self.arena_lineage_nodes[node_idx];
         node.input.extend(input);
-        if add_nested_nodes_from_input_nodes {
-            self.add_nested_nodes_from_input_nodes(node_idx, input);
+        self.add_nested_nodes_from_input_nodes(node_idx, input);
+    }
+
+    fn add_side_inputs_to_node(&mut self, node_idx: ArenaIndex, side_inputs: &[ArenaIndex]) {
+        let node = &mut self.arena_lineage_nodes[node_idx];
+        node.input.extend(side_inputs);
+        self.add_side_inputs_to_nested_nodes(node_idx, side_inputs);
+    }
+
+    fn add_side_inputs_to_nested_nodes(
+        &mut self,
+        node_idx: ArenaIndex,
+        side_inputs: &[ArenaIndex],
+    ) {
+        for nested_node_idx in self.arena_lineage_nodes[node_idx]
+            .nested_nodes
+            .values()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.arena_lineage_nodes[nested_node_idx]
+                .input
+                .extend(side_inputs);
+            self.add_side_inputs_to_nested_nodes(nested_node_idx, side_inputs);
         }
     }
 
@@ -993,6 +1038,147 @@ impl LineageContext {
             .nested_nodes
             .get(&access_path.nested_path())
             .map_or(vec![], |el| vec![*el])
+    }
+
+    fn gather_node_output_indices(
+        &mut self,
+        access_path: AccessPath,
+        output_idx: ArenaIndex,
+        ty: &NodeType,
+        indices: &mut Vec<ArenaIndex>,
+    ) {
+        match ty {
+            NodeType::Struct(struct_node_type) => {
+                for field in &struct_node_type.fields {
+                    let mut field_access_path = access_path.clone();
+                    field_access_path
+                        .path
+                        .push(AccessOp::Field(field.name.clone()));
+
+                    let nested_node_idx = self.allocate_node_with_nested_input(
+                        output_idx,
+                        &field_access_path,
+                        &field.r#type,
+                        &[],
+                    );
+                    indices.push(nested_node_idx);
+                    self.add_node_to_output_lineage(nested_node_idx);
+
+                    let node = &mut self.arena_lineage_nodes[output_idx];
+                    node.nested_nodes
+                        .insert(field_access_path.nested_path(), nested_node_idx);
+
+                    self.gather_node_output_indices(
+                        field_access_path.clone(),
+                        output_idx,
+                        &field.r#type,
+                        indices,
+                    );
+                }
+            }
+            NodeType::Array(array_node_type) => {
+                let mut array_access_path = access_path;
+                array_access_path.path.push(AccessOp::Index);
+
+                let nested_node_idx = self.allocate_node_with_nested_input(
+                    output_idx,
+                    &array_access_path,
+                    &array_node_type.r#type,
+                    &[],
+                );
+                indices.push(nested_node_idx);
+                self.add_node_to_output_lineage(nested_node_idx);
+
+                let node = &mut self.arena_lineage_nodes[output_idx];
+                node.nested_nodes
+                    .insert(array_access_path.nested_path(), nested_node_idx);
+
+                self.gather_node_output_indices(
+                    array_access_path.clone(),
+                    output_idx,
+                    &array_node_type.r#type,
+                    indices,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn gather_node_input_indices(
+        &mut self,
+        access_path: AccessPath,
+        input_idx: ArenaIndex,
+        ty: &NodeType,
+        indices: &mut Vec<ArenaIndex>,
+    ) {
+        match ty {
+            NodeType::Struct(struct_node_type) => {
+                for field in &struct_node_type.fields {
+                    let mut field_access_path = access_path.clone();
+                    field_access_path
+                        .path
+                        .push(AccessOp::Field(field.name.clone()));
+
+                    let node = &self.arena_lineage_nodes[input_idx];
+                    let nested_node_idx = node
+                        .nested_nodes
+                        .get(&field_access_path.nested_path())
+                        .unwrap();
+                    indices.push(*nested_node_idx);
+
+                    self.gather_node_input_indices(
+                        field_access_path.clone(),
+                        input_idx,
+                        &field.r#type,
+                        indices,
+                    );
+                }
+            }
+            NodeType::Array(array_node_type) => {
+                let mut array_access_path = access_path;
+                array_access_path.path.push(AccessOp::Index);
+
+                let node = &mut self.arena_lineage_nodes[input_idx];
+                let nested_node_idx = node
+                    .nested_nodes
+                    .get(&array_access_path.nested_path())
+                    .unwrap();
+                indices.push(*nested_node_idx);
+
+                self.gather_node_input_indices(
+                    array_access_path.clone(),
+                    input_idx,
+                    &array_node_type.r#type,
+                    indices,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn build_output_node(&mut self, output_idx: ArenaIndex, input_idx: ArenaIndex) {
+        let input_node_ty = &self.arena_lineage_nodes[input_idx].r#type.clone();
+        let mut input_indices = vec![];
+        self.gather_node_input_indices(
+            AccessPath::default(),
+            input_idx,
+            input_node_ty,
+            &mut input_indices,
+        );
+
+        let output_node_ty = &self.arena_lineage_nodes[output_idx].r#type.clone();
+        let mut output_indices = vec![];
+        self.gather_node_output_indices(
+            AccessPath::default(),
+            output_idx,
+            output_node_ty,
+            &mut output_indices,
+        );
+
+        self.arena_lineage_nodes[output_idx].input.push(input_idx);
+        for (out_idx, inp_idx) in output_indices.iter().zip(input_indices.iter()) {
+            self.arena_lineage_nodes[*out_idx].input.push(*inp_idx);
+        }
     }
 
     fn _add_nested_nodes_from_input_nodes(
@@ -1302,6 +1488,7 @@ impl LineageContext {
                 access_path: access_path.clone(),
             }),
             r#type: node_type.clone(),
+            origin: node.origin,
             source_obj: node.source_obj,
             input: nested_input.to_vec(),
             nested_nodes: IndexMap::new(),
@@ -1590,21 +1777,17 @@ impl LineageContext {
     }
 
     fn add_node_to_output_lineage(&mut self, node_idx: ArenaIndex) {
-        if let ContextState::TrackingOutputLineage = self.state {
-            self.output.push(node_idx);
-        }
+        self.output.push(node_idx);
     }
 
     fn add_object_nodes_to_output_lineage(&mut self, obj_idx: ArenaIndex) {
-        if let ContextState::TrackingOutputLineage = self.state {
-            let obj = &self.arena_objects[obj_idx];
-            let nodes = &obj.lineage_nodes;
-            self.output.extend(nodes);
-        }
+        let obj = &self.arena_objects[obj_idx];
+        let nodes = &obj.lineage_nodes;
+        self.output.extend(nodes);
     }
 
-    fn add_used_column(&mut self, node_idx: ArenaIndex, kind: ColumnUsage) {
-        self.columns_used.add_column(node_idx, kind);
+    fn add_referenced_column(&mut self, node_idx: ArenaIndex, origin: NodeOrigin) {
+        self.columns_referenced.add_column(node_idx, origin);
     }
 
     fn cte_lin(&mut self, catalog: &LineageCatalog, cte: &Cte) -> anyhow::Result<()> {
@@ -1622,7 +1805,12 @@ impl LineageContext {
                         .iter()
                         .map(|idx| {
                             let node = &self.arena_lineage_nodes[*idx];
-                            (node.name.clone(), node.r#type.clone(), vec![*idx])
+                            (
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                NodeOrigin::Source,
+                                vec![*idx],
+                            )
                         })
                         .collect(),
                 );
@@ -1655,25 +1843,25 @@ impl LineageContext {
         &mut self,
         access_path: &AccessPath,
         nested_node_idx: ArenaIndex,
+        origin: NodeOrigin,
         input: &[ArenaIndex],
     ) -> ArenaIndex {
         let path_len = access_path.path.len();
         if matches!(access_path.path[path_len - 1], AccessOp::FieldStar) {
             let nested_node = &self.arena_lineage_nodes[nested_node_idx];
-            let node_idx =
-                self.allocate_expr_node("star", NodeType::Unknown, nested_node.input.clone());
-            self.add_node_to_output_lineage(node_idx);
-            node_idx
+            self.allocate_expr_node("star", NodeType::Unknown, origin, nested_node.input.clone())
         } else {
             let nested_node = &self.arena_lineage_nodes[nested_node_idx];
-            let node_idx = self.allocate_expr_node(
+
+            let node_idx = self.allocate_expr_node_with_name(
+                nested_node.name.clone(),
                 "nested",
                 nested_node.r#type.clone(),
+                origin,
                 vec![nested_node_idx],
             );
             let node = &mut self.arena_lineage_nodes[node_idx];
             node.input.extend_from_slice(input);
-            self.add_node_to_output_lineage(node_idx);
             node_idx
         }
     }
@@ -1682,7 +1870,7 @@ impl LineageContext {
         &mut self,
         catalog: &LineageCatalog,
         expr: &BinaryExpr,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         let mut b = expr;
         let mut access_path = AccessPath::default();
@@ -1714,6 +1902,7 @@ impl LineageContext {
                                 let allocated_node_idx = self.allocate_expr_node(
                                     "col",
                                     col.r#type.clone(),
+                                    node_origin,
                                     vec![col_source_idx],
                                 );
                                 let allocated_node =
@@ -1730,6 +1919,7 @@ impl LineageContext {
                                 return Ok(self.nested_node_lin(
                                     &access_path,
                                     nested_node_idx,
+                                    node_origin,
                                     &[],
                                 ));
                             }
@@ -1749,7 +1939,12 @@ impl LineageContext {
                             access_path.path.reverse();
                             let node = &self.arena_lineage_nodes[col_or_var_source_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                            return Ok(self.nested_node_lin(
+                                &access_path,
+                                nested_node_idx,
+                                node_origin,
+                                &[],
+                            ));
                         }
                     }
                     (Expr::Binary(left), right) => {
@@ -1765,7 +1960,7 @@ impl LineageContext {
                                     }
                                     _ => unreachable!(),
                                 };
-                                self.expr_lin(catalog, &binary_expr.right, false, column_usage)?;
+                                self.expr_lin(catalog, &binary_expr.right, false, node_origin)?;
                                 access_path.path.extend_from_slice(&[
                                     AccessOp::Index,
                                     AccessOp::Field(field_name.clone()),
@@ -1799,34 +1994,40 @@ impl LineageContext {
                                 .array_function_expr_lin(
                                     catalog,
                                     array_function_expr,
-                                    column_usage,
+                                    node_origin,
                                 )?,
                             FunctionExpr::ArrayAgg(array_agg_function_expr) => self
                                 .array_agg_function_expr_lin(
                                     catalog,
                                     array_agg_function_expr,
                                     false,
-                                    column_usage,
+                                    node_origin,
                                 )?,
                             _ => unreachable!(),
                         };
                         self.add_node_to_output_lineage(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (Expr::Array(array_expr), _) => {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
-                        let node_idx = self.array_expr_lin(catalog, array_expr, column_usage)?;
+                        let node_idx = self.array_expr_lin(catalog, array_expr, node_origin)?;
                         self.add_node_to_output_lineage(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        let index_node_idx = self.expr_lin(catalog, right, false, column_usage)?;
+                        let index_node_idx = self.expr_lin(catalog, right, false, node_origin)?;
                         return Ok(self.nested_node_lin(
                             &access_path,
                             nested_node_idx,
+                            node_origin,
                             &[index_node_idx],
                         ));
                     }
@@ -1856,7 +2057,12 @@ impl LineageContext {
 
                             let node = &self.arena_lineage_nodes[col_or_var_idx];
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                            return Ok(self.nested_node_lin(
+                                &access_path,
+                                nested_node_idx,
+                                node_origin,
+                                &[],
+                            ));
                         }
                     }
                     (
@@ -1867,21 +2073,31 @@ impl LineageContext {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
-                        let node_idx = self.struct_expr_lin(catalog, struct_expr, column_usage)?;
+                        let node_idx = self.struct_expr_lin(catalog, struct_expr, node_origin)?;
                         self.add_node_to_output_lineage(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (Expr::Struct(struct_expr), Expr::Star) => {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
-                        let node_idx = self.struct_expr_lin(catalog, struct_expr, column_usage)?;
+                        let node_idx = self.struct_expr_lin(catalog, struct_expr, node_origin)?;
                         self.add_node_to_output_lineage(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (
                         Expr::Identifier(Identifier { name: ident })
@@ -1894,6 +2110,7 @@ impl LineageContext {
                             return Ok(self.allocate_expr_node(
                                 "table_star",
                                 NodeType::Unknown,
+                                node_origin,
                                 source_obj.lineage_nodes.clone(),
                             ));
                         } else {
@@ -1904,7 +2121,12 @@ impl LineageContext {
                                 path: vec![AccessOp::FieldStar],
                             };
                             let nested_node_idx = node.access(&access_path)?;
-                            return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                            return Ok(self.nested_node_lin(
+                                &access_path,
+                                nested_node_idx,
+                                node_origin,
+                                &[],
+                            ));
                         }
                     }
                     (
@@ -1919,7 +2141,12 @@ impl LineageContext {
                         let col_or_var_idx = self.get_query_col_or_var_or_arg(ident)?;
                         let node = &self.arena_lineage_nodes[col_or_var_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (
                         Expr::QueryNamedParameter(_)
@@ -1938,11 +2165,16 @@ impl LineageContext {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::Field(ident.clone()));
                         access_path.path.reverse();
-                        let node_idx = self.expr_lin(catalog, left, false, column_usage)?;
+                        let node_idx = self.expr_lin(catalog, left, false, node_origin)?;
                         let node = &self.arena_lineage_nodes[node_idx];
                         debug_assert!(matches!(node.r#type, NodeType::Struct(_)));
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (
                         Expr::QueryNamedParameter(_)
@@ -1959,10 +2191,15 @@ impl LineageContext {
                         debug_assert!(matches!(op, BinaryOperator::ArrayIndex));
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
-                        let node_idx = self.expr_lin(catalog, left, false, column_usage)?;
+                        let node_idx = self.expr_lin(catalog, left, false, node_origin)?;
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
-                        return Ok(self.nested_node_lin(&access_path, nested_node_idx, &[]));
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (
                         Expr::QueryNamedParameter(_)
@@ -1985,11 +2222,11 @@ impl LineageContext {
                         access_path.path.push(AccessOp::Index);
                         access_path.path.reverse();
 
-                        let node_idx = self.expr_lin(catalog, left, false, column_usage)?;
+                        let node_idx = self.expr_lin(catalog, left, false, node_origin)?;
                         let node = &self.arena_lineage_nodes[node_idx];
                         let nested_node_idx = node.access(&access_path)?;
 
-                        let index_node_idx = self.expr_lin(catalog, right, false, column_usage)?;
+                        let index_node_idx = self.expr_lin(catalog, right, false, node_origin)?;
                         let index_node = &self.arena_lineage_nodes[index_node_idx];
 
                         if !matches!(index_node.r#type, NodeType::Int64) {
@@ -2003,6 +2240,7 @@ impl LineageContext {
                         return Ok(self.nested_node_lin(
                             &access_path,
                             nested_node_idx,
+                            node_origin,
                             &[node_idx, index_node_idx],
                         ));
                     }
@@ -2012,14 +2250,14 @@ impl LineageContext {
                         Expr::GenericFunction(function_expr),
                     ) => {
                         if ident.eq_ignore_ascii_case("safe") {
-                            return self.expr_lin(catalog, right, false, column_usage);
+                            return self.expr_lin(catalog, right, false, node_origin);
                         }
                         let node_idx = self.generic_function_expr_lin(
                             catalog,
                             &format!("{}.{}", ident, function_expr.name.as_str()),
                             function_expr,
                             false,
-                            column_usage,
+                            node_origin,
                         )?;
                         self.add_node_to_output_lineage(node_idx);
                         return Ok(node_idx);
@@ -2031,7 +2269,7 @@ impl LineageContext {
                         Expr::Function(_),
                     ) => {
                         if ident.eq_ignore_ascii_case("safe") {
-                            return self.expr_lin(catalog, right, false, column_usage);
+                            return self.expr_lin(catalog, right, false, node_origin);
                         }
                         return Err(anyhow!(
                             "Found unexpected binary expr with left: {:?} and right {:?}.",
@@ -2050,7 +2288,7 @@ impl LineageContext {
                     }
                 }
             } else {
-                return self.binary_expr_type(catalog, left, right, op, column_usage);
+                return self.binary_expr_type(catalog, left, right, op, node_origin);
             }
         }
     }
@@ -2061,10 +2299,10 @@ impl LineageContext {
         left_expr: &Expr,
         right_expr: &Expr,
         op: &BinaryOperator,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
-        let left_idx = self.expr_lin(catalog, left_expr, false, column_usage)?;
-        let right_idx = self.expr_lin(catalog, right_expr, false, column_usage)?;
+        let left_idx = self.expr_lin(catalog, left_expr, false, node_origin)?;
+        let right_idx = self.expr_lin(catalog, right_expr, false, node_origin)?;
 
         let left_node = &self.arena_lineage_nodes[left_idx];
         let right_node = &self.arena_lineage_nodes[right_idx];
@@ -2218,6 +2456,7 @@ impl LineageContext {
         let node_idx = self.allocate_expr_node(
             &format!("bin_expr_{}", op),
             node_type,
+            node_origin,
             vec![left_idx, right_idx],
         );
         Ok(node_idx)
@@ -2247,6 +2486,7 @@ impl LineageContext {
         &mut self,
         name: NodeName,
         fields: Vec<StructNodeFieldType>,
+        origin: NodeOrigin,
         input: Vec<ArenaIndex>,
     ) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name("anon_struct");
@@ -2255,6 +2495,7 @@ impl LineageContext {
         let node = LineageNode {
             name,
             r#type: NodeType::Struct(StructNodeType { fields }),
+            origin,
             source_obj: obj_idx,
             input,
             nested_nodes: IndexMap::new(),
@@ -2273,7 +2514,7 @@ impl LineageContext {
         &mut self,
         catalog: &LineageCatalog,
         struct_expr: &StructExpr,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         if let Some(typ) = &struct_expr.r#type {
             // Typed struct syntax
@@ -2285,7 +2526,7 @@ impl LineageContext {
         for field in struct_expr.fields.iter() {
             let name = field.alias.as_ref().map(|tok| tok.as_str().to_owned());
 
-            let node_field_idx = self.expr_lin(catalog, &field.expr, false, column_usage)?;
+            let node_field_idx = self.expr_lin(catalog, &field.expr, false, node_origin)?;
             let node_field = &self.arena_lineage_nodes[node_field_idx];
 
             let mut name_from_col = None;
@@ -2315,12 +2556,13 @@ impl LineageContext {
             fields.push(struct_node_field_type);
         }
 
-        Ok(self.create_struct_node(NodeName::Anonymous, fields, input))
+        Ok(self.create_struct_node(NodeName::Anonymous, fields, node_origin, input))
     }
 
     fn create_anon_struct_from_table_nodes(
         &mut self,
         name: &str,
+        node_origin: NodeOrigin,
         nodes: &[ArenaIndex],
     ) -> ArenaIndex {
         let mut fields = Vec::with_capacity(nodes.len());
@@ -2334,12 +2576,22 @@ impl LineageContext {
             ));
             input.extend(&node.input);
         }
-        let node_idx = self.create_struct_node(NodeName::Defined(name.to_owned()), fields, input);
+        let node_idx = self.create_struct_node(
+            NodeName::Defined(name.to_owned()),
+            fields,
+            node_origin,
+            input,
+        );
         self.add_node_to_output_lineage(node_idx);
         node_idx
     }
 
-    fn create_array_node(&mut self, array_type: NodeType, input: Vec<ArenaIndex>) -> ArenaIndex {
+    fn create_array_node(
+        &mut self,
+        array_type: NodeType,
+        node_origin: NodeOrigin,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name("anon_array");
         let obj_idx = self.allocate_object(&obj_name, ContextObjectKind::AnonymousArray, vec![]);
 
@@ -2349,6 +2601,7 @@ impl LineageContext {
                 r#type: array_type,
                 input: input.clone(),
             })),
+            origin: node_origin,
             source_obj: obj_idx,
             input,
             nested_nodes: IndexMap::new(),
@@ -2366,7 +2619,7 @@ impl LineageContext {
         &mut self,
         catalog: &LineageCatalog,
         array_expr: &ArrayExpr,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         if let Some(typ) = &array_expr.r#type {
             // Typed struct syntax
@@ -2385,7 +2638,7 @@ impl LineageContext {
 
         let mut input = Vec::with_capacity(array_expr.exprs.len());
         for expr in &array_expr.exprs {
-            let element_node_idx = self.expr_lin(catalog, expr, false, column_usage)?;
+            let element_node_idx = self.expr_lin(catalog, expr, false, node_origin)?;
             let element = &self.arena_lineage_nodes[element_node_idx];
 
             if strict {
@@ -2408,14 +2661,14 @@ impl LineageContext {
             input.push(element_node_idx)
         }
 
-        Ok(self.create_array_node(array_type, input))
+        Ok(self.create_array_node(array_type, node_origin, input))
     }
 
     fn array_function_expr_lin(
         &mut self,
         catalog: &LineageCatalog,
         array_function_expr: &ArrayFunctionExpr,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         self.array_expr_lin(
             catalog,
@@ -2423,7 +2676,7 @@ impl LineageContext {
                 r#type: None,
                 exprs: vec![Expr::Query(Box::new(array_function_expr.query.clone()))],
             },
-            column_usage,
+            node_origin,
         )
     }
 
@@ -2432,13 +2685,13 @@ impl LineageContext {
         catalog: &LineageCatalog,
         array_agg_function_expr: &ArrayAggFunctionExpr,
         expand_value_table: bool,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         let node_idx = self.expr_lin(
             catalog,
             &array_agg_function_expr.arg.expr,
             expand_value_table,
-            column_usage,
+            node_origin,
         )?;
         if let Some(named_window_expr) = &array_agg_function_expr.over {
             self.named_window_expr_lin(catalog, named_window_expr, expand_value_table)?;
@@ -2446,6 +2699,7 @@ impl LineageContext {
 
         Ok(self.create_array_node(
             self.arena_lineage_nodes[node_idx].r#type.clone(),
+            node_origin,
             vec![node_idx],
         ))
     }
@@ -2456,11 +2710,11 @@ impl LineageContext {
         name: &str,
         function_expr: &GenericFunctionExpr,
         expand_value_table: bool,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         let mut input = vec![];
         for arg in &function_expr.arguments {
-            let node_idx = self.expr_lin(catalog, &arg.expr, expand_value_table, column_usage)?;
+            let node_idx = self.expr_lin(catalog, &arg.expr, expand_value_table, node_origin)?;
             input.push(node_idx);
         }
 
@@ -2552,7 +2806,7 @@ impl LineageContext {
             self.named_window_expr_lin(catalog, named_window_expr, expand_value_table)?;
         }
 
-        Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, input))
+        Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, node_origin, input))
     }
 
     fn evaluate_user_sql_function_body(
@@ -2585,7 +2839,7 @@ impl LineageContext {
             catalog,
             &user_sql_function.body,
             expand_value_table,
-            ColumnUsage::UserSqlFunction,
+            NodeOrigin::UserSqlFunction,
         )?;
         for (arg_name, _) in &arguments {
             self.args.remove(arg_name);
@@ -2611,6 +2865,7 @@ impl LineageContext {
             vec![(
                 NodeName::Defined(arg_ident.clone()),
                 node_type,
+                NodeOrigin::Argument,
                 input_lineage_nodes.into(),
             )],
         );
@@ -2618,20 +2873,6 @@ impl LineageContext {
         self.args.add(arg_ident, arg_node_idx);
         self.add_node_to_output_lineage(arg_node_idx);
         object_idx
-    }
-
-    fn expr_lin_to_track_col_usage(
-        &mut self,
-        catalog: &LineageCatalog,
-        expr: &Expr,
-        expand_value_table: bool,
-        column_usage: ColumnUsage,
-    ) -> anyhow::Result<ArenaIndex> {
-        let curr_state = self.state;
-        self.state = ContextState::TrackingColumns;
-        let node_idx = self.expr_lin(catalog, expr, expand_value_table, column_usage)?;
-        self.state = curr_state;
-        Ok(node_idx)
     }
 
     fn common_supertype_error_msg(
@@ -2647,15 +2888,42 @@ impl LineageContext {
         )
     }
 
-    fn allocate_expr_node(
+    fn track_usage_expr_node(
         &mut self,
         source_name: &str,
         r#type: NodeType,
+        origin: NodeOrigin,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
+        let node_idx = self.allocate_expr_node(source_name, r#type, origin, input);
+        self.add_node_to_output_lineage(node_idx);
+        self.columns_referenced.add_column(node_idx, origin);
+        node_idx
+    }
+
+    fn allocate_expr_node_with_name(
+        &mut self,
+        node_name: NodeName,
+        source_name: &str,
+        r#type: NodeType,
+        origin: NodeOrigin,
         input: Vec<ArenaIndex>,
     ) -> ArenaIndex {
         let obj_name = self.get_anon_obj_name(source_name);
         let obj_idx = self.allocate_object(&obj_name, ContextObjectKind::AnonymousExpr, vec![]);
-        self.allocate_lineage_node(NodeName::Anonymous, r#type, obj_idx, input)
+        self.allocate_lineage_node(node_name, r#type, origin, obj_idx, input)
+    }
+
+    fn allocate_expr_node(
+        &mut self,
+        source_name: &str,
+        r#type: NodeType,
+        origin: NodeOrigin,
+        input: Vec<ArenaIndex>,
+    ) -> ArenaIndex {
+        let obj_name = self.get_anon_obj_name(source_name);
+        let obj_idx = self.allocate_object(&obj_name, ContextObjectKind::AnonymousExpr, vec![]);
+        self.allocate_lineage_node(NodeName::Anonymous, r#type, origin, obj_idx, input)
     }
 
     fn expr_lin(
@@ -2663,59 +2931,76 @@ impl LineageContext {
         catalog: &LineageCatalog,
         expr: &Expr,
         expand_value_table: bool,
-        column_usage: ColumnUsage,
+        node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         let node_idx = match expr {
             // todo: retrieve type from schema for query named/positional
             Expr::QueryNamedParameter(_) => {
-                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+                self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
             Expr::QueryPositionalParameter => {
-                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+                self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
 
             // todo: retrieve type from sysvars
             Expr::SystemVariable(_) => {
-                self.allocate_expr_node("literal", NodeType::Unknown, vec![])
+                self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
 
-            Expr::Null => self.allocate_expr_node("literal", NodeType::Unknown, vec![]),
-            Expr::Default => self.allocate_expr_node("literal", NodeType::Unknown, vec![]),
+            Expr::Null => {
+                self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
+            }
+            Expr::Default => {
+                self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
+            }
             Expr::RawBytes(_) | Expr::Bytes(_) | Expr::BytesConcat(_) => {
-                self.allocate_expr_node("literal", NodeType::Bytes, vec![])
+                self.allocate_expr_node("literal", NodeType::Bytes, node_origin, vec![])
             }
             Expr::String(_) | Expr::RawString(_) | Expr::StringConcat(_) => {
-                self.allocate_expr_node("literal", NodeType::String, vec![])
+                self.allocate_expr_node("literal", NodeType::String, node_origin, vec![])
             }
-            Expr::Bool(_) => self.allocate_expr_node("literal", NodeType::Boolean, vec![]),
+            Expr::Bool(_) => {
+                self.allocate_expr_node("literal", NodeType::Boolean, node_origin, vec![])
+            }
             Expr::Number(num_expr) => {
                 let r#type = if num_expr.value.parse::<i64>().is_ok() {
                     NodeType::Int64
                 } else {
                     NodeType::Float64
                 };
-                self.allocate_expr_node("constant", r#type, vec![])
+                self.allocate_expr_node("constant", r#type, node_origin, vec![])
             }
-            Expr::Numeric(_) => self.allocate_expr_node("constant", NodeType::Numeric, vec![]),
+            Expr::Numeric(_) => {
+                self.allocate_expr_node("constant", NodeType::Numeric, node_origin, vec![])
+            }
             Expr::BigNumeric(_) => {
-                self.allocate_expr_node("constant", NodeType::BigNumeric, vec![])
+                self.allocate_expr_node("constant", NodeType::BigNumeric, node_origin, vec![])
             }
             Expr::Range(range_expr) => self.allocate_expr_node(
                 "constant",
                 NodeType::Range(Box::new(NodeType::from_parser_type(&range_expr.r#type))),
+                node_origin,
                 vec![],
             ),
-            Expr::Date(_) => self.allocate_expr_node("constant", NodeType::Date, vec![]),
-            Expr::Timestamp(_) => self.allocate_expr_node("constant", NodeType::Timestamp, vec![]),
-            Expr::Datetime(_) => self.allocate_expr_node("constant", NodeType::Datetime, vec![]),
-            Expr::Time(_) => self.allocate_expr_node("constant", NodeType::Time, vec![]),
-            Expr::Json(_) => self.allocate_expr_node("constant", NodeType::Json, vec![]),
-            Expr::Binary(binary_expr) => {
-                self.binary_expr_lin(catalog, binary_expr, column_usage)?
+            Expr::Date(_) => {
+                self.allocate_expr_node("constant", NodeType::Date, node_origin, vec![])
             }
+            Expr::Timestamp(_) => {
+                self.allocate_expr_node("constant", NodeType::Timestamp, node_origin, vec![])
+            }
+            Expr::Datetime(_) => {
+                self.allocate_expr_node("constant", NodeType::Datetime, node_origin, vec![])
+            }
+            Expr::Time(_) => {
+                self.allocate_expr_node("constant", NodeType::Time, node_origin, vec![])
+            }
+            Expr::Json(_) => {
+                self.allocate_expr_node("constant", NodeType::Json, node_origin, vec![])
+            }
+            Expr::Binary(binary_expr) => self.binary_expr_lin(catalog, binary_expr, node_origin)?,
             Expr::Unary(unary_expr) => {
                 let node_idx =
-                    self.expr_lin(catalog, &unary_expr.right, expand_value_table, column_usage)?;
+                    self.expr_lin(catalog, &unary_expr.right, expand_value_table, node_origin)?;
                 let node_type = match unary_expr.operator {
                     UnaryOperator::Plus | UnaryOperator::Minus => {
                         let node = &self.arena_lineage_nodes[node_idx];
@@ -2731,17 +3016,22 @@ impl LineageContext {
                     | UnaryOperator::Not => NodeType::Boolean,
                 };
 
-                self.allocate_expr_node("unary", node_type, vec![node_idx])
+                self.allocate_expr_node("unary", node_type, node_origin, vec![node_idx])
             }
             Expr::Grouping(grouping_expr) => {
                 let node_idx = self.expr_lin(
                     catalog,
                     &grouping_expr.expr,
                     expand_value_table,
-                    column_usage,
+                    node_origin,
                 )?;
                 let node = &self.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node("grouping", node.r#type.clone(), vec![node_idx])
+                self.allocate_expr_node(
+                    "grouping",
+                    node.r#type.clone(),
+                    node_origin,
+                    vec![node_idx],
+                )
             }
             Expr::Identifier(Identifier { name: ident })
             | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
@@ -2753,6 +3043,7 @@ impl LineageContext {
                             // unnest is an array of structs
                             self.create_anon_struct_from_table_nodes(
                                 ident,
+                                node_origin,
                                 &source_obj.lineage_nodes.clone(),
                             )
                         } else {
@@ -2761,6 +3052,7 @@ impl LineageContext {
                     } else {
                         self.create_anon_struct_from_table_nodes(
                             ident,
+                            node_origin,
                             &source_obj.lineage_nodes.clone(),
                         )
                     }
@@ -2768,8 +3060,12 @@ impl LineageContext {
                     // col
                     let node_idx = self.get_query_col_or_var_or_arg(ident)?;
                     let node = &self.arena_lineage_nodes[node_idx];
-                    let allocated_node_idx =
-                        self.allocate_expr_node("col", node.r#type.clone(), vec![node_idx]);
+                    let allocated_node_idx = self.allocate_expr_node(
+                        "col",
+                        node.r#type.clone(),
+                        node_origin,
+                        vec![node_idx],
+                    );
                     let allocated_node = &mut self.arena_lineage_nodes[allocated_node_idx];
                     allocated_node.name = NodeName::Defined(ident.clone());
                     allocated_node_idx
@@ -2778,34 +3074,38 @@ impl LineageContext {
             Expr::Interval(interval_expr) => match interval_expr {
                 IntervalExpr::Interval { value, .. } => {
                     let node_idx =
-                        self.expr_lin(catalog, value, expand_value_table, column_usage)?;
-                    self.allocate_expr_node("interval", NodeType::Interval, vec![node_idx])
+                        self.expr_lin(catalog, value, expand_value_table, node_origin)?;
+                    self.allocate_expr_node(
+                        "interval",
+                        NodeType::Interval,
+                        node_origin,
+                        vec![node_idx],
+                    )
                 }
                 IntervalExpr::IntervalRange { .. } => {
-                    self.allocate_expr_node("constant", NodeType::Interval, vec![])
+                    self.allocate_expr_node("constant", NodeType::Interval, node_origin, vec![])
                 }
             },
-            Expr::Array(array_expr) => self.array_expr_lin(catalog, array_expr, column_usage)?,
+            Expr::Array(array_expr) => self.array_expr_lin(catalog, array_expr, node_origin)?,
             Expr::Unnest(unnext_expr) => {
-                let node_idx = self.expr_lin(
-                    catalog,
-                    &unnext_expr.array,
-                    expand_value_table,
-                    column_usage,
-                )?;
+                let node_idx =
+                    self.expr_lin(catalog, &unnext_expr.array, expand_value_table, node_origin)?;
                 let node = &self.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node("unnest", node.r#type.clone(), vec![node_idx])
+                self.allocate_expr_node("unnest", node.r#type.clone(), node_origin, vec![node_idx])
             }
-            Expr::Struct(struct_expr) => {
-                self.struct_expr_lin(catalog, struct_expr, column_usage)?
-            }
+            Expr::Struct(struct_expr) => self.struct_expr_lin(catalog, struct_expr, node_origin)?,
             Expr::Query(query_expr) => {
                 let obj_idx = self.query_expr_lin(catalog, query_expr, expand_value_table)?;
                 let obj = &self.arena_objects[obj_idx];
                 debug_assert!(obj.lineage_nodes.len() == 1);
                 let node_idx = obj.lineage_nodes[0];
                 let node = &self.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node("subquery", node.r#type.clone(), vec![node_idx])
+                self.allocate_expr_node(
+                    "subquery",
+                    node.r#type.clone(),
+                    node_origin,
+                    vec![node_idx],
+                )
             }
             Expr::Exists(query_expr) => {
                 let obj_idx = self.query_expr_lin(catalog, query_expr, expand_value_table)?;
@@ -2813,7 +3113,12 @@ impl LineageContext {
                 debug_assert!(obj.lineage_nodes.len() == 1);
                 let node_idx = obj.lineage_nodes[0];
                 let node = &self.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node("exists_subquery", node.r#type.clone(), vec![node_idx])
+                self.allocate_expr_node(
+                    "exists_subquery",
+                    node.r#type.clone(),
+                    node_origin,
+                    vec![node_idx],
+                )
             }
             Expr::Case(case_expr) => {
                 let mut when_super_type = NodeType::Unknown;
@@ -2821,8 +3126,7 @@ impl LineageContext {
                 let mut input = vec![];
 
                 if let Some(case) = &case_expr.case {
-                    let node_idx =
-                        self.expr_lin(catalog, case, expand_value_table, column_usage)?;
+                    let node_idx = self.expr_lin(catalog, case, expand_value_table, node_origin)?;
                     let node = &self.arena_lineage_nodes[node_idx];
                     when_super_type = when_super_type.common_supertype_with(&node.r#type).unwrap();
                     input.push(node_idx);
@@ -2830,7 +3134,7 @@ impl LineageContext {
 
                 for when_then in &case_expr.when_thens {
                     let when_idx =
-                        self.expr_lin(catalog, &when_then.when, expand_value_table, column_usage)?;
+                        self.expr_lin(catalog, &when_then.when, expand_value_table, node_origin)?;
                     let when_node = &self.arena_lineage_nodes[when_idx];
                     if let Some(new_super_type) =
                         when_super_type.common_supertype_with(&when_node.r#type)
@@ -2847,7 +3151,7 @@ impl LineageContext {
                     input.push(when_idx);
 
                     let then_idx =
-                        self.expr_lin(catalog, &when_then.then, expand_value_table, column_usage)?;
+                        self.expr_lin(catalog, &when_then.then, expand_value_table, node_origin)?;
                     let then_node = &self.arena_lineage_nodes[then_idx];
                     if let Some(new_super_type) =
                         result_super_type.common_supertype_with(&then_node.r#type)
@@ -2866,7 +3170,7 @@ impl LineageContext {
 
                 if let Some(else_expr) = &case_expr.r#else {
                     let else_idx =
-                        self.expr_lin(catalog, else_expr, expand_value_table, column_usage)?;
+                        self.expr_lin(catalog, else_expr, expand_value_table, node_origin)?;
                     let else_node = &self.arena_lineage_nodes[else_idx];
                     if let Some(new_super_type) =
                         result_super_type.common_supertype_with(&else_node.r#type)
@@ -2883,14 +3187,14 @@ impl LineageContext {
                     input.push(else_idx);
                 }
 
-                self.allocate_expr_node("case", result_super_type, input)
+                self.allocate_expr_node("case", result_super_type, node_origin, input)
             }
             Expr::GenericFunction(function_expr) => self.generic_function_expr_lin(
                 catalog,
                 function_expr.name.as_str(),
                 function_expr,
                 expand_value_table,
-                column_usage,
+                node_origin,
             )?,
             Expr::Function(function_expr) => match function_expr.as_ref() {
                 FunctionExpr::Concat(concat_fn_expr) => {
@@ -2898,7 +3202,7 @@ impl LineageContext {
                     let mut input = vec![];
                     for expr in &concat_fn_expr.values {
                         let node_idx =
-                            self.expr_lin(catalog, expr, expand_value_table, column_usage)?;
+                            self.expr_lin(catalog, expr, expand_value_table, node_origin)?;
                         let node = &self.arena_lineage_nodes[node_idx];
                         input.push(node_idx);
 
@@ -2951,18 +3255,14 @@ impl LineageContext {
                             }
                         }
                     }
-                    self.allocate_expr_node("fn_concat", return_type, input)
+                    self.allocate_expr_node("fn_concat", return_type, node_origin, input)
                 }
                 FunctionExpr::Coalesce(coalesce_fn_expr) => {
                     let mut input = Vec::with_capacity(coalesce_fn_expr.exprs.len());
                     let mut return_type = NodeType::Unknown;
                     for coalesce_expr in &coalesce_fn_expr.exprs {
-                        let node_idx = self.expr_lin(
-                            catalog,
-                            coalesce_expr,
-                            expand_value_table,
-                            column_usage,
-                        )?;
+                        let node_idx =
+                            self.expr_lin(catalog, coalesce_expr, expand_value_table, node_origin)?;
                         input.push(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
 
@@ -2977,58 +3277,63 @@ impl LineageContext {
                             )));
                         }
                     }
-                    self.allocate_expr_node("coalesce", return_type, input)
+                    self.allocate_expr_node("coalesce", return_type, node_origin, input)
                 }
                 FunctionExpr::Cast(cast_fn_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &cast_fn_expr.expr,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let cast_type = NodeType::from_parser_parameterized_type(&cast_fn_expr.r#type);
-                    self.allocate_expr_node("cast", cast_type, vec![node_idx])
+                    self.allocate_expr_node("cast", cast_type, node_origin, vec![node_idx])
                 }
                 FunctionExpr::SafeCast(safe_cast_fn_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &safe_cast_fn_expr.expr,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let safe_cast_type =
                         NodeType::from_parser_parameterized_type(&safe_cast_fn_expr.r#type);
-                    self.allocate_expr_node("safe_cast", safe_cast_type, vec![node_idx])
+                    self.allocate_expr_node(
+                        "safe_cast",
+                        safe_cast_type,
+                        node_origin,
+                        vec![node_idx],
+                    )
                 }
                 FunctionExpr::Array(array_function_expr) => {
-                    self.array_function_expr_lin(catalog, array_function_expr, column_usage)?
+                    self.array_function_expr_lin(catalog, array_function_expr, node_origin)?
                 }
                 FunctionExpr::ArrayAgg(array_agg_function_expr) => self
                     .array_agg_function_expr_lin(
                         catalog,
                         array_agg_function_expr,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?,
                 FunctionExpr::If(if_function_expr) => {
                     let cond_node_idx = self.expr_lin(
                         catalog,
                         &if_function_expr.condition,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let true_result_node_idx = self.expr_lin(
                         catalog,
                         &if_function_expr.true_result,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
 
                     let false_result_node_idx = self.expr_lin(
                         catalog,
                         &if_function_expr.false_result,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
 
                     let true_result_node = &self.arena_lineage_nodes[true_result_node_idx];
@@ -3051,6 +3356,7 @@ impl LineageContext {
                     self.allocate_expr_node(
                         "if",
                         if_type,
+                        node_origin,
                         vec![cond_node_idx, true_result_node_idx, false_result_node_idx],
                     )
                 }
@@ -3059,20 +3365,26 @@ impl LineageContext {
                         catalog,
                         &normalize_function_expr.value,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
-                    self.allocate_expr_node("normalize", NodeType::String, vec![node_idx])
+                    self.allocate_expr_node(
+                        "normalize",
+                        NodeType::String,
+                        node_origin,
+                        vec![node_idx],
+                    )
                 }
                 FunctionExpr::NormalizeAndCasefold(normalize_and_casefold_function_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &normalize_and_casefold_function_expr.value,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     self.allocate_expr_node(
                         "normalize_and_casefold",
                         NodeType::String,
+                        node_origin,
                         vec![node_idx],
                     )
                 }
@@ -3081,104 +3393,111 @@ impl LineageContext {
                         catalog,
                         &left_function_expr.value,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let len_idx = self.expr_lin(
                         catalog,
                         &left_function_expr.length,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
 
                     let value = &self.arena_lineage_nodes[value_idx];
 
-                    self.allocate_expr_node("left", value.r#type.clone(), vec![value_idx, len_idx])
+                    self.allocate_expr_node(
+                        "left",
+                        value.r#type.clone(),
+                        node_origin,
+                        vec![value_idx, len_idx],
+                    )
                 }
                 FunctionExpr::Right(right_function_expr) => {
                     let value_idx = self.expr_lin(
                         catalog,
                         &right_function_expr.value,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let len_idx = self.expr_lin(
                         catalog,
                         &right_function_expr.length,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
 
                     let value = &self.arena_lineage_nodes[value_idx];
 
-                    self.allocate_expr_node("right", value.r#type.clone(), vec![value_idx, len_idx])
+                    self.allocate_expr_node(
+                        "right",
+                        value.r#type.clone(),
+                        node_origin,
+                        vec![value_idx, len_idx],
+                    )
                 }
                 FunctionExpr::CurrentDate(current_date_function_expr) => {
                     let mut input = vec![];
                     if let Some(timezone_expr) = &current_date_function_expr.timezone {
-                        let node_idx = self.expr_lin(
-                            catalog,
-                            timezone_expr,
-                            expand_value_table,
-                            column_usage,
-                        )?;
+                        let node_idx =
+                            self.expr_lin(catalog, timezone_expr, expand_value_table, node_origin)?;
                         input.push(node_idx);
                     }
-                    self.allocate_expr_node("current_date", NodeType::Date, input)
+                    self.allocate_expr_node("current_date", NodeType::Date, node_origin, input)
                 }
                 FunctionExpr::CurrentDatetime(current_datetime_function_expr) => {
                     let mut input = vec![];
                     if let Some(timezone_expr) = &current_datetime_function_expr.timezone {
-                        let node_idx = self.expr_lin(
-                            catalog,
-                            timezone_expr,
-                            expand_value_table,
-                            column_usage,
-                        )?;
+                        let node_idx =
+                            self.expr_lin(catalog, timezone_expr, expand_value_table, node_origin)?;
                         input.push(node_idx);
                     }
-                    self.allocate_expr_node("current_datetime", NodeType::Datetime, input)
+                    self.allocate_expr_node(
+                        "current_datetime",
+                        NodeType::Datetime,
+                        node_origin,
+                        input,
+                    )
                 }
                 FunctionExpr::CurrentTime(current_time_function_expr) => {
                     let mut input = vec![];
                     if let Some(timezone_expr) = &current_time_function_expr.timezone {
-                        let node_idx = self.expr_lin(
-                            catalog,
-                            timezone_expr,
-                            expand_value_table,
-                            column_usage,
-                        )?;
+                        let node_idx =
+                            self.expr_lin(catalog, timezone_expr, expand_value_table, node_origin)?;
                         input.push(node_idx);
                     }
-                    self.allocate_expr_node("current_time", NodeType::Time, input)
+                    self.allocate_expr_node("current_time", NodeType::Time, node_origin, input)
                 }
-                FunctionExpr::CurrentTimestamp => {
-                    self.allocate_expr_node("current_timestamp", NodeType::Timestamp, vec![])
-                }
+                FunctionExpr::CurrentTimestamp => self.allocate_expr_node(
+                    "current_timestamp",
+                    NodeType::Timestamp,
+                    node_origin,
+                    vec![],
+                ),
                 FunctionExpr::Extract(extract_function_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &extract_function_expr.expr,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
-                    self.allocate_expr_node("extract", NodeType::Int64, vec![node_idx])
+                    self.allocate_expr_node("extract", NodeType::Int64, node_origin, vec![node_idx])
                 }
                 FunctionExpr::DateDiff(date_diff_function_expr) => {
                     let start_date_idx = self.expr_lin(
                         catalog,
                         &date_diff_function_expr.start_date,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let end_date_idx = self.expr_lin(
                         catalog,
                         &date_diff_function_expr.end_date,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     self.allocate_expr_node(
                         "date_diff",
                         NodeType::Int64,
+                        node_origin,
                         vec![start_date_idx, end_date_idx],
                     )
                 }
@@ -3187,17 +3506,18 @@ impl LineageContext {
                         catalog,
                         &datetime_diff_function_expr.start_datetime,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let end_datetime_idx = self.expr_lin(
                         catalog,
                         &datetime_diff_function_expr.end_datetime,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     self.allocate_expr_node(
                         "datetime_diff",
                         NodeType::Int64,
+                        node_origin,
                         vec![start_datetime_idx, end_datetime_idx],
                     )
                 }
@@ -3206,17 +3526,18 @@ impl LineageContext {
                         catalog,
                         &timestamp_diff_function_expr.start_timestamp,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let end_timestamp_idx = self.expr_lin(
                         catalog,
                         &timestamp_diff_function_expr.end_timestamp,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     self.allocate_expr_node(
                         "timestamp_diff",
                         NodeType::Int64,
+                        node_origin,
                         vec![start_timestamp_idx, end_timestamp_idx],
                     )
                 }
@@ -3225,17 +3546,18 @@ impl LineageContext {
                         catalog,
                         &time_diff_function_expr.start_time,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     let end_time_idx = self.expr_lin(
                         catalog,
                         &time_diff_function_expr.end_time,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     self.allocate_expr_node(
                         "time_diff",
                         NodeType::Int64,
+                        node_origin,
                         vec![start_time_idx, end_time_idx],
                     )
                 }
@@ -3244,9 +3566,14 @@ impl LineageContext {
                         catalog,
                         &date_trunc_function_expr.date,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
-                    self.allocate_expr_node("date_trunc", NodeType::Date, vec![node_idx])
+                    self.allocate_expr_node(
+                        "date_trunc",
+                        NodeType::Date,
+                        node_origin,
+                        vec![node_idx],
+                    )
                 }
                 FunctionExpr::DatetimeTrunc(datetime_trunc_function_expr) => {
                     let mut input = vec![];
@@ -3254,15 +3581,20 @@ impl LineageContext {
                         catalog,
                         &datetime_trunc_function_expr.datetime,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     input.push(datetime_idx);
                     if let Some(timezone) = &datetime_trunc_function_expr.timezone {
                         let timezone_idx =
-                            self.expr_lin(catalog, timezone, expand_value_table, column_usage)?;
+                            self.expr_lin(catalog, timezone, expand_value_table, node_origin)?;
                         input.push(timezone_idx)
                     }
-                    self.allocate_expr_node("datetime_trunc", NodeType::Datetime, input)
+                    self.allocate_expr_node(
+                        "datetime_trunc",
+                        NodeType::Datetime,
+                        node_origin,
+                        input,
+                    )
                 }
                 FunctionExpr::TimestampTrunc(timestamp_trunc_function_expr) => {
                     let mut input = vec![];
@@ -3270,55 +3602,70 @@ impl LineageContext {
                         catalog,
                         &timestamp_trunc_function_expr.timestamp,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
                     input.push(timestamp_idx);
                     if let Some(timezone) = &timestamp_trunc_function_expr.timezone {
                         let timezone_idx =
-                            self.expr_lin(catalog, timezone, expand_value_table, column_usage)?;
+                            self.expr_lin(catalog, timezone, expand_value_table, node_origin)?;
                         input.push(timezone_idx)
                     }
-                    self.allocate_expr_node("timestamp_trunc", NodeType::Timestamp, input)
+                    self.allocate_expr_node(
+                        "timestamp_trunc",
+                        NodeType::Timestamp,
+                        node_origin,
+                        input,
+                    )
                 }
                 FunctionExpr::TimeTrunc(time_trunc_function_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &time_trunc_function_expr.time,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
-                    self.allocate_expr_node("time_trunc", NodeType::Time, vec![node_idx])
+                    self.allocate_expr_node(
+                        "time_trunc",
+                        NodeType::Time,
+                        node_origin,
+                        vec![node_idx],
+                    )
                 }
                 FunctionExpr::LastDay(last_day_function_expr) => {
                     let node_idx = self.expr_lin(
                         catalog,
                         &last_day_function_expr.expr,
                         expand_value_table,
-                        column_usage,
+                        node_origin,
                     )?;
-                    self.allocate_expr_node("last_day", NodeType::Date, vec![node_idx])
+                    self.allocate_expr_node("last_day", NodeType::Date, node_origin, vec![node_idx])
                 }
             },
             Expr::Star => {
                 // NOTE: we can enter here for a COUNT(*)
-                self.allocate_expr_node("star", NodeType::Int64, vec![])
+                self.allocate_expr_node("star", NodeType::Int64, node_origin, vec![])
             }
             Expr::QuantifiedLike(quantified_like_expr) => match &quantified_like_expr.pattern {
                 QuantifiedLikeExprPattern::ExprList { exprs } => {
                     let mut input = vec![];
                     for expr in exprs {
                         let node_idx =
-                            self.expr_lin(catalog, expr, expand_value_table, column_usage)?;
+                            self.expr_lin(catalog, expr, expand_value_table, node_origin)?;
                         input.push(node_idx);
                     }
-                    self.allocate_expr_node("quantified_like_expr", NodeType::Boolean, input)
+                    self.allocate_expr_node(
+                        "quantified_like_expr",
+                        NodeType::Boolean,
+                        node_origin,
+                        input,
+                    )
                 }
                 QuantifiedLikeExprPattern::ArrayUnnest { expr } => {
-                    let node_idx =
-                        self.expr_lin(catalog, expr, expand_value_table, column_usage)?;
+                    let node_idx = self.expr_lin(catalog, expr, expand_value_table, node_origin)?;
                     self.allocate_expr_node(
                         "quantified_like_array_unnest",
                         NodeType::Boolean,
+                        node_origin,
                         vec![node_idx],
                     )
                 }
@@ -3327,19 +3674,19 @@ impl LineageContext {
                 let mut input = vec![];
                 for with_var in &with_expr.vars {
                     let node_idx =
-                        self.expr_lin(catalog, &with_var.value, expand_value_table, column_usage)?;
+                        self.expr_lin(catalog, &with_var.value, expand_value_table, node_origin)?;
                     input.push(node_idx)
                 }
                 let result_idx =
-                    self.expr_lin(catalog, &with_expr.result, expand_value_table, column_usage)?;
+                    self.expr_lin(catalog, &with_expr.result, expand_value_table, node_origin)?;
                 let result = &self.arena_lineage_nodes[result_idx];
                 input.push(result_idx);
-                self.allocate_expr_node("with", result.r#type.clone(), input)
+                self.allocate_expr_node("with", result.r#type.clone(), node_origin, input)
             }
         };
 
         self.add_node_to_output_lineage(node_idx);
-        self.add_used_column(node_idx, column_usage);
+        self.add_referenced_column(node_idx, node_origin);
         Ok(node_idx)
     }
 
@@ -3387,6 +3734,7 @@ impl LineageContext {
                 new_lineage_nodes.push((
                     NodeName::Defined(col_name.clone()),
                     self.arena_lineage_nodes[col_in_table_idx].r#type.clone(),
+                    NodeOrigin::Select,
                     anon_obj_idx,
                     vec![col_in_table_idx],
                 ));
@@ -3394,7 +3742,7 @@ impl LineageContext {
         }
 
         for tup in new_lineage_nodes {
-            let lineage_node_idx = self.allocate_lineage_node(tup.0, tup.1, tup.2, tup.3);
+            let lineage_node_idx = self.allocate_lineage_node(tup.0, tup.1, tup.2, tup.3, tup.4);
             lineage_nodes.push(lineage_node_idx);
             self.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -3417,7 +3765,7 @@ impl LineageContext {
                 .collect::<HashSet<String>>()
         });
 
-        let node_idx = self.expr_lin(catalog, &col_expr.expr, false, ColumnUsage::Select)?;
+        let node_idx = self.expr_lin(catalog, &col_expr.expr, false, NodeOrigin::Select)?;
         let node = &self.arena_lineage_nodes[node_idx];
 
         let mut new_lineage_nodes = Vec::with_capacity(node.input.len());
@@ -3430,13 +3778,14 @@ impl LineageContext {
             new_lineage_nodes.push((
                 node.name.clone(),
                 node.r#type.clone(),
+                NodeOrigin::Select,
                 anon_obj_idx,
                 vec![*node_idx],
             ))
         }
 
         for tup in new_lineage_nodes {
-            let lineage_node_idx = self.allocate_lineage_node(tup.0, tup.1, tup.2, tup.3);
+            let lineage_node_idx = self.allocate_lineage_node(tup.0, tup.1, tup.2, tup.3, tup.4);
             lineage_nodes.push(lineage_node_idx);
             self.arena_objects[anon_obj_idx]
                 .lineage_nodes
@@ -3456,6 +3805,7 @@ impl LineageContext {
         let pending_node_idx = self.allocate_lineage_node(
             NodeName::Anonymous,
             NodeType::Unknown,
+            NodeOrigin::Select,
             anon_obj_idx,
             vec![],
         );
@@ -3463,7 +3813,7 @@ impl LineageContext {
             .lineage_nodes
             .push(pending_node_idx);
 
-        let node_idx = self.expr_lin(catalog, &col_expr.expr, false, ColumnUsage::Select)?;
+        let node_idx = self.expr_lin(catalog, &col_expr.expr, false, NodeOrigin::Select)?;
         let node = &self.arena_lineage_nodes[node_idx];
         let node_name = node.name.clone();
         let node_type = node.r#type.clone();
@@ -3474,7 +3824,7 @@ impl LineageContext {
         if let Some(alias) = &col_expr.alias {
             pending_node.name = NodeName::Defined(alias.as_str().to_lowercase());
         } else if matches!(node_name, NodeName::Defined(_) | NodeName::Nested(_)) {
-            pending_node.name = NodeName::Defined(node_name.string().to_owned());
+            pending_node.name = NodeName::Defined(node_name.nested_path().to_owned());
         }
 
         pending_node.r#type = node_type;
@@ -3512,7 +3862,12 @@ impl LineageContext {
         let mut new_lineage_nodes = Vec::with_capacity(table_like_obj.lineage_nodes.len());
         for el in &table_like_obj.lineage_nodes {
             let ln = &self.arena_lineage_nodes[*el];
-            new_lineage_nodes.push((ln.name.clone(), ln.r#type.clone(), vec![*el]))
+            new_lineage_nodes.push((
+                ln.name.clone(),
+                ln.r#type.clone(),
+                NodeOrigin::Source,
+                vec![*el],
+            ))
         }
 
         self.allocate_object(
@@ -3533,22 +3888,22 @@ impl LineageContext {
             NamedWindowExpr::WindowSpec(window_spec) => {
                 if let Some(order_bys) = &window_spec.order_by {
                     for order_by in order_bys {
-                        self.expr_lin_to_track_col_usage(
+                        self.expr_lin(
                             catalog,
                             &order_by.expr,
                             expand_value_table,
-                            ColumnUsage::Window,
+                            NodeOrigin::Window,
                         )?;
                     }
                 }
 
                 if let Some(partition_by_exprs) = &window_spec.partition_by {
                     for partition_by_expr in partition_by_exprs {
-                        self.expr_lin_to_track_col_usage(
+                        self.expr_lin(
                             catalog,
                             partition_by_expr,
                             expand_value_table,
-                            ColumnUsage::Window,
+                            NodeOrigin::Window,
                         )?;
                     }
                 }
@@ -3659,7 +4014,7 @@ impl LineageContext {
                 let mut input = vec![];
                 for agg in &pivot.aggregates {
                     let node_idx =
-                        self.expr_lin(catalog, &agg.expr, false, ColumnUsage::PivotAggregate)?;
+                        self.expr_lin(catalog, &agg.expr, false, NodeOrigin::PivotAggregate)?;
                     types_aggregate.push(self.arena_lineage_nodes[node_idx].r#type.clone());
                     input.push(node_idx);
 
@@ -3697,6 +4052,7 @@ impl LineageContext {
                         new_nodes.push((
                             NodeName::Defined(new_column_name),
                             ty.clone(),
+                            NodeOrigin::Select,
                             vec![*input],
                         ));
                     }
@@ -3711,23 +4067,29 @@ impl LineageContext {
                         .string()
                         .eq_ignore_ascii_case(pivot.input_column.as_str())
                     {
-                        pivot_column_idx = Some(node_idx);
+                        pivot_column_idx = Some(*node_idx);
                     } else if !cols_used_in_aggregates.contains(node_idx) {
                         let node = &self.arena_lineage_nodes[*node_idx];
                         new_lineage_nodes.push((
                             node.name.clone(),
                             node.r#type.clone(),
+                            node.origin,
                             vec![*node_idx],
                         ));
                     }
                 }
                 new_lineage_nodes.extend(new_nodes);
 
-                self.add_used_column(
-                    *pivot_column_idx
-                        .expect("Pivot column not found in table. This should not happen."),
-                    ColumnUsage::PivotColumn,
+                let pivot_column_idx = pivot_column_idx
+                    .expect("Pivot column not found in table. This should not happen.");
+                let pivot_column = &self.arena_lineage_nodes[pivot_column_idx];
+                self.track_usage_expr_node(
+                    "pivot_column",
+                    pivot_column.r#type.clone(),
+                    NodeOrigin::PivotColumn,
+                    vec![pivot_column_idx],
                 );
+                self.add_referenced_column(pivot_column_idx, NodeOrigin::PivotColumn);
 
                 let pivot_obj_name = if let Some(alias) = &pivot.alias {
                     alias.as_str()
@@ -3776,14 +4138,21 @@ impl LineageContext {
                                 new_lineage_nodes.push((
                                     node.name.clone(),
                                     node.r#type.clone(),
+                                    node.origin,
                                     vec![*node_idx],
                                 ));
                             }
                         }
 
-                        unpivot_column_indices
-                            .iter()
-                            .for_each(|idx| self.add_used_column(*idx, ColumnUsage::UnpivotColumn));
+                        unpivot_column_indices.iter().for_each(|idx| {
+                            let node = &self.arena_lineage_nodes[*idx];
+                            self.track_usage_expr_node(
+                                "unpivot_column",
+                                node.r#type.clone(),
+                                NodeOrigin::UnpivotColumn,
+                                vec![*idx],
+                            );
+                        });
 
                         let unpivot_col_ty = self.arena_lineage_nodes[unpivot_column_indices[0]]
                             .r#type
@@ -3794,6 +4163,7 @@ impl LineageContext {
                                 single_column_unpivot.values_column.as_str().to_owned(),
                             ),
                             unpivot_col_ty,
+                            NodeOrigin::Select,
                             unpivot_column_indices,
                         ));
                         new_lineage_nodes.push((
@@ -3801,6 +4171,7 @@ impl LineageContext {
                                 single_column_unpivot.name_column.as_str().to_owned(),
                             ),
                             NodeType::String,
+                            NodeOrigin::Select,
                             vec![],
                         ));
                     }
@@ -3832,8 +4203,15 @@ impl LineageContext {
                                 })
                                 .cloned()
                                 .collect::<Vec<_>>();
+
                             unpivot_column_indices.iter().for_each(|idx| {
-                                self.add_used_column(*idx, ColumnUsage::UnpivotColumn)
+                                let node = &self.arena_lineage_nodes[*idx];
+                                self.track_usage_expr_node(
+                                    "unpivot_column",
+                                    node.r#type.clone(),
+                                    NodeOrigin::UnpivotColumn,
+                                    vec![*idx],
+                                );
                             });
 
                             let unpivot_col_ty = self.arena_lineage_nodes
@@ -3853,6 +4231,7 @@ impl LineageContext {
                             new_unpivot_nodes.push((
                                 NodeName::Defined(col_name),
                                 unpivot_col_ty,
+                                NodeOrigin::Select,
                                 unpivot_column_indices,
                             ));
                             all_unpivot_column_names.extend(unpivot_column_names);
@@ -3861,6 +4240,7 @@ impl LineageContext {
                         new_unpivot_nodes.push((
                             NodeName::Defined(multi_column_unpivot.name_column.as_str().to_owned()),
                             NodeType::String,
+                            NodeOrigin::Select,
                             vec![],
                         ));
 
@@ -3872,6 +4252,7 @@ impl LineageContext {
                                 new_lineage_nodes.push((
                                     node.name.clone(),
                                     node.r#type.clone(),
+                                    node.origin,
                                     vec![*node_idx],
                                 ));
                             }
@@ -3958,6 +4339,7 @@ impl LineageContext {
                     let struct_node_idx = self.allocate_lineage_node(
                         NodeName::Anonymous,
                         struct_node,
+                        NodeOrigin::Select,
                         anon_obj_idx,
                         input,
                     );
@@ -3979,6 +4361,7 @@ impl LineageContext {
                                 let new_node_idx = self.allocate_lineage_node(
                                     NodeName::Defined(nested_field.name.string().to_owned()),
                                     nested_field.r#type.clone(),
+                                    NodeOrigin::Select,
                                     anon_obj_idx,
                                     vec![nested_field_idx],
                                 );
@@ -3993,6 +4376,9 @@ impl LineageContext {
             }
         }
 
+        let mut side_inputs = vec![];
+
+        // todo: window side_inputs following references (+ consider functions)
         if let Some(window) = &select_query_expr.select.window {
             for named_window in &window.named_windows {
                 self.named_window_expr_lin(catalog, &named_window.window, expand_value_table)?;
@@ -4000,12 +4386,13 @@ impl LineageContext {
         }
 
         if let Some(r#where) = &select_query_expr.select.r#where {
-            self.expr_lin_to_track_col_usage(
+            let node_idx = self.expr_lin(
                 catalog,
                 &r#where.expr,
                 expand_value_table,
-                ColumnUsage::Where,
+                NodeOrigin::Where,
             )?;
+            side_inputs.push(node_idx);
         }
 
         // Push select columns (they can be referenced in group_by, having, qualify, and order_by clauses)
@@ -4022,18 +4409,24 @@ impl LineageContext {
                         match expr {
                             Expr::Number(number) => {
                                 let col_idx: u32 = number.value.parse::<u32>()?;
-                                self.add_used_column(
-                                    lineage_nodes[col_idx as usize - 1],
-                                    ColumnUsage::GroupBy,
-                                )
+                                let col_node_idx = lineage_nodes[col_idx as usize - 1];
+                                let col = &self.arena_lineage_nodes[col_node_idx];
+                                let node_idx = self.track_usage_expr_node(
+                                    "group_by",
+                                    col.r#type.clone(),
+                                    NodeOrigin::GroupBy,
+                                    vec![col_node_idx],
+                                );
+                                side_inputs.push(node_idx)
                             }
                             _ => {
-                                self.expr_lin_to_track_col_usage(
+                                let node_idx = self.expr_lin(
                                     catalog,
                                     expr,
                                     expand_value_table,
-                                    ColumnUsage::GroupBy,
+                                    NodeOrigin::GroupBy,
                                 )?;
+                                side_inputs.push(node_idx);
                             }
                         }
                     }
@@ -4047,21 +4440,23 @@ impl LineageContext {
         }
 
         if let Some(having) = &select_query_expr.select.having {
-            self.expr_lin_to_track_col_usage(
+            let node_idx = self.expr_lin(
                 catalog,
                 &having.expr,
                 expand_value_table,
-                ColumnUsage::Having,
+                NodeOrigin::Having,
             )?;
+            side_inputs.push(node_idx);
         }
 
         if let Some(qualify) = &select_query_expr.select.qualify {
-            self.expr_lin_to_track_col_usage(
+            let node_idx = self.expr_lin(
                 catalog,
                 &qualify.expr,
                 expand_value_table,
-                ColumnUsage::Window,
+                NodeOrigin::Qualify,
             )?;
+            side_inputs.push(node_idx);
         }
 
         if let Some(order_by) = &select_query_expr.order_by {
@@ -4069,22 +4464,32 @@ impl LineageContext {
                 match &order_by_expr.expr {
                     Expr::Number(number) => {
                         let col_idx: u32 = number.value.parse::<u32>()?;
-                        self.add_used_column(
-                            lineage_nodes[col_idx as usize - 1],
-                            ColumnUsage::OrderBy,
-                        )
+                        let col_node_idx = lineage_nodes[col_idx as usize - 1];
+                        let col = &self.arena_lineage_nodes[col_node_idx];
+                        let node_idx = self.track_usage_expr_node(
+                            "order_by",
+                            col.r#type.clone(),
+                            NodeOrigin::OrderBy,
+                            vec![col_node_idx],
+                        );
+                        side_inputs.push(node_idx)
                     }
-                    expr => {
-                        self.expr_lin_to_track_col_usage(
+                    _ => {
+                        let node_idx = self.expr_lin(
                             catalog,
-                            expr,
+                            &order_by_expr.expr,
                             expand_value_table,
-                            ColumnUsage::OrderBy,
+                            NodeOrigin::OrderBy,
                         )?;
+                        side_inputs.push(node_idx);
                     }
                 }
             }
         }
+
+        lineage_nodes.iter().for_each(|lin_node_idx| {
+            self.add_side_inputs_to_node(*lin_node_idx, &side_inputs);
+        });
 
         self.pop_curr_query_ctx();
 
@@ -4171,7 +4576,8 @@ impl LineageContext {
 
         let mut set_nodes = Vec::with_capacity(nodes_elems.len());
         for (name, r#type, source_obj, input) in nodes_elems.into_iter() {
-            let node_idx = self.allocate_lineage_node(name, r#type, source_obj, input);
+            let node_idx =
+                self.allocate_lineage_node(name, r#type, NodeOrigin::Select, source_obj, input);
             set_nodes.push(node_idx);
         }
 
@@ -4194,7 +4600,6 @@ impl LineageContext {
         catalog: &LineageCatalog,
         from: &crate::ast::From,
     ) -> anyhow::Result<()> {
-        // TODO: handle pivot, unpivot
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_ambiguous_columns: HashSet<String> = HashSet::new();
@@ -4280,6 +4685,7 @@ impl LineageContext {
                             lineage_nodes.push((
                                 node.name.clone(),
                                 node.r#type.clone(),
+                                NodeOrigin::Source,
                                 vec![*node_idx],
                             ))
                         }
@@ -4315,7 +4721,7 @@ impl LineageContext {
                     catalog,
                     unnest_expr.array.as_ref(),
                     false,
-                    ColumnUsage::Unnest,
+                    NodeOrigin::Unnest,
                 )?;
 
                 let name = unnest_expr
@@ -4349,12 +4755,18 @@ impl LineageContext {
                             nodes.push((
                                 NodeName::Defined(field.name.clone()),
                                 field.r#type.clone(),
+                                NodeOrigin::Unnest,
                                 vec![inner_node_idx],
                             ));
                         }
                         nodes
                     }
-                    _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                    _ => vec![(
+                        col_name,
+                        nested_node.r#type.clone(),
+                        NodeOrigin::Unnest,
+                        vec![nested_node_idx],
+                    )],
                 };
 
                 let unnest_idx =
@@ -4391,7 +4803,12 @@ impl LineageContext {
                         .iter()
                         .map(|idx| {
                             let node = &self.arena_lineage_nodes[*idx];
-                            (node.name.clone(), node.r#type.clone(), vec![*idx])
+                            (
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                NodeOrigin::Source,
+                                vec![*idx],
+                            )
                         })
                         .collect(),
                 );
@@ -4480,7 +4897,14 @@ impl LineageContext {
                     self.push_from_context(from_tables, joined_tables, HashSet::new());
 
                     let col_source_idx = self.get_column(Some(table), column)?;
-                    self.add_used_column(col_source_idx, ColumnUsage::Unnest);
+
+                    self.track_usage_expr_node(
+                        "unnest",
+                        self.arena_lineage_nodes[col_source_idx].r#type.clone(),
+                        NodeOrigin::Unnest,
+                        vec![col_source_idx],
+                    );
+
                     let col_node = &self.arena_lineage_nodes[col_source_idx];
                     let nested_node_idx = col_node.access(&access_path)?;
 
@@ -4509,12 +4933,18 @@ impl LineageContext {
                                 nodes.push((
                                     NodeName::Defined(field.name.clone()),
                                     field.r#type.clone(),
+                                    NodeOrigin::Unnest,
                                     vec![inner_node_idx],
                                 ));
                             }
                             nodes
                         }
-                        _ => vec![(col_name, nested_node.r#type.clone(), vec![nested_node_idx])],
+                        _ => vec![(
+                            col_name,
+                            nested_node.r#type.clone(),
+                            NodeOrigin::Unnest,
+                            vec![nested_node_idx],
+                        )],
                     };
 
                     let unnest_idx =
@@ -4666,11 +5096,27 @@ impl LineageContext {
                         self.arena_lineage_nodes[left_lineage_node_idx]
                             .r#type
                             .clone(),
+                        NodeOrigin::Source,
                         vec![left_lineage_node_idx, right_lineage_node_idx],
                     ));
                     using_columns_added.insert(col_name);
-                    self.add_used_column(left_lineage_node_idx, ColumnUsage::Join);
-                    self.add_used_column(right_lineage_node_idx, ColumnUsage::Join);
+
+                    self.track_usage_expr_node(
+                        "using_column",
+                        self.arena_lineage_nodes[left_lineage_node_idx]
+                            .r#type
+                            .clone(),
+                        NodeOrigin::Join,
+                        vec![left_lineage_node_idx],
+                    );
+                    self.track_usage_expr_node(
+                        "using_column",
+                        self.arena_lineage_nodes[right_lineage_node_idx]
+                            .r#type
+                            .clone(),
+                        NodeOrigin::Join,
+                        vec![right_lineage_node_idx],
+                    );
                 }
 
                 for using_col in &using_columns_added {
@@ -4701,7 +5147,14 @@ impl LineageContext {
                         .iter()
                         .map(|idx| (&self.arena_lineage_nodes[*idx], idx))
                         .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+                        .map(|(node, idx)| {
+                            (
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                NodeOrigin::Source,
+                                vec![*idx],
+                            )
+                        }),
                 );
 
                 lineage_nodes.extend(
@@ -4710,7 +5163,14 @@ impl LineageContext {
                         .iter()
                         .map(|idx| (&self.arena_lineage_nodes[*idx], idx))
                         .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
-                        .map(|(node, idx)| (node.name.clone(), node.r#type.clone(), vec![*idx])),
+                        .map(|(node, idx)| {
+                            (
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                NodeOrigin::Source,
+                                vec![*idx],
+                            )
+                        }),
                 );
 
                 let joined_table_name = format!(
@@ -4746,6 +5206,7 @@ impl LineageContext {
                             lineage_nodes.push((
                                 node.name.clone(),
                                 node.r#type.clone(),
+                                NodeOrigin::Source,
                                 vec![*node_idx],
                             ))
                         }
@@ -4777,7 +5238,7 @@ impl LineageContext {
                 joined_tables.push(table_like_idx);
 
                 self.push_from_context(from_tables, joined_tables, HashSet::new());
-                self.expr_lin_to_track_col_usage(catalog, expr, false, ColumnUsage::Join)?;
+                self.expr_lin(catalog, expr, false, NodeOrigin::Join)?;
                 self.pop_curr_query_ctx();
             }
         }
@@ -4825,7 +5286,12 @@ impl LineageContext {
                     .iter()
                     .map(|idx| {
                         let node = &self.arena_lineage_nodes[*idx];
-                        (node.name.clone(), node.r#type.clone(), vec![*idx])
+                        (
+                            node.name.clone(),
+                            node.r#type.clone(),
+                            NodeOrigin::Source,
+                            vec![*idx],
+                        )
                     })
                     .collect(),
             )
@@ -4843,6 +5309,7 @@ impl LineageContext {
                         (
                             NodeName::Defined(col_schema.name.as_str().to_owned()),
                             NodeType::from_parser_parameterized_type(&col_schema.r#type),
+                            NodeOrigin::Source,
                             vec![],
                         )
                     })
@@ -4895,12 +5362,7 @@ impl LineageContext {
             true,
         );
 
-        self.expr_lin_to_track_col_usage(
-            catalog,
-            &delete_statement.cond,
-            false,
-            ColumnUsage::Where,
-        )?;
+        self.expr_lin(catalog, &delete_statement.cond, false, NodeOrigin::Where)?;
         Ok(())
     }
 
@@ -4964,8 +5426,8 @@ impl LineageContext {
                 )
             })?;
 
-            let node_idx = self.expr_lin(catalog, &update_item.expr, false, ColumnUsage::Update)?;
-            self.add_inputs_to_node(*col_source_idx, &[node_idx], true);
+            let node_idx = self.expr_lin(catalog, &update_item.expr, false, NodeOrigin::Update)?;
+            self.build_output_node(*col_source_idx, node_idx);
             self.add_node_to_output_lineage(*col_source_idx);
         }
 
@@ -5023,7 +5485,7 @@ impl LineageContext {
                 .iter()
                 .zip(obj_lineage_nodes)
                 .for_each(|(target_col, value)| {
-                    self.add_inputs_to_node(*target_col, &[value], true);
+                    self.build_output_node(*target_col, value);
                     self.add_node_to_output_lineage(*target_col);
                 });
         } else {
@@ -5031,8 +5493,8 @@ impl LineageContext {
                 .iter()
                 .zip(insert_statement.values.as_ref().unwrap())
             {
-                let node_idx = self.expr_lin(catalog, value, false, ColumnUsage::Insert)?;
-                self.add_inputs_to_node(*target_col, &[node_idx], true);
+                let node_idx = self.expr_lin(catalog, value, false, NodeOrigin::Insert)?;
+                self.build_output_node(*target_col, node_idx);
                 self.add_node_to_output_lineage(*target_col);
             }
         }
@@ -5067,8 +5529,8 @@ impl LineageContext {
             target_table_obj.lineage_nodes.clone()
         };
         for (target_col, value) in target_columns.iter().zip(&merge_insert.values) {
-            let node_idx = self.expr_lin(catalog, value, false, ColumnUsage::MergeInsert)?;
-            self.add_inputs_to_node(*target_col, &[node_idx], true);
+            let node_idx = self.expr_lin(catalog, value, false, NodeOrigin::MergeInsert)?;
+            self.build_output_node(*target_col, node_idx);
             self.add_node_to_output_lineage(*target_col);
         }
 
@@ -5109,8 +5571,8 @@ impl LineageContext {
             })?;
 
             let node_idx =
-                self.expr_lin(catalog, &update_item.expr, false, ColumnUsage::MergeUpdate)?;
-            self.add_inputs_to_node(*col_source_idx, &[node_idx], true);
+                self.expr_lin(catalog, &update_item.expr, false, NodeOrigin::MergeUpdate)?;
+            self.build_output_node(*col_source_idx, node_idx);
             self.add_node_to_output_lineage(*col_source_idx);
         }
         Ok(())
@@ -5140,7 +5602,7 @@ impl LineageContext {
         }
 
         for (target_node, source_node) in target_nodes.into_iter().zip(nodes) {
-            self.add_inputs_to_node(target_node, &[source_node], true);
+            self.build_output_node(target_node, source_node);
             self.add_node_to_output_lineage(target_node);
         }
 
@@ -5193,7 +5655,12 @@ impl LineageContext {
                             .iter()
                             .map(|idx| {
                                 let node = &self.arena_lineage_nodes[*idx];
-                                (node.name.clone(), node.r#type.clone(), vec![*idx])
+                                (
+                                    node.name.clone(),
+                                    node.r#type.clone(),
+                                    node.origin,
+                                    vec![*idx],
+                                )
                             })
                             .collect(),
                     );
@@ -5236,11 +5703,11 @@ impl LineageContext {
         }
 
         self.push_query_ctx(full_tables.clone(), HashSet::new(), true);
-        self.expr_lin_to_track_col_usage(
+        self.expr_lin(
             catalog,
             &merge_statement.condition,
             false,
-            ColumnUsage::MergeJoin,
+            NodeOrigin::MergeJoin,
         )?;
         self.pop_curr_query_ctx();
 
@@ -5250,12 +5717,7 @@ impl LineageContext {
                     self.push_query_ctx(full_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_matched.search_condition {
-                        self.expr_lin_to_track_col_usage(
-                            catalog,
-                            search_condition,
-                            false,
-                            ColumnUsage::MergeCond,
-                        )?;
+                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
                     }
 
                     match &when_matched.merge {
@@ -5275,12 +5737,7 @@ impl LineageContext {
                     self.push_query_ctx(source_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_target.search_condition {
-                        self.expr_lin_to_track_col_usage(
-                            catalog,
-                            search_condition,
-                            false,
-                            ColumnUsage::MergeCond,
-                        )?;
+                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
                     }
 
                     match &when_not_matched_by_target.merge {
@@ -5301,12 +5758,7 @@ impl LineageContext {
                     self.push_query_ctx(target_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_source.search_condition {
-                        self.expr_lin_to_track_col_usage(
-                            catalog,
-                            search_condition,
-                            false,
-                            ColumnUsage::MergeCond,
-                        )?;
+                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
                     }
 
                     match &when_not_matched_by_source.merge {
@@ -5344,6 +5796,7 @@ impl LineageContext {
             vec![(
                 NodeName::Defined(var_ident.clone()),
                 node_type,
+                NodeOrigin::Var,
                 input_lineage_nodes.into(),
             )],
         );
@@ -5361,7 +5814,7 @@ impl LineageContext {
         let declared_vars = Vec::with_capacity(declare_var_statement.vars.len());
 
         let input_lineage_nodes = if let Some(default_expr) = &declare_var_statement.default {
-            let node_idx = self.expr_lin(catalog, default_expr, false, ColumnUsage::DefaultVar)?;
+            let node_idx = self.expr_lin(catalog, default_expr, false, NodeOrigin::DefaultVar)?;
             vec![node_idx]
         } else {
             vec![]
@@ -5391,7 +5844,7 @@ impl LineageContext {
                 catalog,
                 &set_var_statement.exprs[0],
                 false,
-                ColumnUsage::SetVar,
+                NodeOrigin::SetVar,
             )?;
             let node = &self.arena_lineage_nodes[node_idx];
             let mut inputs = vec![];
@@ -5406,7 +5859,7 @@ impl LineageContext {
                 match var {
                     SetVariable::UserVariable(var_name) => {
                         let var_node_idx = self.vars.get(var_name.as_str())?;
-                        self.add_inputs_to_node(var_node_idx, &inputs[i], true);
+                        self.add_inputs_to_node(var_node_idx, &inputs[i]);
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -5416,9 +5869,9 @@ impl LineageContext {
             for (var, expr) in set_var_statement.vars.iter().zip(&set_var_statement.exprs) {
                 match var {
                     SetVariable::UserVariable(var_name) => {
-                        let node_idx = self.expr_lin(catalog, expr, false, ColumnUsage::SetVar)?;
+                        let node_idx = self.expr_lin(catalog, expr, false, NodeOrigin::SetVar)?;
                         let var_node_idx = self.vars.get(var_name.as_str())?;
-                        self.add_inputs_to_node(var_node_idx, &[node_idx], true);
+                        self.add_inputs_to_node(var_node_idx, &[node_idx]);
                     }
                     SetVariable::SystemVariable(_) => {}
                 }
@@ -5536,6 +5989,7 @@ impl LineageContext {
         let node = LineageNode {
             name: NodeName::Anonymous,
             r#type: struct_node.clone(),
+            origin: NodeOrigin::Select,
             source_obj: obj_idx,
             input: input.clone(),
             nested_nodes: IndexMap::new(),
@@ -5567,6 +6021,7 @@ impl LineageContext {
         let routine_nodes = vec![(
             NodeName::Anonymous,
             sql_function.returns.clone().unwrap_or(NodeType::Unknown),
+            NodeOrigin::Source,
             vec![],
         )];
         let kind = if sql_function.is_temporary {
@@ -5590,6 +6045,7 @@ impl LineageContext {
         let routine_nodes = vec![(
             NodeName::Anonymous,
             NodeType::from_parser_type(&create_js_function_statement.returns),
+            NodeOrigin::Source,
             vec![],
         )];
         let kind = if create_js_function_statement.is_temporary {
@@ -5786,7 +6242,7 @@ pub struct RawLineageNode {
     pub name: String,
     pub r#type: String,
     pub source_object: usize,
-    pub input: Vec<usize>,
+    pub inputs: Vec<usize>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -5807,7 +6263,8 @@ pub struct ReadyLineageNodeInput {
 pub struct ReadyLineageNode {
     pub name: String,
     pub r#type: String,
-    pub input: Vec<ReadyLineageNodeInput>,
+    pub inputs: Vec<ReadyLineageNodeInput>,
+    pub side_inputs: Vec<ReadyLineageNodeInput>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -5823,28 +6280,28 @@ pub struct ReadyLineage {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct UsedNode {
+pub struct ReferencedNode {
     pub name: String,
-    pub used_in: Vec<String>,
+    pub referenced_in: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct UsedObject {
+pub struct ReferencedObject {
     pub name: String,
     pub kind: String,
-    pub nodes: Vec<UsedNode>,
+    pub nodes: Vec<ReferencedNode>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct UsedColumns {
-    pub objects: Vec<UsedObject>,
+pub struct ReferencedColumns {
+    pub objects: Vec<ReferencedObject>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Lineage {
     pub raw_lineage: Option<RawLineage>,
     pub lineage: ReadyLineage,
-    pub used_columns: UsedColumns,
+    pub referenced_columns: ReferencedColumns,
 }
 
 fn parse_parameterized_dtype(dtype: &str) -> anyhow::Result<NodeType> {
@@ -5873,7 +6330,7 @@ fn parse_expr(s: &str) -> anyhow::Result<Expr> {
 fn columns_to_nodes(
     schema_object_name: &str,
     columns: &[Column],
-) -> Vec<(NodeName, NodeType, Vec<ArenaIndex>)> {
+) -> Vec<(NodeName, NodeType, NodeOrigin, Vec<ArenaIndex>)> {
     let mut unique_columns = HashSet::new();
     let mut duplicate_columns = vec![];
     let are_columns_unique = columns.iter().all(|col| {
@@ -5921,6 +6378,7 @@ fn columns_to_nodes(
         nodes.push((
             NodeName::Defined(col.name.to_lowercase()),
             node_type,
+            NodeOrigin::Source,
             vec![],
         ));
     }
@@ -5997,7 +6455,8 @@ fn _extract_lineage(
                 };
 
                 let routine_name = routine_name!(schema_object.name);
-                let routine_nodes = vec![(NodeName::Anonymous, returns, vec![])];
+                let routine_nodes =
+                    vec![(NodeName::Anonymous, returns, NodeOrigin::Source, vec![])];
                 let routine_idx = context.allocate_object(
                     &routine_name,
                     ContextObjectKind::UserJsFunction,
@@ -6101,6 +6560,7 @@ fn _extract_lineage(
                 let routine_nodes = vec![(
                     NodeName::Anonymous,
                     returns.clone().unwrap_or(NodeType::Unknown),
+                    NodeOrigin::Source,
                     vec![],
                 )];
                 let routine_idx = context.allocate_object(
@@ -6168,22 +6628,6 @@ fn _extract_lineage(
             continue;
         };
 
-        // Remove duplicates
-        for obj in &lineage_extractor.context.arena_objects {
-            for node_idx in &obj.lineage_nodes {
-                let lineage_node = &mut lineage_extractor.context.arena_lineage_nodes[*node_idx];
-                let mut set = HashSet::new();
-                let mut unique_input = vec![];
-                for inp_idx in &lineage_node.input {
-                    if !set.contains(&inp_idx) {
-                        unique_input.push(*inp_idx);
-                        set.insert(inp_idx);
-                    }
-                }
-                lineage_node.input = unique_input
-            }
-        }
-
         log::debug!("Output Lineage Nodes:");
         for pending_node in &lineage_extractor.context.output {
             LineageNode::pretty_log_lineage_node(*pending_node, &lineage_extractor.context);
@@ -6191,20 +6635,36 @@ fn _extract_lineage(
 
         let mut objects: IndexMap<
             ArenaIndex,
-            IndexMap<ArenaIndex, IndexSet<(ArenaIndex, ArenaIndex)>>,
+            IndexMap<ArenaIndex, IndexSet<(ArenaIndex, ArenaIndex, NodeOrigin)>>,
         > = IndexMap::new();
 
         for output_node_idx in &lineage_extractor.context.output {
             let output_node = &lineage_extractor.context.arena_lineage_nodes[*output_node_idx];
             let output_source_idx = output_node.source_obj;
 
-            let mut stack = output_node.input.clone();
+            let mut visited = HashSet::new();
+
+            let mut stack: Vec<(ArenaIndex, NodeOrigin)> = output_node
+                .input
+                .iter()
+                .map(|node_idx| {
+                    (
+                        *node_idx,
+                        lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
+                            | output_node.origin,
+                    )
+                })
+                .collect();
             loop {
                 if stack.is_empty() {
                     break;
                 }
-                let node_idx = stack.pop().unwrap();
-                let node = &lineage_extractor.context.arena_lineage_nodes[node_idx];
+                let (curr_node_idx, curr_origin) = stack.pop().unwrap();
+                if visited.contains(&(curr_node_idx, curr_origin)) {
+                    continue;
+                }
+                visited.insert((curr_node_idx, curr_origin));
+                let node = &lineage_extractor.context.arena_lineage_nodes[curr_node_idx];
 
                 let source_obj_idx = node.source_obj;
                 let source_obj = &lineage_extractor.context.arena_objects[source_obj_idx];
@@ -6215,11 +6675,27 @@ fn _extract_lineage(
                         .or_default()
                         .entry(*output_node_idx)
                         .and_modify(|s| {
-                            s.insert((source_obj_idx, node_idx));
+                            s.insert((source_obj_idx, curr_node_idx, curr_origin));
                         })
-                        .or_insert(IndexSet::from([(source_obj_idx, node_idx)]));
+                        .or_insert(IndexSet::from([(
+                            source_obj_idx,
+                            curr_node_idx,
+                            curr_origin,
+                        )]));
                 } else {
-                    stack.extend(&node.input);
+                    stack.extend(
+                        &node
+                            .input
+                            .iter()
+                            .map(|node_idx| {
+                                (
+                                    *node_idx,
+                                    lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
+                                        | curr_origin,
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    );
                 }
             }
         }
@@ -6250,30 +6726,41 @@ fn _extract_lineage(
                 let node_type = node.r#type.clone();
 
                 let mut node_input = vec![];
-                for (inp_obj_idx, inp_node_idx) in input {
+                let mut node_side_input = vec![];
+                for (inp_obj_idx, inp_node_idx, inp_node_origin) in input {
                     let inp_obj = &lineage_extractor.context.arena_objects[*inp_obj_idx];
                     if just_include_source_objects
                         && !lineage_extractor.catalog.is_source_obj(&inp_obj.name)
                     {
                         continue;
                     }
-                    let inp_node = &lineage_extractor.context.arena_lineage_nodes[*inp_node_idx];
-                    node_input.push(ReadyLineageNodeInput {
-                        obj_name: inp_obj.name.clone(),
-                        obj_kind: inp_obj.kind.into(),
-                        node_name: inp_node.name.nested_path().to_owned(),
-                    });
 
-                    // Add in nodes from output lineage to used columns
-                    lineage_extractor
-                        .context
-                        .add_used_column(*inp_node_idx, ColumnUsage::Select);
+                    let inp_node = &lineage_extractor.context.arena_lineage_nodes[*inp_node_idx];
+
+                    if inp_node_origin.is_output() {
+                        node_input.push(ReadyLineageNodeInput {
+                            obj_name: inp_obj.name.clone(),
+                            obj_kind: inp_obj.kind.into(),
+                            node_name: inp_node.name.nested_path().to_owned(),
+                        });
+                        // Add in nodes from output lineage to referenced columns
+                        lineage_extractor
+                            .context
+                            .add_referenced_column(*inp_node_idx, NodeOrigin::Select);
+                    } else {
+                        node_side_input.push(ReadyLineageNodeInput {
+                            obj_name: inp_obj.name.clone(),
+                            obj_kind: inp_obj.kind.into(),
+                            node_name: inp_node.name.nested_path().to_owned(),
+                        });
+                    }
                 }
 
                 obj_nodes.push(ReadyLineageNode {
                     name: node_name.nested_path().to_owned(),
                     r#type: node_type.to_string(),
-                    input: node_input,
+                    inputs: node_input,
+                    side_inputs: node_side_input,
                 });
             }
             ready_lineage.objects.push(ReadyLineageObject {
@@ -6305,7 +6792,7 @@ fn _extract_lineage(
                     name: node.name.clone().into(),
                     r#type: node.r#type.to_string(),
                     source_object: node.source_obj.index,
-                    input: node.input.iter().map(|aidx| aidx.index).collect(),
+                    inputs: node.input.iter().map(|aidx| aidx.index).collect(),
                 })
                 .collect();
 
@@ -6325,75 +6812,110 @@ fn _extract_lineage(
             None
         };
 
-        let used_columns = {
-            let mut used_nodes: IndexMap<ArenaIndex, IndexMap<ArenaIndex, IndexSet<String>>> =
-                IndexMap::new();
+        let referenced_columns = {
+            let mut referenced_columns: IndexMap<
+                ArenaIndex,
+                IndexMap<ArenaIndex, IndexSet<String>>,
+            > = IndexMap::new();
 
-            for used_col in &lineage_extractor.context.columns_used.set {
-                let col_node_idx = used_col.arena_index;
-                let col_node = &lineage_extractor.context.arena_lineage_nodes[col_node_idx];
-
+            for (col_idx, origin) in &lineage_extractor.context.columns_referenced.map {
+                let col_node_idx = col_idx;
+                let mut visited = HashSet::new();
                 let mut stack = vec![col_node_idx];
-                stack.extend(&col_node.input);
                 loop {
                     if stack.is_empty() {
                         break;
                     }
                     let node_idx = stack.pop().unwrap();
-                    let node = &lineage_extractor.context.arena_lineage_nodes[node_idx];
+                    if visited.contains(node_idx) {
+                        continue;
+                    }
+                    visited.insert(node_idx);
+
+                    let node = &lineage_extractor.context.arena_lineage_nodes[*node_idx];
 
                     let source_obj_idx = node.source_obj;
                     let source_obj = &lineage_extractor.context.arena_objects[source_obj_idx];
 
                     if lineage_extractor.catalog.is_source_obj(&source_obj.name) {
-                        used_nodes
+                        referenced_columns
                             .entry(source_obj_idx)
                             .or_default()
-                            .entry(node_idx)
+                            .entry(*node_idx)
                             .and_modify(|s| {
-                                s.insert(used_col.kind.into());
+                                for (_, o) in origin.iter_names() {
+                                    s.insert((o).into());
+                                }
                             })
-                            .or_default()
-                            .insert(used_col.kind.into());
+                            .or_insert_with(|| {
+                                origin.iter_names().map(|(_, o)| o.into()).collect()
+                            });
                     } else {
-                        stack.extend(&node.input);
+                        for inp in &node.input {
+                            let found_source_stop =
+                                lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
+                                    == NodeOrigin::Source
+                                    && (!lineage_extractor.catalog.is_source_obj(&source_obj.name)
+                                        && !matches!(
+                                            source_obj.kind,
+                                            ContextObjectKind::TableAlias
+                                                | ContextObjectKind::Unnest
+                                                | ContextObjectKind::JoinTable
+                                                | ContextObjectKind::UsingTable
+                                        ));
+
+                            // It is ok to move thorugh selects and unnest
+                            let moving_through_selects_and_unnest =
+                                lineage_extractor.context.arena_lineage_nodes[*inp]
+                                    .origin
+                                    .intersects(
+                                        *origin
+                                            | NodeOrigin::Source
+                                            | NodeOrigin::Select
+                                            | NodeOrigin::Unnest,
+                                    );
+
+                            if !found_source_stop && moving_through_selects_and_unnest {
+                                stack.push(inp)
+                            }
+                        }
                     }
                 }
             }
 
-            let mut used_objects = vec![];
+            let mut referenced_objects = vec![];
 
-            for (table_idx, used_cols) in used_nodes {
+            for (table_idx, referenced_cols) in referenced_columns {
                 let table = &lineage_extractor.context.arena_objects[table_idx];
 
                 let mut nodes = vec![];
-                for (col_idx, kinds) in used_cols {
+                for (col_idx, kinds) in referenced_cols {
                     let mut sorted_kinds: Vec<_> = kinds.into_iter().collect();
                     sorted_kinds.sort();
 
                     let node = &lineage_extractor.context.arena_lineage_nodes[col_idx];
-                    nodes.push(UsedNode {
+                    nodes.push(ReferencedNode {
                         name: node.name.nested_path().to_owned(),
-                        used_in: sorted_kinds,
+                        referenced_in: sorted_kinds,
                     });
                 }
 
-                used_objects.push(UsedObject {
+                referenced_objects.push(ReferencedObject {
                     name: table.name.clone(),
                     kind: table.kind.into(),
                     nodes,
                 });
             }
 
-            UsedColumns {
-                objects: used_objects,
+            ReferencedColumns {
+                objects: referenced_objects,
             }
         };
 
         let lineage = Lineage {
             raw_lineage,
             lineage: ready_lineage,
-            used_columns,
+            referenced_columns,
         };
         lineages.push(Ok(lineage));
     }

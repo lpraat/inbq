@@ -53,8 +53,8 @@ use inbq::{
     },
     lineage::{
         Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage, ReadyLineageNode,
-        ReadyLineageNodeInput, ReadyLineageObject, UsedColumns, UsedNode, UsedObject,
-        catalog::Catalog, extract_lineage,
+        ReadyLineageNodeInput, ReadyLineageObject, ReferencedColumns, ReferencedNode,
+        ReferencedObject, catalog::Catalog, extract_lineage,
     },
 };
 
@@ -4189,7 +4189,8 @@ impl RsToPyObject for ReadyLineageNode {
         let kwargs = &[
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "input", self.input),
+            kwarg!(py_ctx, "inputs", self.inputs),
+            kwarg!(py_ctx, "side_inputs", self.side_inputs),
         ];
         instantiate_py_class(
             py_ctx,
@@ -4243,7 +4244,7 @@ impl RsToPyObject for RawLineageNode {
             kwarg!(py_ctx, "id", self.id),
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "source_object", self.source_object),
-            kwarg!(py_ctx, "input", self.input),
+            kwarg!(py_ctx, "inputs", self.inputs),
         ];
         instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, RawLineageNode)?, kwargs)
     }
@@ -4260,31 +4261,39 @@ impl RsToPyObject for RawLineage {
     }
 }
 
-impl RsToPyObject for UsedNode {
+impl RsToPyObject for ReferencedNode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "used_in", self.used_in),
+            kwarg!(py_ctx, "referenced_in", self.referenced_in),
         ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, UsedNode)?, kwargs)
+        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, ReferencedNode)?, kwargs)
     }
 }
 
-impl RsToPyObject for UsedObject {
+impl RsToPyObject for ReferencedObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "name", self.name),
             kwarg!(py_ctx, "kind", self.kind),
             kwarg!(py_ctx, "nodes", self.nodes),
         ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, UsedObject)?, kwargs)
+        instantiate_py_class(
+            py_ctx,
+            get_lineage_class!(py_ctx, ReferencedObject)?,
+            kwargs,
+        )
     }
 }
 
-impl RsToPyObject for UsedColumns {
+impl RsToPyObject for ReferencedColumns {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[kwarg!(py_ctx, "objects", self.objects)];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, UsedColumns)?, kwargs)
+        instantiate_py_class(
+            py_ctx,
+            get_lineage_class!(py_ctx, ReferencedColumns)?,
+            kwargs,
+        )
     }
 }
 
@@ -4293,7 +4302,7 @@ impl RsToPyObject for Lineage {
         let kwargs = &[
             kwarg!(py_ctx, "lineage", self.lineage),
             kwarg!(py_ctx, "raw_lineage", self.raw_lineage),
-            kwarg!(py_ctx, "used_columns", self.used_columns),
+            kwarg!(py_ctx, "referenced_columns", self.referenced_columns),
         ];
         instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, Lineage)?, kwargs)
     }

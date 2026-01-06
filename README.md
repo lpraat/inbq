@@ -1,11 +1,11 @@
 # inbq
-A library for parsing BigQuery queries and extracting schema-aware, column-level lineage. Written in Rust, with Python bindings.
+A library for parsing BigQuery queries and extracting schema-aware, column-level lineage.
 
 ### Features
 - Parse BigQuery queries into well-structured ASTs with easy-to-navigate nodes.
 - Extract schema-aware, column-level lineage.
-- Capture used columns and the specific query components (e.g., select, where, joins) they influence.
 - Trace data flow through nested structs and arrays.
+- Capture referenced columns and the specific query components (e.g., select, where, joins) they appear in.
 - Support both single and multi-statement queries and procedural language constructs.
 - Built for speed and efficiency, with lightweight Python bindings that add minimal overhead.
 
@@ -40,7 +40,8 @@ insert into `project.dataset.out`
 select
     id,
     if(x is null or s.x is null, default_val, x + s.x)
-from `project.dataset.t1` inner join `project.dataset.t2` using (id);
+from `project.dataset.t1` inner join `project.dataset.t2` using (id)
+where s.source = "baz";
 """
 
 pipeline = (
@@ -55,29 +56,41 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
     print(f"{ast=}")
     print("\nLineage:")
     for object in output_lineage.lineage.objects:
+        print("Inputs:")
         for node in object.nodes:
             print(
-                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.input]}"
+                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.inputs]}"
             )
 
-    print("\nUsed columns:")
-    for object in output_lineage.used_columns.objects:
+        print("\nSide inputs:")
         for node in object.nodes:
-            print(f"{object.name}->{node.name} used in {node.used_in}")
+            print(
+                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.side_inputs]}"
+            )
 
+    print("\nReferenced columns:")
+    for object in output_lineage.referenced_columns.objects:
+        for node in object.nodes:
+            print(f"{object.name}->{node.name} referenced in {node.referenced_in}")
 # Prints:
 # ast=Ast(...)
 
 # Lineage:
+# Inputs:
 # project.dataset.out->id <- ['project.dataset.t2->id', 'project.dataset.t1->id']
 # project.dataset.out->val <- ['project.dataset.t2->s.x', 'project.dataset.t1->x', 'project.dataset.out->val']
-
-# Used columns:
-# project.dataset.out->val used in ['default_var', 'select']
-# project.dataset.t1->id used in ['join', 'select']
-# project.dataset.t1->x used in ['select']
-# project.dataset.t2->id used in ['join', 'select']
-# project.dataset.t2->s.x used in ['select']
+#
+# Side inputs:
+# project.dataset.out->id <- ['project.dataset.t2->s.source']
+# project.dataset.out->val <- ['project.dataset.t2->s.source']
+#
+# Referenced columns:
+# project.dataset.out->val referenced in ['default_var', 'select']
+# project.dataset.t1->id referenced in ['join', 'select']
+# project.dataset.t1->x referenced in ['select']
+# project.dataset.t2->id referenced in ['join', 'select']
+# project.dataset.t2->s.x referenced in ['select']
+# project.dataset.t2->s.source referenced in ['where']
 ```
 
 ## Rust
@@ -112,7 +125,8 @@ fn main() -> anyhow::Result<()> {
         select
             id,
             if(x is null or s.x is null, default_val, x + s.x)
-        from `project.dataset.t1` inner join `project.dataset.t2` using (id);
+        from `project.dataset.t1` inner join `project.dataset.t2` using (id)
+        where s.source = "baz";
     "#;
     let mut scanner = Scanner::new(sql);
     scanner.scan()?;
@@ -151,7 +165,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap()?;
 
     println!("\nLineage: {:?}", lineage.lineage);
-    println!("\nUsed columns: {:?}", lineage.used_columns);
+    println!("\nReferenced columns: {:?}", lineage.referenced_columns);
     Ok(())
 }
 ```

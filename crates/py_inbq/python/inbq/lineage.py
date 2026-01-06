@@ -14,7 +14,7 @@ class RawLineageNode:
     id: int
     name: str
     source_object: int
-    input: list[int]
+    inputs: list[int]
 
 
 @dataclass
@@ -34,7 +34,8 @@ class ReadyLineageNodeInput:
 class ReadyLineageNode:
     name: str
     type_: str
-    input: list[ReadyLineageNodeInput]
+    inputs: list[ReadyLineageNodeInput]
+    side_inputs: list[ReadyLineageNodeInput]
 
 
 @dataclass
@@ -50,25 +51,25 @@ class ReadyLineage:
 
 
 @dataclass
-class UsedNode:
+class ReferencedNode:
     name: str
-    used_in: list[str]
+    referenced_in: list[str]
 
 
 @dataclass
-class UsedObject:
+class ReferencedObject:
     name: str
     kind: str
-    nodes: list[UsedNode]
+    nodes: list[ReferencedNode]
 
 
 @dataclass
-class UsedColumns:
-    objects: list[UsedObject]
+class ReferencedColumns:
+    objects: list[ReferencedObject]
 
 
 @dataclass
 class Lineage:
     lineage: ReadyLineage
     raw_lineage: RawLineage | None
-    used_columns: UsedColumns
+    referenced_columns: ReferencedColumns

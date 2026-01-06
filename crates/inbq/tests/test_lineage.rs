@@ -5,11 +5,17 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
+struct LineageInputs {
+    inputs: Vec<String>,
+    side_inputs: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
 struct LineageTest {
     sql: String,
     schema_objects: Vec<SchemaObject>,
-    ready_lineage: HashMap<String, HashMap<String, Vec<String>>>,
-    used_columns: HashMap<String, HashMap<String, Vec<String>>>,
+    ready_lineage: HashMap<String, HashMap<String, LineageInputs>>,
+    referenced_columns: HashMap<String, HashMap<String, Vec<String>>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -53,7 +59,7 @@ fn test_lineage() {
         let ready_lineage = lineage.lineage;
 
         // Test ready lineage
-        let mut ready_lineage_map: IndexMap<String, IndexMap<String, Vec<String>>> =
+        let mut ready_lineage_map: IndexMap<String, IndexMap<String, (Vec<String>, Vec<String>)>> =
             IndexMap::new();
         for obj in ready_lineage.objects {
             ready_lineage_map.insert(
@@ -63,10 +69,16 @@ fn test_lineage() {
                     .map(|node| {
                         (
                             node.name,
-                            node.input
-                                .into_iter()
-                                .map(|inp| format!("{}->{}", inp.obj_name, inp.node_name))
-                                .collect(),
+                            (
+                                node.inputs
+                                    .into_iter()
+                                    .map(|inp| format!("{}->{}", inp.obj_name, inp.node_name))
+                                    .collect(),
+                                node.side_inputs
+                                    .into_iter()
+                                    .map(|inp| format!("{}->{}", inp.obj_name, inp.node_name))
+                                    .collect(),
+                            ),
                         )
                     })
                     .collect(),
@@ -84,49 +96,61 @@ fn test_lineage() {
                 nodes.keys().collect::<HashSet<_>>(),
                 target_ready_lineage[obj].keys().collect::<HashSet<_>>()
             );
-            for (node, inputs) in nodes {
+            for (node, (inputs, side_inputs)) in nodes {
                 let inputs = inputs.iter().collect::<HashSet<_>>();
                 let target_inputs = target_ready_lineage[obj][node]
+                    .inputs
                     .iter()
                     .collect::<HashSet<_>>();
                 assert_eq!(inputs, target_inputs);
+
+                let side_inputs = side_inputs.iter().collect::<HashSet<_>>();
+                let target_side_inputs = target_ready_lineage[obj][node]
+                    .side_inputs
+                    .iter()
+                    .collect::<HashSet<_>>();
+                assert_eq!(side_inputs, target_side_inputs);
             }
         }
 
-        // Test used columns
-        let target_used_columns = test.used_columns;
-        let used_columns = lineage.used_columns;
+        // Test referenced columns
+        let target_referenced_columns = test.referenced_columns;
+        let referenced_columns = lineage.referenced_columns;
 
-        let mut used_columns_map: IndexMap<String, IndexMap<String, Vec<String>>> = IndexMap::new();
-        for obj in used_columns.objects {
-            used_columns_map.insert(
+        let mut referenced_columns_map: IndexMap<String, IndexMap<String, Vec<String>>> =
+            IndexMap::new();
+        for obj in referenced_columns.objects {
+            referenced_columns_map.insert(
                 obj.name,
                 obj.nodes
                     .into_iter()
-                    .map(|node| (node.name, node.used_in))
+                    .map(|node| (node.name, node.referenced_in))
                     .collect(),
             );
         }
 
         assert!(
-            used_columns_map.len() == target_used_columns.len()
-                && used_columns_map
+            referenced_columns_map.len() == target_referenced_columns.len()
+                && referenced_columns_map
                     .keys()
-                    .all(|k| target_used_columns.contains_key(k))
+                    .all(|k| target_referenced_columns.contains_key(k))
         );
-        for (obj, nodes) in &used_columns_map {
+        for (obj, nodes) in &referenced_columns_map {
             assert_eq!(
                 nodes.keys().collect::<HashSet<_>>(),
-                target_used_columns[obj].keys().collect::<HashSet<_>>()
+                target_referenced_columns[obj]
+                    .keys()
+                    .collect::<HashSet<_>>()
             );
-            for (used_node, used_in) in nodes {
-                let mut target_used_columns = target_used_columns[obj][used_node].to_vec();
-                target_used_columns.sort();
+            for (referenced_node, referenced_in) in nodes {
+                let mut target_referenced_columns =
+                    target_referenced_columns[obj][referenced_node].to_vec();
+                target_referenced_columns.sort();
 
-                let mut used_in = used_in.clone();
-                used_in.sort();
+                let mut referenced_in = referenced_in.clone();
+                referenced_in.sort();
 
-                assert_eq!(used_in, target_used_columns);
+                assert_eq!(referenced_in, target_referenced_columns);
             }
         }
     }

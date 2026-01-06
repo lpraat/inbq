@@ -24,7 +24,8 @@ fn main() -> anyhow::Result<()> {
         select
             id,
             if(x is null or s.x is null, default_val, x + s.x)
-        from `project.dataset.t1` inner join `project.dataset.t2` using (id);
+        from `project.dataset.t1` inner join `project.dataset.t2` using (id)
+        where s.source = "baz";
     "#;
     let mut scanner = Scanner::new(sql);
     scanner.scan()?;
@@ -63,6 +64,6 @@ fn main() -> anyhow::Result<()> {
         .unwrap()?;
 
     println!("\nLineage: {:?}", lineage.lineage);
-    println!("\nUsed columns: {:?}", lineage.used_columns);
+    println!("\nReferenced columns: {:?}", lineage.referenced_columns);
     Ok(())
 }
