@@ -583,7 +583,6 @@ bitflags! {
 }
 
 impl NodeOrigin {
-    // todo: use macro to sync this
     const NODE_ORIGIN_NAMES: [&'static str; NodeOrigin::FLAGS.len()] = [
         "source",
         "select",
@@ -886,6 +885,7 @@ struct LineageContext {
     query_columns: Vec<IndexMap<String, Vec<IndexDepth>>>,
     query_depth: u16,
     query_joined_ambiguous_columns: Vec<HashSet<String>>,
+    query_windows: Vec<IndexMap<String, ArenaIndex>>,
 
     typed_struct_fields: Vec<StructNodeFieldType>,
 
@@ -910,6 +910,7 @@ impl LineageContext {
         self.query_columns.clear();
         self.query_joined_ambiguous_columns.clear();
         self.query_depth = 0;
+        self.query_windows.clear();
         self.args.clear();
         self.vars.clear();
         self.typed_struct_fields.clear();
@@ -1578,6 +1579,14 @@ impl LineageContext {
         self.query_columns.pop();
         self.query_joined_ambiguous_columns.pop();
         self.query_depth -= 1;
+    }
+
+    fn push_query_windows(&mut self, query_windows: IndexMap<String, ArenaIndex>) {
+        self.query_windows.push(query_windows)
+    }
+
+    fn pop_windows_query(&mut self) {
+        self.query_windows.pop();
     }
 
     /// Get the node index of a column or variable or arg from the current query context.
@@ -2687,14 +2696,21 @@ impl LineageContext {
         expand_value_table: bool,
         node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
+        let mut input = vec![];
         let node_idx = self.expr_lin(
             catalog,
             &array_agg_function_expr.arg.expr,
             expand_value_table,
             node_origin,
         )?;
+        input.push(node_idx);
+
         if let Some(named_window_expr) = &array_agg_function_expr.over {
-            self.named_window_expr_lin(catalog, named_window_expr, expand_value_table)?;
+            input.push(self.named_window_expr_lin(
+                catalog,
+                named_window_expr,
+                expand_value_table,
+            )?);
         }
 
         Ok(self.create_array_node(
@@ -2803,7 +2819,11 @@ impl LineageContext {
         };
 
         if let Some(named_window_expr) = &function_expr.over {
-            self.named_window_expr_lin(catalog, named_window_expr, expand_value_table)?;
+            input.push(self.named_window_expr_lin(
+                catalog,
+                named_window_expr,
+                expand_value_table,
+            )?);
         }
 
         Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, node_origin, input))
@@ -3882,34 +3902,59 @@ impl LineageContext {
         catalog: &LineageCatalog,
         named_window_expr: &NamedWindowExpr,
         expand_value_table: bool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ArenaIndex> {
+        let mut node_indices = vec![];
+        let query_windows = self.query_windows.last().unwrap();
         match named_window_expr {
-            NamedWindowExpr::Reference(_) => {}
+            NamedWindowExpr::Reference(name) => {
+                node_indices.push(
+                    *query_windows
+                        .get(&name.as_str().to_lowercase())
+                        .ok_or_else(|| anyhow!("Expected window with name: {}.", name.as_str()))?,
+                );
+            }
             NamedWindowExpr::WindowSpec(window_spec) => {
+                if let Some(window_name) = &window_spec.window_name {
+                    node_indices.push(
+                        *query_windows
+                            .get(&window_name.as_str().to_lowercase())
+                            .ok_or_else(|| {
+                                anyhow!("Expected window with name: {}.", window_name.as_str())
+                            })?,
+                    );
+                }
+
                 if let Some(order_bys) = &window_spec.order_by {
                     for order_by in order_bys {
-                        self.expr_lin(
+                        node_indices.push(self.expr_lin(
                             catalog,
                             &order_by.expr,
                             expand_value_table,
                             NodeOrigin::Window,
-                        )?;
+                        )?);
                     }
                 }
 
                 if let Some(partition_by_exprs) = &window_spec.partition_by {
                     for partition_by_expr in partition_by_exprs {
-                        self.expr_lin(
+                        node_indices.push(self.expr_lin(
                             catalog,
                             partition_by_expr,
                             expand_value_table,
                             NodeOrigin::Window,
-                        )?;
+                        )?);
                     }
                 }
             }
         };
-        Ok(())
+        let new_node_idx = self.allocate_expr_node(
+            "window",
+            NodeType::Unknown,
+            NodeOrigin::Window,
+            node_indices,
+        );
+        self.add_node_to_output_lineage(new_node_idx);
+        Ok(new_node_idx)
     }
 
     fn query_expr_lin(
@@ -4298,6 +4343,72 @@ impl LineageContext {
         let anon_obj_idx =
             self.allocate_object(&anon_obj_name, ContextObjectKind::AnonymousQuery, vec![]);
 
+        let pushed_query_windows = if let Some(window) = &select_query_expr.select.window {
+            let mut windows: IndexMap<String, ArenaIndex> = IndexMap::new();
+            for named_window in &window.named_windows {
+                match &named_window.window {
+                    NamedWindowExpr::Reference(name) => {
+                        let node_idx =
+                            windows.get(&name.as_str().to_lowercase()).ok_or_else(|| {
+                                anyhow!("Expected window with name: {}.", name.as_str())
+                            })?;
+                        windows.insert(named_window.name.as_str().to_lowercase(), *node_idx);
+                    }
+                    NamedWindowExpr::WindowSpec(window_spec) => {
+                        let mut node_indices = vec![];
+
+                        if let Some(window_name) = &window_spec.window_name {
+                            node_indices.push(
+                                *windows
+                                    .get(&window_name.as_str().to_lowercase())
+                                    .ok_or_else(|| {
+                                        anyhow!(
+                                            "Expected window with name: {}.",
+                                            window_name.as_str()
+                                        )
+                                    })?,
+                            );
+                        }
+
+                        if let Some(order_bys) = &window_spec.order_by {
+                            for order_by in order_bys {
+                                node_indices.push(self.expr_lin(
+                                    catalog,
+                                    &order_by.expr,
+                                    expand_value_table,
+                                    NodeOrigin::Window,
+                                )?);
+                            }
+                        }
+
+                        if let Some(partition_by_exprs) = &window_spec.partition_by {
+                            for partition_by_expr in partition_by_exprs {
+                                node_indices.push(self.expr_lin(
+                                    catalog,
+                                    partition_by_expr,
+                                    expand_value_table,
+                                    NodeOrigin::Window,
+                                )?);
+                            }
+                        }
+
+                        let new_node_idx = self.allocate_expr_node(
+                            "window_spec",
+                            NodeType::Unknown,
+                            NodeOrigin::Window,
+                            node_indices,
+                        );
+                        self.add_node_to_output_lineage(new_node_idx);
+                        windows.insert(named_window.name.as_str().to_lowercase(), new_node_idx);
+                    }
+                }
+            }
+            self.push_query_windows(windows);
+            true
+        } else {
+            false
+        };
+
         let mut lineage_nodes = vec![];
         for expr in &select_query_expr.select.exprs {
             match expr {
@@ -4377,13 +4488,6 @@ impl LineageContext {
         }
 
         let mut side_inputs = vec![];
-
-        // todo: window side_inputs following references (+ consider functions)
-        if let Some(window) = &select_query_expr.select.window {
-            for named_window in &window.named_windows {
-                self.named_window_expr_lin(catalog, &named_window.window, expand_value_table)?;
-            }
-        }
 
         if let Some(r#where) = &select_query_expr.select.r#where {
             let node_idx = self.expr_lin(
@@ -4490,6 +4594,10 @@ impl LineageContext {
         lineage_nodes.iter().for_each(|lin_node_idx| {
             self.add_side_inputs_to_node(*lin_node_idx, &side_inputs);
         });
+
+        if pushed_query_windows {
+            self.pop_windows_query();
+        }
 
         self.pop_curr_query_ctx();
 

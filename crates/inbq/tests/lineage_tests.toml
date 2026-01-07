@@ -2860,3 +2860,35 @@ x = ["select"]
 id = ["join", "select"]
 "s.x" = ["select"]
 "s.source" = ["where"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+SELECT
+    ROW_NUMBER() OVER (w1) AS row_num,
+    ROW_NUMBER() OVER (w2) AS row_num2
+FROM project.dataset.t1
+WINDOW w1 AS (partition by x1),
+w2 AS (w1 order by x2)
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "r1", dtype = "int64" },
+    { name = "r2", dtype = "float64"}
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "x1", dtype = "int64" },
+    { name = "x2", dtype = "int64"}
+]
+# NOTE: we may just have side_inputs!
+[tests.ready_lineage."project.dataset.out"]
+r1.inputs = []
+r1.side_inputs = ["project.dataset.t1->x1"]
+r2.inputs = []
+r2.side_inputs = ["project.dataset.t1->x1", "project.dataset.t1->x2"]
+[tests.referenced_columns."project.dataset.t1"]
+x1 = ["window"]
+x2 = ["window"]
