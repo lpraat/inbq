@@ -53,8 +53,8 @@ use inbq::{
     },
     lineage::{
         Lineage, RawLineage, RawLineageNode, RawLineageObject, ReadyLineage, ReadyLineageNode,
-        ReadyLineageNodeInput, ReadyLineageObject, ReferencedColumns, ReferencedNode,
-        ReferencedObject, catalog::Catalog, extract_lineage,
+        ReadyLineageNodeInput, ReadyLineageNodeSideInput, ReadyLineageObject, ReferencedColumns,
+        ReferencedNode, ReferencedObject, catalog::Catalog, extract_lineage,
     },
 };
 
@@ -4174,11 +4174,28 @@ impl RsToPyObject for ReadyLineageNodeInput {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "obj_name", self.obj_name),
+            kwarg!(py_ctx, "obj_kind", self.obj_kind),
             kwarg!(py_ctx, "node_name", self.node_name),
         ];
         instantiate_py_class(
             py_ctx,
             get_lineage_class!(py_ctx, ReadyLineageNodeInput)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for ReadyLineageNodeSideInput {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[
+            kwarg!(py_ctx, "obj_name", self.obj_name),
+            kwarg!(py_ctx, "obj_kind", self.obj_kind),
+            kwarg!(py_ctx, "node_name", self.node_name),
+            kwarg!(py_ctx, "sides", self.sides),
+        ];
+        instantiate_py_class(
+            py_ctx,
+            get_lineage_class!(py_ctx, ReadyLineageNodeSideInput)?,
             kwargs,
         )
     }

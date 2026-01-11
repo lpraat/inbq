@@ -19,9 +19,15 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a.inputs = ["proj.dat.in_table->a"]
-a.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+a.side_inputs = [
+    { name = "proj.dat.in_table->a", sides = ["where", "order_by", "group_by"] },
+    { name = "proj.dat.in_table->b", sides = ["group_by", "order_by"] }
+]
 b.inputs = ["proj.dat.in_table->b"]
-b.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b.side_inputs = [
+    { name = "proj.dat.in_table->a", sides = ["where", "order_by", "group_by"] },
+    { name = "proj.dat.in_table->b", sides = ["group_by", "order_by"] }
+]
 [tests.referenced_columns."proj.dat.in_table"]
 a = ["select", "group_by", "where", "order_by"]
 b = ["select", "group_by", "order_by"]
@@ -48,14 +54,18 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "STRING" }, { name = "b", dtype = "STRING" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a.inputs = ["proj.dat.in_table->a"]
-a.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+a.side_inputs = [
+    { name = "proj.dat.in_table->a", sides = ["where", "order_by", "group_by"] },
+    { name = "proj.dat.in_table->b", sides = ["group_by", "order_by"] }
+]
 b.inputs = ["proj.dat.in_table->b"]
-b.side_inputs = ["proj.dat.in_table->a","proj.dat.in_table->b"]
+b.side_inputs = [
+    { name = "proj.dat.in_table->a", sides = ["where", "order_by", "group_by"] },
+    { name = "proj.dat.in_table->b", sides = ["group_by", "order_by"] }
+]
 [tests.referenced_columns."proj.dat.in_table"]
 a = ["select", "group_by", "where", "order_by"]
 b = ["select", "group_by", "order_by"]
-# Note: c is not considered a referenced column
-
 
 [[tests]]
 sql = """
@@ -163,13 +173,13 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "s", dtype = "struct<x int64, y int64>" }, {name = "x", dtype = "int64"}]
 [tests.ready_lineage."proj.dat.out_table"]
 s.inputs = ["proj.dat.in_table->x", "proj.dat.in_table->y"]
-s.side_inputs = ["proj.dat.in_table->y"]
+s.side_inputs = [{ name = "proj.dat.in_table->y", sides = ["where"] }]
 x.inputs = ["proj.dat.in_table->x"]
-x.side_inputs = ["proj.dat.in_table->y"]
+x.side_inputs = [{ name = "proj.dat.in_table->y", sides = ["where"] }]
 "s.x".inputs = ["proj.dat.in_table->x"]
-"s.x".side_inputs = ["proj.dat.in_table->y"]
+"s.x".side_inputs = [{ name = "proj.dat.in_table->y", sides = ["where"] }]
 "s.y".inputs = ["proj.dat.in_table->y"]
-"s.y".side_inputs = ["proj.dat.in_table->y"]
+"s.y".side_inputs = [{ name = "proj.dat.in_table->y", sides = ["where"] }]
 [tests.referenced_columns."proj.dat.in_table"]
 x = ["select"]
 y = ["select", "where"]
@@ -214,7 +224,6 @@ x.side_inputs = []
 x = ["select"]
 y = ["select"]
 
-
 [[tests]]
 sql = """
 insert into proj.dat.out_table
@@ -242,7 +251,6 @@ x.side_inputs = []
 [tests.referenced_columns."proj.dat.in_table"]
 x = ["select"]
 y = ["select"]
-
 
 [[tests]]
 sql = """
@@ -454,7 +462,7 @@ with tmp as (
     from proj.dat.t1
 ),
 tmp2 as (
-    select A, b, `c`
+    select A, b, c
     from proj.dat.t2
 )
 select
@@ -484,11 +492,26 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 a.inputs = ["proj.dat.t1->a", "proj.dat.t2->a"]
-a.side_inputs = []
+a.side_inputs = [
+    { name = "proj.dat.t1->a", sides = ["join"] },
+    { name = "proj.dat.t2->a", sides = ["join"] },
+    { name = "proj.dat.t1->b", sides = ["join"] },
+    { name = "proj.dat.t2->b", sides = ["join"] },
+]
 b.inputs = ["proj.dat.t1->b", "proj.dat.t2->b"]
-b.side_inputs = []
+b.side_inputs = [
+    { name = "proj.dat.t1->a", sides = ["join"] },
+    { name = "proj.dat.t2->a", sides = ["join"] },
+    { name = "proj.dat.t1->b", sides = ["join"] },
+    { name = "proj.dat.t2->b", sides = ["join"] }
+]
 c.inputs = ["proj.dat.t2->c"]
-c.side_inputs = []
+c.side_inputs = [
+    { name = "proj.dat.t1->a", sides = ["join"] },
+    { name = "proj.dat.t2->a", sides = ["join"] },
+    { name = "proj.dat.t1->b", sides = ["join"] },
+    { name = "proj.dat.t2->b", sides = ["join"] }
+]
 [tests.referenced_columns."proj.dat.t1"]
 a = ["select"]
 b = ["select"]
@@ -496,6 +519,66 @@ b = ["select"]
 a = ["select"]
 b = ["select"]
 c = ["select"]
+
+[[tests]]
+sql = """
+update `proj.dat.out_table` o
+set
+    a = i1.a,
+    b = i1.b
+from proj.dat.t1 i1
+inner join proj.dat.t2 i2 on i1.a = i2.a and i1.b = i2.b
+where i1.a = o.a and i1.b = o.b
+"""
+[[tests.schema_objects]]
+name = "proj.dat.t1"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.t2"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" },
+    { name = "c", dtype = "STRING" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.t1->a"]
+a.side_inputs = [
+    { name = "proj.dat.out_table->a", sides = ["where"]},
+    { name = "proj.dat.out_table->b", sides = ["where"]},
+    { name = "proj.dat.t1->a", sides = ["join", "where"] },
+    { name = "proj.dat.t1->b", sides = ["join", "where"] },
+    { name = "proj.dat.t2->a", sides = ["join"] },
+    { name = "proj.dat.t2->b", sides = ["join"] },
+]
+b.inputs = ["proj.dat.t1->b"]
+b.side_inputs = [
+    { name = "proj.dat.out_table->a", sides = ["where"]},
+    { name = "proj.dat.out_table->b", sides = ["where"]},
+    { name = "proj.dat.t1->a", sides = ["join", "where"] },
+    { name = "proj.dat.t1->b", sides = ["join", "where"] },
+    { name = "proj.dat.t2->a", sides = ["join"] },
+    { name = "proj.dat.t2->b", sides = ["join"] },
+]
+[tests.referenced_columns."proj.dat.out_table"]
+a = ["where"]
+b = ["where"]
+[tests.referenced_columns."proj.dat.t1"]
+a = ["select", "join", "update", "where"]
+b = ["select", "join", "update", "where"]
+[tests.referenced_columns."proj.dat.t2"]
+a = ["join"]
+b = ["join"]
 
 [[tests]]
 sql = """
@@ -562,20 +645,83 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dataset.employee_department_report"]
 department_id.inputs = ["proj.dataset.departments->department_id"]
-department_id.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+department_id.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 department_name.inputs = ["proj.dataset.departments->department_name"]
-department_name.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
-# NOTE: the location_id lineage goes back to all the tables since the column in the select is not qualified
+department_name.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
+#NOTE: the location_id lineage goes back to all the tables since the column in the select is not qualified
 location_id.inputs = ["proj.dataset.employees->location_id", "proj.dataset.departments->location_id", "proj.dataset.locations->location_id"]
-location_id.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+location_id.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 city.inputs = ["proj.dataset.locations->city"]
-city.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+city.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 country.inputs = ["proj.dataset.locations->country"]
-country.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+country.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 employee_count.inputs = ["proj.dataset.employees->employee_id"]
-employee_count.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+employee_count.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 avg_salary.inputs = ["proj.dataset.employees->salary"]
-avg_salary.side_inputs = ["proj.dataset.locations->city", "proj.dataset.locations->country", "proj.dataset.departments->location_id", "proj.dataset.departments->department_name", "proj.dataset.departments->department_id"]
+avg_salary.side_inputs = [
+    { name = "proj.dataset.employees->location_id", sides = ["join"] },
+    { name = "proj.dataset.employees->department_id", sides = ["join"] },
+    { name = "proj.dataset.locations->location_id", sides = ["join"] },
+    { name = "proj.dataset.locations->city", sides = ["group_by"] },
+    { name = "proj.dataset.locations->country", sides = ["group_by"] },
+    { name = "proj.dataset.departments->location_id", sides = ["group_by", "join"] },
+    { name = "proj.dataset.departments->department_name", sides = ["group_by"] },
+    { name = "proj.dataset.departments->department_id", sides = ["group_by", "join"] }
+]
 [tests.referenced_columns."proj.dataset.employees"]
 employee_id = ["select"]
 salary = ["select"]
@@ -590,7 +736,6 @@ city = ["select", "group_by"]
 country = ["select", "group_by"]
 location_id = ["select", "join"]
 
-# Test case
 [[tests]]
 sql = """
 INSERT INTO proj.dataset.product_region_matrix
@@ -667,17 +812,60 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dataset.product_region_matrix"]
 product_id.inputs = ["proj.dataset.products->product_id"]
-product_id.side_inputs = ["proj.dataset.products->sales_count"]
+product_id.side_inputs = [
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+    # NOTE: product_id is influecned by is_active which influences the join via region_id which is influenced by the is_active filter
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"] },
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+]
 product_name.inputs = ["proj.dataset.products->product_name"]
-product_name.side_inputs = ["proj.dataset.products->sales_count"]
+product_name.side_inputs = [
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"]}
+]
 region_id.inputs = ["proj.dataset.sales_regions->region_id"]
-region_id.side_inputs = ["proj.dataset.sales_regions->is_active"]
+region_id.side_inputs = [
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"] },
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+]
 region_name.inputs = ["proj.dataset.sales_regions->region_name"]
-region_name.side_inputs = ["proj.dataset.sales_regions->is_active"]
+region_name.side_inputs = [
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"] },
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+]
 total_sales.inputs = ["proj.dataset.regional_sales->total_sales"]
-total_sales.side_inputs = []
+total_sales.side_inputs = [
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"]},
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+]
 market_share.inputs = ["proj.dataset.regional_sales->market_share"]
-market_share.side_inputs = []
+market_share.side_inputs = [
+    { name = "proj.dataset.products->sales_count", sides = ["join", "order_by"] },
+    { name = "proj.dataset.sales_regions->is_active", sides = ["join", "where"]},
+    { name = "proj.dataset.products->product_id", sides = ["join"] },
+    { name = "proj.dataset.sales_regions->region_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->product_id", sides = ["join"] },
+    { name = "proj.dataset.regional_sales->region_id", sides = ["join"] },
+]
 [tests.referenced_columns."proj.dataset.products"]
 product_id = ["select"]
 product_name = ["select"]
@@ -691,7 +879,6 @@ product_id = ["join"]
 region_id = ["join"]
 total_sales = ["select"]
 market_share = ["select"]
-
 
 [[tests]]
 sql = """
@@ -760,7 +947,6 @@ kind.table.columns = [
 [tests.referenced_columns."dataset.Inventory"]
 product = ["where"]
 
-
 [[tests]]
 sql = """
 truncate table dataset.Inventory;
@@ -801,7 +987,10 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."dataset.Inventory"]
 quantity.inputs = ["dataset.Inventory->quantity", "dataset.NewArrivals->quantity"]
-quantity.side_inputs = []
+quantity.side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.NewArrivals->product", sides = ["merge_join"] },
+]
 [tests.referenced_columns."dataset.Inventory"]
 product = ["merge_join"]
 # quantity compares as select because it is in the output lineage
@@ -838,16 +1027,53 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."dataset.DetailedInventory"]
 product.inputs = ["dataset.Inventory->product"]
-product.side_inputs = []
+product.side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
 quantity.inputs = ["dataset.Inventory->quantity"]
-quantity.side_inputs = []
+quantity.side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
+supply_constrained.inputs = []
+supply_constrained.side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
+comments.inputs = []
+comments.side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
+"comments[]".inputs = []
+"comments[]".side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
+"comments[].comment".inputs = []
+"comments[].comment".side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
+"comments[].created".inputs = []
+"comments[].created".side_inputs = [
+    { name = "dataset.Inventory->product", sides = ["merge_join"] },
+    { name = "dataset.DetailedInventory->product", sides = ["merge_join"] },
+    { name = "dataset.Inventory->quantity", sides = ["merge_cond"] }
+]
 [tests.referenced_columns."dataset.Inventory"]
 product = ["select", "merge_insert", "merge_join"]
 quantity = ["select", "merge_insert", "merge_cond"]
 [tests.referenced_columns."dataset.DetailedInventory"]
 product = ["merge_join"]
 quantity = ["merge_cond"]
-
 
 [[tests]]
 sql = """
@@ -1112,15 +1338,55 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dataset.analytics_results"]
 category.inputs = ["proj.dataset.events->category"]
-category.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+category.side_inputs = [
+    { name = "proj.dataset.events->last_update", sides = ["group_by"] },
+    { name = "proj.dataset.events->event_time", sides = ["group_by"] },
+    { name = "proj.dataset.events->last_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->category", sides = ["group_by"] },
+    { name = "proj.dataset.events->creation_date", sides = ["group_by"] },
+    { name = "proj.dataset.events->default_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->duration_minutes", sides = ["group_by"] }
+]
 unique_users.inputs = ["proj.dataset.events->user_id"]
-unique_users.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+unique_users.side_inputs = [
+    { name = "proj.dataset.events->last_update", sides = ["group_by"] },
+    { name = "proj.dataset.events->event_time", sides = ["group_by"] },
+    { name = "proj.dataset.events->last_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->category", sides = ["group_by"] },
+    { name = "proj.dataset.events->creation_date", sides = ["group_by"] },
+    { name = "proj.dataset.events->default_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->duration_minutes", sides = ["group_by"] }
+]
 normalized_value.inputs = ["proj.dataset.events->last_value", "proj.dataset.events->default_value"]
-normalized_value.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+normalized_value.side_inputs = [
+    { name = "proj.dataset.events->last_update", sides = ["group_by"] },
+    { name = "proj.dataset.events->event_time", sides = ["group_by"] },
+    { name = "proj.dataset.events->last_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->category", sides = ["group_by"] },
+    { name = "proj.dataset.events->creation_date", sides = ["group_by"] },
+    { name = "proj.dataset.events->default_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->duration_minutes", sides = ["group_by"] }
+]
 end_time.inputs = ["proj.dataset.events->event_time", "proj.dataset.events->duration_minutes"]
-end_time.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+end_time.side_inputs = [
+    { name = "proj.dataset.events->last_update", sides = ["group_by"] },
+    { name = "proj.dataset.events->event_time", sides = ["group_by"] },
+    { name = "proj.dataset.events->last_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->category", sides = ["group_by"] },
+    { name = "proj.dataset.events->creation_date", sides = ["group_by"] },
+    { name = "proj.dataset.events->default_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->duration_minutes", sides = ["group_by"] }
+]
 expiration_date.inputs = ["proj.dataset.events->last_update", "proj.dataset.events->creation_date"]
-expiration_date.side_inputs = ["proj.dataset.events->last_update", "proj.dataset.events->event_time", "proj.dataset.events->last_value", "proj.dataset.events->category", "proj.dataset.events->creation_date", "proj.dataset.events->default_value", "proj.dataset.events->duration_minutes"]
+expiration_date.side_inputs = [
+    { name = "proj.dataset.events->last_update", sides = ["group_by"] },
+    { name = "proj.dataset.events->event_time", sides = ["group_by"] },
+    { name = "proj.dataset.events->last_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->category", sides = ["group_by"] },
+    { name = "proj.dataset.events->creation_date", sides = ["group_by"] },
+    { name = "proj.dataset.events->default_value", sides = ["group_by"] },
+    { name = "proj.dataset.events->duration_minutes", sides = ["group_by"] }
+]
 [tests.referenced_columns."proj.dataset.events"]
 category = ["select", "group_by"]
 user_id = ["select"]
@@ -1219,7 +1485,8 @@ completed_events.inputs = [
     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
 ]
 completed_events.side_inputs = [
-    "proj.dataset.user_data->user_events[].properties.is_completed", "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+    { name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] },
+    { name = "proj.dataset.user_data->user_events[].properties.cart.items[].quantity", sides = ["where"] }
 ]
 "completed_events[]".inputs = [
     "proj.dataset.user_data->user_events[].event_id",
@@ -1229,20 +1496,27 @@ completed_events.side_inputs = [
     "proj.dataset.user_data->user_events[].properties.cart.items[].product_id",
 ]
 "completed_events[]".side_inputs = [
-    "proj.dataset.user_data->user_events[].properties.is_completed", "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
+    { name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] },
+    { name = "proj.dataset.user_data->user_events[].properties.cart.items[].quantity", sides = ["where"] }
 ]
 "completed_events[].event_id".inputs = ["proj.dataset.user_data->user_events[].event_id"]
-"completed_events[].event_id".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].event_id".side_inputs = [{ name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }]
 "completed_events[].timestamp".inputs = ["proj.dataset.user_data->user_events[].timestamp"]
-"completed_events[].timestamp".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].timestamp".side_inputs = [{ name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }]
 "completed_events[].page_name".inputs = ["proj.dataset.user_data->user_events[].properties.page_name"]
-"completed_events[].page_name".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].page_name".side_inputs = [{ name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }]
 "completed_events[].duration".inputs = ["proj.dataset.user_data->user_events[].properties.session.duration"]
-"completed_events[].duration".side_inputs = ["proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].duration".side_inputs = [{ name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }]
 "completed_events[].purchased_products".inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
-"completed_events[].purchased_products".side_inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].quantity", "proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].purchased_products".side_inputs = [
+    { name = "proj.dataset.user_data->user_events[].properties.cart.items[].quantity", sides = ["where"] },
+    { name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }
+]
 "completed_events[].purchased_products[]".inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].product_id"]
-"completed_events[].purchased_products[]".side_inputs = ["proj.dataset.user_data->user_events[].properties.cart.items[].quantity", "proj.dataset.user_data->user_events[].properties.is_completed"]
+"completed_events[].purchased_products[]".side_inputs = [
+    { name = "proj.dataset.user_data->user_events[].properties.cart.items[].quantity", sides = ["where"] },
+    { name = "proj.dataset.user_data->user_events[].properties.is_completed", sides = ["where"] }
+]
 user_profile_summary.inputs = [
     "proj.dataset.user_data->profile.demographics.age",
     "proj.dataset.user_data->profile.demographics.country",
@@ -1251,7 +1525,7 @@ user_profile_summary.inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"
 ]
-user_profile_summary.side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+user_profile_summary.side_inputs = [{ name = "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score", sides = ["where", "order_by"] }]
 "user_profile_summary.user_age".inputs = ["proj.dataset.user_data->profile.demographics.age"]
 "user_profile_summary.user_age".side_inputs = []
 "user_profile_summary.user_country".inputs = ["proj.dataset.user_data->profile.demographics.country"]
@@ -1264,44 +1538,53 @@ user_profile_summary.side_inputs = ["proj.dataset.user_data->profile.preferences
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-"user_profile_summary.high_affinity_categories".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories".side_inputs = [{ name = "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score", sides = ["where", "order_by"] }]
 
 "user_profile_summary.high_affinity_categories[]".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-"user_profile_summary.high_affinity_categories[]".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories[]".side_inputs = [{ name = "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score", sides = ["where", "order_by"] }]
 "user_profile_summary.high_affinity_categories[].category_name".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].category_name",
 ]
-"user_profile_summary.high_affinity_categories[].category_name".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories[].category_name".side_inputs = [{ name = "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score", sides = ["where", "order_by"] }]
 "user_profile_summary.high_affinity_categories[].affinity_score".inputs = [
     "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score",
 ]
-"user_profile_summary.high_affinity_categories[].affinity_score".side_inputs = ["proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score"]
+"user_profile_summary.high_affinity_categories[].affinity_score".side_inputs = [{ name = "proj.dataset.user_data->profile.preferences.category_affinities[].affinity_score", sides = ["where", "order_by"] }]
 total_spent.inputs = [
     "proj.dataset.user_data->user_events[].properties.cart.items[].price",
     "proj.dataset.user_data->user_events[].properties.cart.items[].quantity"
 ]
-total_spent.side_inputs = ["proj.dataset.user_data->user_events[].properties.event_type"]
+total_spent.side_inputs = [{ name = "proj.dataset.user_data->user_events[].properties.event_type", sides = ["where"] }]
 device_activity.inputs = [
     "proj.dataset.user_data->profile.devices[].device_id",
     "proj.dataset.user_data->profile.devices[].platform",
     "proj.dataset.user_data->user_events[].timestamp",
 ]
-device_activity.side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+device_activity.side_inputs = [
+    { name = "proj.dataset.user_data->user_events[].device_id", sides = ["where"] },
+    { name = "proj.dataset.user_data->profile.devices[].device_id", sides = ["where"] }
+]
 "device_activity[]".inputs = [
     "proj.dataset.user_data->profile.devices[].device_id",
     "proj.dataset.user_data->profile.devices[].platform",
     "proj.dataset.user_data->user_events[].timestamp",
 ]
-"device_activity[]".side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[]".side_inputs = [
+    { name = "proj.dataset.user_data->user_events[].device_id", sides = ["where"] },
+    { name = "proj.dataset.user_data->profile.devices[].device_id", sides = ["where"] }
+]
 "device_activity[].device_id".inputs = ["proj.dataset.user_data->profile.devices[].device_id"]
 "device_activity[].device_id".side_inputs = []
 "device_activity[].platform".inputs = ["proj.dataset.user_data->profile.devices[].platform"]
 "device_activity[].platform".side_inputs = []
 "device_activity[].last_active_time".inputs = ["proj.dataset.user_data->user_events[].timestamp"]
-"device_activity[].last_active_time".side_inputs = ["proj.dataset.user_data->user_events[].device_id", "proj.dataset.user_data->profile.devices[].device_id"]
+"device_activity[].last_active_time".side_inputs = [
+    { name = "proj.dataset.user_data->user_events[].device_id", sides = ["where"] },
+    { name = "proj.dataset.user_data->profile.devices[].device_id", sides = ["where"] }
+]
 [tests.referenced_columns."proj.dataset.user_data"]
 user_id = ["select"]
 user_events = ["unnest"]
@@ -1648,9 +1931,13 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "a", dtype = "int64" }, { name = "b", dtype = "DATE" }]
 [tests.ready_lineage."proj.dat.out_table"]
 a.inputs = ["proj.dat.in_table->b"]
-a.side_inputs = []
+a.side_inputs = [
+    { name = "proj.dat.in_table->b", sides = ["join"] }
+]
 b.inputs = ["proj.dat.in_table->d"]
-b.side_inputs = []
+b.side_inputs = [
+    { name = "proj.dat.in_table->b", sides = ["join"] }
+]
 [tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
 b = ["select"]
@@ -1828,9 +2115,17 @@ name = "proj.dat.out_table"
 kind.table.columns = [{ name = "w", dtype = "int64" },{ name = "z", dtype = "int64" }]
 [tests.ready_lineage."proj.dat.out_table"]
 w.inputs = ["proj.dat.in_table->w"]
-w.side_inputs = []
+w.side_inputs = [
+    { name = "proj.dat.in_table->x", sides = ["join"] },
+    { name = "proj.dat.in_table->y", sides = ["join"] },
+    { name = "proj.dat.in_table->w", sides = ["join"] },
+]
 z.inputs = ["proj.dat.in_table->z"]
-z.side_inputs = []
+z.side_inputs = [
+    { name = "proj.dat.in_table->x", sides = ["join"] },
+    { name = "proj.dat.in_table->y", sides = ["join"] },
+    { name = "proj.dat.in_table->w", sides = ["join"] },
+]
 [tests.referenced_columns."proj.dat.in_table"]
 x = ["select"]
 y = ["select"]
@@ -1888,13 +2183,29 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 ts.inputs = ["proj.dat.t1->ts"]
-ts.side_inputs = []
+ts.side_inputs = [
+    { name = "proj.dat.t1->id", sides = ["join"] },
+    { name = "proj.dat.t2->id", sides = ["join"] },
+    { name = "proj.dat.t3->id", sides = ["join"] },
+]
 id.inputs = ["proj.dat.t1->id","proj.dat.t2->id","proj.dat.t3->id"]
-id.side_inputs = []
+id.side_inputs = [
+    { name = "proj.dat.t1->id", sides = ["join"] },
+    { name = "proj.dat.t2->id", sides = ["join"] },
+    { name = "proj.dat.t3->id", sides = ["join"] },
+]
 f1.inputs = ["proj.dat.t2->f1"]
-f1.side_inputs = []
+f1.side_inputs = [
+    { name = "proj.dat.t1->id", sides = ["join"] },
+    { name = "proj.dat.t2->id", sides = ["join"] },
+    { name = "proj.dat.t3->id", sides = ["join"] },
+]
 f2.inputs = ["proj.dat.t3->f2"]
-f2.side_inputs = []
+f2.side_inputs = [
+    { name = "proj.dat.t1->id", sides = ["join"] },
+    { name = "proj.dat.t2->id", sides = ["join"] },
+    { name = "proj.dat.t3->id", sides = ["join"] },
+]
 [tests.referenced_columns."proj.dat.t1"]
 ts = ["select"]
 id = ["select"]
@@ -1949,11 +2260,26 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out_table"]
 ts.inputs = ["proj.dat.in_table->ts"]
-ts.side_inputs = []
+ts.side_inputs = [
+    { name = "proj.dat.out_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.out_table->id", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->id", sides = ["merge_join"] },
+]
 id.inputs = ["proj.dat.in_table->id"]
-id.side_inputs = []
+id.side_inputs = [
+    { name = "proj.dat.out_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.out_table->id", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->id", sides = ["merge_join"] },
+]
 f1.inputs = ["proj.dat.in_table->f1"]
-f1.side_inputs = []
+f1.side_inputs = [
+    { name = "proj.dat.out_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.out_table->id", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->ts", sides = ["merge_join"] },
+    { name = "proj.dat.in_table->id", sides = ["merge_join"] },
+]
 [tests.referenced_columns."proj.dat.in_table"]
 ts = ["select"]
 id = ["select"]
@@ -2133,7 +2459,10 @@ kind.table_function.returns = [
 ]
 [tests.ready_lineage."proj.dat.out"]
 y.inputs = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
-y.side_inputs = []
+y.side_inputs = [
+    { name = "proj.dat.t1->x", sides = ["join"] },
+    { name = "proj.dat.t1(*)->x", sides = ["join"] },
+]
 [tests.referenced_columns."proj.dat.t1"]
 x = ["join"]
 y = ["select"]
@@ -2172,9 +2501,15 @@ kind.table_function.returns = [
 ]
 [tests.ready_lineage."proj.dat.out"]
 x.inputs = ["proj.dat.t1->x", "proj.dat.t1(*)->x"]
-x.side_inputs = []
+x.side_inputs = [
+    { name = "proj.dat.t1->x", sides = ["join"] },
+    { name = "proj.dat.t1(*)->x", sides = ["join"] },
+]
 y.inputs = ["proj.dat.t1->y", "proj.dat.t1(*)->y"]
-y.side_inputs = []
+y.side_inputs = [
+    { name = "proj.dat.t1->x", sides = ["join"] },
+    { name = "proj.dat.t1(*)->x", sides = ["join"] },
+]
 [tests.referenced_columns."proj.dat.t1"]
 x = ["join", "select"]
 y = ["select"]
@@ -2283,11 +2618,11 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."proj.dat.out"]
 id_and_age.inputs = ["proj.dat.users->id", "proj.dat.users->age"]
-id_and_age.side_inputs = ["proj.dat.users->age"]
+id_and_age.side_inputs = [{ name = "proj.dat.users->age", sides = ["where"] }]
 "id_and_age.id".inputs = ["proj.dat.users->id"]
-"id_and_age.id".side_inputs = ["proj.dat.users->age"]
+"id_and_age.id".side_inputs = [{ name = "proj.dat.users->age", sides = ["where"] }]
 "id_and_age.age".inputs = ["proj.dat.users->age"]
-"id_and_age.age".side_inputs = ["proj.dat.users->age"]
+"id_and_age.age".side_inputs = [{ name = "proj.dat.users->age", sides = ["where"] }]
 [tests.referenced_columns."proj.dat.users"]
 id = ["select"]
 age = ["select"]
@@ -2848,9 +3183,17 @@ kind.table.columns = [
 ]
 [tests.ready_lineage."project.dataset.out"]
 id.inputs = ["project.dataset.t2->id", "project.dataset.t1->id"]
-id.side_inputs = ["project.dataset.t2->s.source"]
+id.side_inputs = [
+    { name = "project.dataset.t1->id", sides = ["join"] },
+    { name = "project.dataset.t2->id", sides = ["join"] },
+    { name = "project.dataset.t2->s.source", sides = ["where"] },
+]
 val.inputs = ["project.dataset.t2->s.x", "project.dataset.t1->x", "project.dataset.out->val"]
-val.side_inputs = ["project.dataset.t2->s.source"]
+val.side_inputs = [
+    { name = "project.dataset.t1->id", sides = ["join"] },
+    { name = "project.dataset.t2->id", sides = ["join"] },
+    { name = "project.dataset.t2->s.source", sides = ["where"] }
+]
 [tests.referenced_columns."project.dataset.out"]
 val = ["default_var", "select"]
 [tests.referenced_columns."project.dataset.t1"]
@@ -2886,9 +3229,12 @@ kind.table.columns = [
 # NOTE: we may just have side_inputs!
 [tests.ready_lineage."project.dataset.out"]
 r1.inputs = []
-r1.side_inputs = ["project.dataset.t1->x1"]
+r1.side_inputs = [{ name = "project.dataset.t1->x1", sides = ["window"] }]
 r2.inputs = []
-r2.side_inputs = ["project.dataset.t1->x1", "project.dataset.t1->x2"]
+r2.side_inputs = [
+    { name = "project.dataset.t1->x1", sides = ["window"] },
+    { name = "project.dataset.t1->x2", sides = ["window"] }
+]
 [tests.referenced_columns."project.dataset.t1"]
 x1 = ["window"]
 x2 = ["window"]

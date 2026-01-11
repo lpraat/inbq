@@ -4,10 +4,23 @@ use inbq::lineage::catalog::{Catalog, SchemaObject};
 use indexmap::IndexMap;
 use serde::Deserialize;
 
+#[derive(Deserialize, Debug, Clone)]
+struct SideInput {
+    name: String,
+    sides: Vec<String>,
+}
+
+impl PartialEq for SideInput {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.sides.iter().collect::<HashSet<_>>() == other.sides.iter().collect()
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct LineageInputs {
     inputs: Vec<String>,
-    side_inputs: Vec<String>,
+    side_inputs: Vec<SideInput>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -59,8 +72,10 @@ fn test_lineage() {
         let ready_lineage = lineage.lineage;
 
         // Test ready lineage
-        let mut ready_lineage_map: IndexMap<String, IndexMap<String, (Vec<String>, Vec<String>)>> =
-            IndexMap::new();
+        let mut ready_lineage_map: IndexMap<
+            String,
+            IndexMap<String, (Vec<String>, Vec<SideInput>)>,
+        > = IndexMap::new();
         for obj in ready_lineage.objects {
             ready_lineage_map.insert(
                 obj.name,
@@ -76,7 +91,10 @@ fn test_lineage() {
                                     .collect(),
                                 node.side_inputs
                                     .into_iter()
-                                    .map(|inp| format!("{}->{}", inp.obj_name, inp.node_name))
+                                    .map(|inp| SideInput {
+                                        name: format!("{}->{}", inp.obj_name, inp.node_name),
+                                        sides: inp.sides,
+                                    })
                                     .collect(),
                             ),
                         )
@@ -104,11 +122,15 @@ fn test_lineage() {
                     .collect::<HashSet<_>>();
                 assert_eq!(inputs, target_inputs);
 
-                let side_inputs = side_inputs.iter().collect::<HashSet<_>>();
-                let target_side_inputs = target_ready_lineage[obj][node]
+                let mut side_inputs = side_inputs.iter().collect::<Vec<_>>();
+                side_inputs.sort_by(|s1, s2| s1.name.cmp(&s2.name));
+
+                let mut target_side_inputs = target_ready_lineage[obj][node]
                     .side_inputs
                     .iter()
-                    .collect::<HashSet<_>>();
+                    .collect::<Vec<_>>();
+                target_side_inputs.sort_by(|s1, s2| s1.name.cmp(&s2.name));
+
                 assert_eq!(side_inputs, target_side_inputs);
             }
         }

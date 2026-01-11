@@ -65,7 +65,7 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
         print("\nSide inputs:")
         for node in object.nodes:
             print(
-                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.side_inputs]}"
+                f"""{object.name}->{node.name} <- {[f"{input_node.obj_name}->{input_node.node_name} @ {','.join(input_node.sides)}" for input_node in node.side_inputs]}"""
             )
 
     print("\nReferenced columns:")
@@ -81,8 +81,8 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
 # project.dataset.out->val <- ['project.dataset.t2->s.x', 'project.dataset.t1->x', 'project.dataset.out->val']
 #
 # Side inputs:
-# project.dataset.out->id <- ['project.dataset.t2->s.source']
-# project.dataset.out->val <- ['project.dataset.t2->s.source']
+# project.dataset.out->id <- ['project.dataset.t2->s.source @ where', 'project.dataset.t2->id @ join', 'project.dataset.t1->id @ join']
+# project.dataset.out->val <- ['project.dataset.t2->s.source @ where', 'project.dataset.t2->id @ join', 'project.dataset.t1->id @ join']
 #
 # Referenced columns:
 # project.dataset.out->val referenced in ['default_var', 'select']

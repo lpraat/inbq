@@ -32,7 +32,7 @@ for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
         print("\nSide inputs:")
         for node in object.nodes:
             print(
-                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.side_inputs]}"
+                f"""{object.name}->{node.name} <- {[f"{input_node.obj_name}->{input_node.node_name} @ {','.join(input_node.sides)}" for input_node in node.side_inputs]}"""
             )
 
     print("\nReferenced columns:")

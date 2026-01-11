@@ -2729,6 +2729,8 @@ impl LineageContext {
         node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
         let mut input = vec![];
+        let mut side_inputs = vec![];
+
         for arg in &function_expr.arguments {
             let node_idx = self.expr_lin(catalog, &arg.expr, expand_value_table, node_origin)?;
             input.push(node_idx);
@@ -2819,14 +2821,17 @@ impl LineageContext {
         };
 
         if let Some(named_window_expr) = &function_expr.over {
-            input.push(self.named_window_expr_lin(
+            side_inputs.push(self.named_window_expr_lin(
                 catalog,
                 named_window_expr,
                 expand_value_table,
             )?);
         }
 
-        Ok(self.allocate_expr_node(&name.to_lowercase(), return_type, node_origin, input))
+        let node_idx =
+            self.allocate_expr_node(&name.to_lowercase(), return_type, node_origin, input);
+        self.add_side_inputs_to_node(node_idx, &side_inputs);
+        Ok(node_idx)
     }
 
     fn evaluate_user_sql_function_body(
@@ -4333,8 +4338,10 @@ impl LineageContext {
             self.with_lin(catalog, with)?;
         }
 
+        let mut side_inputs = vec![];
+
         let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
-            self.from_lin(catalog, from)?;
+            self.from_lin(catalog, from, &mut side_inputs)?;
             true
         } else {
             false
@@ -4486,8 +4493,6 @@ impl LineageContext {
                 _ => {}
             }
         }
-
-        let mut side_inputs = vec![];
 
         if let Some(r#where) = &select_query_expr.select.r#where {
             let node_idx = self.expr_lin(
@@ -4707,6 +4712,7 @@ impl LineageContext {
         &mut self,
         catalog: &LineageCatalog,
         from: &crate::ast::From,
+        side_inputs: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         let mut from_tables: Vec<ArenaIndex> = Vec::new();
         let mut joined_tables: Vec<ArenaIndex> = Vec::new();
@@ -4718,6 +4724,7 @@ impl LineageContext {
             &mut from_tables,
             &mut joined_tables,
             &mut joined_ambiguous_columns,
+            side_inputs,
         )?;
 
         self.push_from_context(&from_tables, &joined_tables, joined_ambiguous_columns);
@@ -4732,6 +4739,7 @@ impl LineageContext {
         from_tables: &mut Vec<ArenaIndex>,
         joined_tables: &mut Vec<ArenaIndex>,
         joined_ambiguous_columns: &mut HashSet<String>,
+        side_inputs: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         match from_expr {
             FromExpr::Join(join_expr)
@@ -4743,6 +4751,7 @@ impl LineageContext {
                 from_tables,
                 joined_tables,
                 joined_ambiguous_columns,
+                side_inputs,
             )?,
             FromExpr::CrossJoin(cross_join_expr) => {
                 self.from_expr_lin(
@@ -4751,6 +4760,7 @@ impl LineageContext {
                     from_tables,
                     joined_tables,
                     joined_ambiguous_columns,
+                    side_inputs,
                 )?;
                 match cross_join_expr.right.as_ref() {
                     FromExpr::Path(from_path_expr) => {
@@ -4769,6 +4779,7 @@ impl LineageContext {
                         from_tables,
                         joined_tables,
                         joined_ambiguous_columns,
+                        side_inputs,
                     )?,
                 }
 
@@ -4935,6 +4946,7 @@ impl LineageContext {
                 from_tables,
                 joined_tables,
                 joined_ambiguous_columns,
+                side_inputs,
             )?,
             FromExpr::TableFunction(table_function_expr) => {
                 // TODO
@@ -5135,6 +5147,7 @@ impl LineageContext {
         from_tables: &mut Vec<ArenaIndex>,
         joined_tables: &mut Vec<ArenaIndex>,
         joined_ambiguous_columns: &mut HashSet<String>,
+        side_inputs: &mut Vec<ArenaIndex>,
     ) -> anyhow::Result<()> {
         self.from_expr_lin(
             catalog,
@@ -5142,6 +5155,7 @@ impl LineageContext {
             from_tables,
             joined_tables,
             joined_ambiguous_columns,
+            side_inputs,
         )?;
         self.from_expr_lin(
             catalog,
@@ -5149,6 +5163,7 @@ impl LineageContext {
             from_tables,
             joined_tables,
             joined_ambiguous_columns,
+            side_inputs,
         )?;
         let from_tables_len = from_tables.len();
 
@@ -5209,21 +5224,25 @@ impl LineageContext {
                     ));
                     using_columns_added.insert(col_name);
 
-                    self.track_usage_expr_node(
-                        "using_column",
-                        self.arena_lineage_nodes[left_lineage_node_idx]
-                            .r#type
-                            .clone(),
-                        NodeOrigin::Join,
-                        vec![left_lineage_node_idx],
+                    side_inputs.push(
+                        self.track_usage_expr_node(
+                            "using_column",
+                            self.arena_lineage_nodes[left_lineage_node_idx]
+                                .r#type
+                                .clone(),
+                            NodeOrigin::Join,
+                            vec![left_lineage_node_idx],
+                        ),
                     );
-                    self.track_usage_expr_node(
-                        "using_column",
-                        self.arena_lineage_nodes[right_lineage_node_idx]
-                            .r#type
-                            .clone(),
-                        NodeOrigin::Join,
-                        vec![right_lineage_node_idx],
+                    side_inputs.push(
+                        self.track_usage_expr_node(
+                            "using_column",
+                            self.arena_lineage_nodes[right_lineage_node_idx]
+                                .r#type
+                                .clone(),
+                            NodeOrigin::Join,
+                            vec![right_lineage_node_idx],
+                        ),
                     );
                 }
 
@@ -5346,7 +5365,7 @@ impl LineageContext {
                 joined_tables.push(table_like_idx);
 
                 self.push_from_context(from_tables, joined_tables, HashSet::new());
-                self.expr_lin(catalog, expr, false, NodeOrigin::Join)?;
+                side_inputs.push(self.expr_lin(catalog, expr, false, NodeOrigin::Join)?);
                 self.pop_curr_query_ctx();
             }
         }
@@ -5494,8 +5513,10 @@ impl LineageContext {
             ));
         }
 
+        let mut side_inputs = vec![];
+
         let pushed_context = if let Some(ref from) = update_statement.from {
-            self.from_lin(catalog, from)?;
+            self.from_lin(catalog, from, &mut side_inputs)?;
             true
         } else {
             false
@@ -5510,6 +5531,13 @@ impl LineageContext {
             HashSet::new(),
             true,
         );
+
+        side_inputs.push(self.expr_lin(
+            catalog,
+            &update_statement.r#where.expr,
+            false,
+            NodeOrigin::Where,
+        )?);
 
         for update_item in &update_statement.update_items {
             let column = match &update_item.column {
@@ -5536,6 +5564,7 @@ impl LineageContext {
 
             let node_idx = self.expr_lin(catalog, &update_item.expr, false, NodeOrigin::Update)?;
             self.build_output_node(*col_source_idx, node_idx);
+            self.add_side_inputs_to_node(*col_source_idx, &side_inputs);
             self.add_node_to_output_lineage(*col_source_idx);
         }
 
@@ -5615,6 +5644,7 @@ impl LineageContext {
         catalog: &LineageCatalog,
         target_table_id: ArenaIndex,
         merge_insert: &MergeInsert,
+        side_inputs: &[ArenaIndex],
     ) -> anyhow::Result<()> {
         let target_table_obj = &self.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
@@ -5639,6 +5669,7 @@ impl LineageContext {
         for (target_col, value) in target_columns.iter().zip(&merge_insert.values) {
             let node_idx = self.expr_lin(catalog, value, false, NodeOrigin::MergeInsert)?;
             self.build_output_node(*target_col, node_idx);
+            self.add_side_inputs_to_node(*target_col, side_inputs);
             self.add_node_to_output_lineage(*target_col);
         }
 
@@ -5651,6 +5682,7 @@ impl LineageContext {
         target_table_name: &str,
         target_table_id: ArenaIndex,
         merge_update: &MergeUpdate,
+        side_inputs: &[ArenaIndex],
     ) -> anyhow::Result<()> {
         let target_table_obj = &self.arena_objects[target_table_id];
         let target_table_nodes = self.target_table_nodes_map(target_table_obj);
@@ -5681,6 +5713,7 @@ impl LineageContext {
             let node_idx =
                 self.expr_lin(catalog, &update_item.expr, false, NodeOrigin::MergeUpdate)?;
             self.build_output_node(*col_source_idx, node_idx);
+            self.add_side_inputs_to_node(*col_source_idx, side_inputs);
             self.add_node_to_output_lineage(*col_source_idx);
         }
         Ok(())
@@ -5691,6 +5724,7 @@ impl LineageContext {
         target_table_id: ArenaIndex,
         source_table_id: Option<ArenaIndex>,
         subquery_nodes: &Option<Vec<ArenaIndex>>,
+        side_inputs: &[ArenaIndex],
     ) -> anyhow::Result<()> {
         let nodes = if let Some(source_idx) = source_table_id {
             let source_obj = &self.arena_objects[source_idx];
@@ -5711,6 +5745,7 @@ impl LineageContext {
 
         for (target_node, source_node) in target_nodes.into_iter().zip(nodes) {
             self.build_output_node(target_node, source_node);
+            self.add_side_inputs_to_node(target_node, side_inputs);
             self.add_node_to_output_lineage(target_node);
         }
 
@@ -5811,7 +5846,7 @@ impl LineageContext {
         }
 
         self.push_query_ctx(full_tables.clone(), HashSet::new(), true);
-        self.expr_lin(
+        let join_idx = self.expr_lin(
             catalog,
             &merge_statement.condition,
             false,
@@ -5822,10 +5857,17 @@ impl LineageContext {
         for when in &merge_statement.whens {
             match when {
                 When::Matched(when_matched) => {
+                    let mut side_inputs = vec![join_idx];
+
                     self.push_query_ctx(full_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_matched.search_condition {
-                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
+                        side_inputs.push(self.expr_lin(
+                            catalog,
+                            search_condition,
+                            false,
+                            NodeOrigin::MergeCond,
+                        )?);
                     }
 
                     match &when_matched.merge {
@@ -5834,6 +5876,7 @@ impl LineageContext {
                             target_table_name,
                             target_table_id,
                             merge_update,
+                            &side_inputs,
                         )?,
                         Merge::Delete => {}
                         _ => unreachable!(),
@@ -5842,20 +5885,28 @@ impl LineageContext {
                     self.pop_curr_query_ctx();
                 }
                 When::NotMatchedByTarget(when_not_matched_by_target) => {
+                    let mut side_inputs = vec![join_idx];
+
                     self.push_query_ctx(source_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_target.search_condition {
-                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
+                        side_inputs.push(self.expr_lin(
+                            catalog,
+                            search_condition,
+                            false,
+                            NodeOrigin::MergeCond,
+                        )?);
                     }
 
                     match &when_not_matched_by_target.merge {
                         Merge::Insert(merge_insert) => {
-                            self.merge_insert(catalog, target_table_id, merge_insert)?
+                            self.merge_insert(catalog, target_table_id, merge_insert, &side_inputs)?
                         }
                         Merge::InsertRow => self.merge_insert_row(
                             target_table_id,
                             source_table_id,
                             &subquery_nodes,
+                            &side_inputs,
                         )?,
                         _ => unreachable!(),
                     }
@@ -5863,10 +5914,17 @@ impl LineageContext {
                     self.pop_curr_query_ctx();
                 }
                 When::NotMatchedBySource(when_not_matched_by_source) => {
+                    let mut side_inputs = vec![join_idx];
+
                     self.push_query_ctx(target_tables.clone(), HashSet::new(), true);
 
                     if let Some(search_condition) = &when_not_matched_by_source.search_condition {
-                        self.expr_lin(catalog, search_condition, false, NodeOrigin::MergeCond)?;
+                        side_inputs.push(self.expr_lin(
+                            catalog,
+                            search_condition,
+                            false,
+                            NodeOrigin::MergeCond,
+                        )?);
                     }
 
                     match &when_not_matched_by_source.merge {
@@ -5875,6 +5933,7 @@ impl LineageContext {
                             target_table_name,
                             target_table_id,
                             merge_update,
+                            &side_inputs,
                         )?,
                         Merge::Delete => {}
                         _ => unreachable!(),
@@ -6361,6 +6420,14 @@ pub struct RawLineage {
 }
 
 #[derive(Serialize, Debug, Clone)]
+pub struct ReadyLineageNodeSideInput {
+    pub obj_name: String,
+    pub obj_kind: String,
+    pub node_name: String,
+    pub sides: Vec<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
 pub struct ReadyLineageNodeInput {
     pub obj_name: String,
     pub obj_kind: String,
@@ -6372,7 +6439,7 @@ pub struct ReadyLineageNode {
     pub name: String,
     pub r#type: String,
     pub inputs: Vec<ReadyLineageNodeInput>,
-    pub side_inputs: Vec<ReadyLineageNodeInput>,
+    pub side_inputs: Vec<ReadyLineageNodeSideInput>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -6835,6 +6902,8 @@ fn _extract_lineage(
 
                 let mut node_input = vec![];
                 let mut node_side_input = vec![];
+                let mut side_inputs = IndexMap::new();
+
                 for (inp_obj_idx, inp_node_idx, inp_node_origin) in input {
                     let inp_obj = &lineage_extractor.context.arena_objects[*inp_obj_idx];
                     if just_include_source_objects
@@ -6856,12 +6925,30 @@ fn _extract_lineage(
                             .context
                             .add_referenced_column(*inp_node_idx, NodeOrigin::Select);
                     } else {
-                        node_side_input.push(ReadyLineageNodeInput {
-                            obj_name: inp_obj.name.clone(),
-                            obj_kind: inp_obj.kind.into(),
-                            node_name: inp_node.name.nested_path().to_owned(),
-                        });
+                        side_inputs
+                            .entry(*inp_node_idx)
+                            .and_modify(|origin| *origin |= *inp_node_origin)
+                            .or_insert(*inp_node_origin);
                     }
+                }
+
+                for (inp_node_idx, origin) in side_inputs {
+                    let sides = (origin
+                        & !(NodeOrigin::Select
+                            | NodeOrigin::Source
+                            | NodeOrigin::Unnest
+                            | NodeOrigin::UserSqlFunction))
+                        .iter()
+                        .map(|n| n.into())
+                        .collect::<Vec<_>>();
+                    let inp_node = &lineage_extractor.context.arena_lineage_nodes[inp_node_idx];
+                    let inp_obj = &lineage_extractor.context.arena_objects[inp_node.source_obj];
+                    node_side_input.push(ReadyLineageNodeSideInput {
+                        obj_name: inp_obj.name.clone(),
+                        obj_kind: inp_obj.kind.into(),
+                        node_name: inp_node.name.nested_path().to_owned(),
+                        sides,
+                    });
                 }
 
                 obj_nodes.push(ReadyLineageNode {

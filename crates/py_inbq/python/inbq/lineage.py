@@ -27,7 +27,16 @@ class RawLineage:
 @dataclass
 class ReadyLineageNodeInput:
     obj_name: str
+    obj_kind: str
     node_name: str
+
+
+@dataclass
+class ReadyLineageNodeSideInput:
+    obj_name: str
+    obj_kind: str
+    node_name: str
+    sides: list[str]
 
 
 @dataclass
@@ -35,7 +44,7 @@ class ReadyLineageNode:
     name: str
     type_: str
     inputs: list[ReadyLineageNodeInput]
-    side_inputs: list[ReadyLineageNodeInput]
+    side_inputs: list[ReadyLineageNodeSideInput]
 
 
 @dataclass
