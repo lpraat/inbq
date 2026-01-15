@@ -886,6 +886,7 @@ struct LineageContext {
     query_depth: u16,
     query_joined_ambiguous_columns: Vec<HashSet<String>>,
     query_windows: Vec<IndexMap<String, ArenaIndex>>,
+    query_selected_columns: Vec<IndexMap<String, ArenaIndex>>,
 
     typed_struct_fields: Vec<StructNodeFieldType>,
 
@@ -1508,6 +1509,10 @@ impl LineageContext {
         self.query_joined_ambiguous_columns.last()
     }
 
+    fn push_empty_query_ctx(&mut self, include_outer: bool) {
+        self.push_query_ctx(IndexMap::new(), HashSet::new(), include_outer)
+    }
+
     fn push_query_ctx(
         &mut self,
         query_tables: IndexMap<String, ArenaIndex>,
@@ -1585,8 +1590,24 @@ impl LineageContext {
         self.query_windows.push(query_windows)
     }
 
-    fn pop_windows_query(&mut self) {
+    fn pop_query_windows(&mut self) {
         self.query_windows.pop();
+    }
+
+    fn curr_query_windows(&self) -> Option<&IndexMap<String, ArenaIndex>> {
+        self.query_windows.last()
+    }
+
+    fn push_selected_columns(&mut self, selected_columns: IndexMap<String, ArenaIndex>) {
+        self.query_selected_columns.push(selected_columns)
+    }
+
+    fn pop_selected_columns(&mut self) {
+        self.query_selected_columns.pop();
+    }
+
+    fn curr_selected_columns(&self) -> Option<&IndexMap<String, ArenaIndex>> {
+        self.query_selected_columns.last()
     }
 
     /// Get the node index of a column or variable or arg from the current query context.
@@ -1665,6 +1686,12 @@ impl LineageContext {
         } else if let Some(target_tables) =
             self.curr_query_columns().and_then(|map| map.get(&column))
         {
+            if let Some(selected_columns) = self.curr_selected_columns() {
+                if let Some(node_idx) = selected_columns.get(&column) {
+                    return Ok(*node_idx);
+                }
+            }
+
             if self
                 .curr_query_joined_ambiguous_columns()
                 .unwrap()
@@ -3909,11 +3936,12 @@ impl LineageContext {
         expand_value_table: bool,
     ) -> anyhow::Result<ArenaIndex> {
         let mut node_indices = vec![];
-        let query_windows = self.query_windows.last().unwrap();
         match named_window_expr {
             NamedWindowExpr::Reference(name) => {
                 node_indices.push(
-                    *query_windows
+                    *self
+                        .curr_query_windows()
+                        .unwrap()
                         .get(&name.as_str().to_lowercase())
                         .ok_or_else(|| anyhow!("Expected window with name: {}.", name.as_str()))?,
                 );
@@ -3921,7 +3949,9 @@ impl LineageContext {
             NamedWindowExpr::WindowSpec(window_spec) => {
                 if let Some(window_name) = &window_spec.window_name {
                     node_indices.push(
-                        *query_windows
+                        *self
+                            .curr_query_windows()
+                            .unwrap()
                             .get(&window_name.as_str().to_lowercase())
                             .ok_or_else(|| {
                                 anyhow!("Expected window with name: {}.", window_name.as_str())
@@ -4340,17 +4370,16 @@ impl LineageContext {
 
         let mut side_inputs = vec![];
 
-        let pushed_context = if let Some(from) = select_query_expr.select.from.as_ref() {
+        if let Some(from) = select_query_expr.select.from.as_ref() {
             self.from_lin(catalog, from, &mut side_inputs)?;
-            true
         } else {
-            false
+            self.push_empty_query_ctx(true);
         };
 
         let anon_obj_idx =
             self.allocate_object(&anon_obj_name, ContextObjectKind::AnonymousQuery, vec![]);
 
-        let pushed_query_windows = if let Some(window) = &select_query_expr.select.window {
+        if let Some(window) = &select_query_expr.select.window {
             let mut windows: IndexMap<String, ArenaIndex> = IndexMap::new();
             for named_window in &window.named_windows {
                 match &named_window.window {
@@ -4411,9 +4440,8 @@ impl LineageContext {
                 }
             }
             self.push_query_windows(windows);
-            true
         } else {
-            false
+            self.push_query_windows(IndexMap::new());
         };
 
         let mut lineage_nodes = vec![];
@@ -4504,11 +4532,23 @@ impl LineageContext {
             side_inputs.push(node_idx);
         }
 
-        // Push select columns (they can be referenced in group_by, having, qualify, and order_by clauses)
+        // Push query ctx with select columns (they can be referenced in group_by, having, qualify, and order_by clauses)
         self.push_query_ctx(
             IndexMap::from([(anon_obj_name, anon_obj_idx)]),
             HashSet::new(),
             true,
+        );
+
+        // Push select columns (these are never ambiguous)
+        let obj = &self.arena_objects[anon_obj_idx];
+        self.push_selected_columns(
+            obj.lineage_nodes
+                .iter()
+                .map(|idx| {
+                    let node = &self.arena_lineage_nodes[*idx];
+                    (node.name.string().to_lowercase(), *idx)
+                })
+                .collect::<IndexMap<_, _>>(),
         );
 
         if let Some(group_by) = &select_query_expr.select.group_by {
@@ -4600,9 +4640,9 @@ impl LineageContext {
             self.add_side_inputs_to_node(*lin_node_idx, &side_inputs);
         });
 
-        if pushed_query_windows {
-            self.pop_windows_query();
-        }
+        self.pop_query_windows();
+
+        self.pop_selected_columns();
 
         self.pop_curr_query_ctx();
 
@@ -4616,9 +4656,7 @@ impl LineageContext {
             self.pop_script_table();
         }
 
-        if pushed_context {
-            self.pop_curr_query_ctx();
-        }
+        self.pop_curr_query_ctx();
 
         Ok(anon_obj_idx)
     }
@@ -5515,11 +5553,10 @@ impl LineageContext {
 
         let mut side_inputs = vec![];
 
-        let pushed_context = if let Some(ref from) = update_statement.from {
+        if let Some(ref from) = update_statement.from {
             self.from_lin(catalog, from, &mut side_inputs)?;
-            true
         } else {
-            false
+            self.push_empty_query_ctx(true);
         };
 
         let target_table_obj = &self.arena_objects[target_table_id.unwrap()];
@@ -5570,9 +5607,7 @@ impl LineageContext {
 
         self.pop_curr_query_ctx();
 
-        if pushed_context {
-            self.pop_curr_query_ctx();
-        }
+        self.pop_curr_query_ctx();
         Ok(())
     }
 

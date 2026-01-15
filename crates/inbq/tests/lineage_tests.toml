@@ -3238,3 +3238,34 @@ r2.side_inputs = [
 [tests.referenced_columns."project.dataset.t1"]
 x1 = ["window"]
 x2 = ["window"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+with tmp as (
+  select x as ambiguous_col
+  from project.dataset.t1
+),
+
+tmp2 as (select x as ambiguous_col from project.dataset.t1)
+
+select tmp.ambiguous_col
+from tmp2 left join tmp on (tmp2.ambiguous_col = tmp.ambiguous_col)
+group by ambiguous_col
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+# NOTE: we may just have side_inputs!
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = ["project.dataset.t1->x"]
+x.side_inputs = [{ name = "project.dataset.t1->x", sides = ["join", "group_by"] }]
+[tests.referenced_columns."project.dataset.t1"]
+x = ["select"]
