@@ -143,6 +143,59 @@ SELECT * FROM
        ((((select * from Produce))))
 """
 
+
+[[tests]]
+sql="""
+select x
+    from (
+        (select 1 as x)
+        union all
+        (select 1 as x)
+    )
+"""
+
+
+[[tests]]
+sql="""
+select x
+    from ((
+        (select 1 as x)
+        union all
+        (select 1 as x)
+    ) union all (select 1 as x))
+"""
+
+[[tests]]
+sql="""
+select x
+    from ((
+        (select 1 as x)
+        union all
+        (select 1 as x)
+    ) union all (select 1 as x)) k
+"""
+
+[[tests]]
+sql="""
+select x
+    from ((
+        (select 1 as x)
+        union all
+        (select 1 as x)
+    )) k
+"""
+
+
+[[tests]]
+sql="""
+select x
+    from (
+        (select 1 as x)
+        union all
+        (select 1 as x)
+    ) k
+"""
+
 [[tests]]
 sql="""
 SELECT * FROM (select * from Produce)

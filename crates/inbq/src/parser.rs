@@ -2807,36 +2807,47 @@ impl<'a> Parser<'a> {
                 })
             };
 
+        let parse_from_grouping_query_expr = |parser: &mut Parser| -> anyhow::Result<FromExpr> {
+            let query_expr = parser.parse_query_expr()?;
+            parser.consume(TokenTypeVariant::RightParen)?;
+            let alias = parser.parse_from_item_alias()?;
+            let table_sample = parser.parse_tablesample()?;
+            let table_operator = fn_parse_table_operator(parser)?;
+            Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
+                query: Box::new(query_expr),
+                alias,
+                table_operator,
+                table_sample,
+            }))
+        };
+
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             let curr = self.curr;
+
             match self.parse_from_expr() {
                 Ok(parse_from_expr) => match parse_from_expr {
                     FromExpr::Join(_)
                     | FromExpr::LeftJoin(_)
                     | FromExpr::RightJoin(_)
-                    | FromExpr::FullJoin(_)
-                    | FromExpr::GroupingQuery(_) => {
-                        // Only these from expressions can be parenthesized
-                        self.consume(TokenTypeVariant::RightParen)?;
-                        Ok(FromExpr::GroupingFrom(GroupingFromExpr {
-                            query: Box::new(parse_from_expr),
-                        }))
+                    | FromExpr::FullJoin(_) => {
+                        if self.match_token_type(TokenTypeVariant::RightParen) {
+                            Ok(FromExpr::GroupingFrom(GroupingFromExpr {
+                                query: Box::new(parse_from_expr),
+                            }))
+                        } else {
+                            self.curr = curr;
+                            parse_from_grouping_query_expr(self)
+                        }
+                    }
+                    FromExpr::GroupingQuery(_) => {
+                        self.curr = curr;
+                        parse_from_grouping_query_expr(self)
                     }
                     _ => Err(anyhow!(self.error(self.peek(), "Expected `JOIN`."))),
                 },
                 Err(_) => {
                     self.curr = curr;
-                    let query_expr = self.parse_query_expr()?;
-                    self.consume(TokenTypeVariant::RightParen)?;
-                    let alias = self.parse_from_item_alias()?;
-                    let table_sample = self.parse_tablesample()?;
-                    let table_operator = fn_parse_table_operator(self)?;
-                    Ok(FromExpr::GroupingQuery(FromGroupingQueryExpr {
-                        query: Box::new(query_expr),
-                        alias,
-                        table_operator,
-                        table_sample,
-                    }))
+                    parse_from_grouping_query_expr(self)
                 }
             }
         } else if self.check_token_type(TokenTypeVariant::Unnest) {

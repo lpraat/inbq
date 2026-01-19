@@ -58,6 +58,15 @@ fn test_should_not_parse() {
       SELECT * FROM
         (((select * from Produce) inner join (select * from pro) on true))
       "#,
+        r#"
+      select x
+          from ((
+              (select 1 as x)
+              join
+              (select 1 as x)
+              using(x)
+          )) k
+      "#,
         // Cannot pivot grouped from expr
         r#"
       SELECT * FROM
