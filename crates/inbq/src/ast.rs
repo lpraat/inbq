@@ -1007,7 +1007,7 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Display)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Display, PartialEq, Eq)]
 pub enum BinaryOperator {
     BitwiseNot,
     Star,

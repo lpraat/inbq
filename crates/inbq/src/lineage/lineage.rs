@@ -1643,11 +1643,11 @@ impl LineageContext {
             return Ok(ctx_table_idx.arena_index);
         }
         if let Some(ctx_table_idx) = curr_stack.get(&name.to_lowercase()) {
-            // Ctes and table aliases are case insensitive
+            // Ctes, table aliases, unnests are case insensitive
             let obj = &self.arena_objects[ctx_table_idx.arena_index];
             if matches!(
                 obj.kind,
-                ContextObjectKind::TableAlias | ContextObjectKind::Cte
+                ContextObjectKind::TableAlias | ContextObjectKind::Cte | ContextObjectKind::Unnest
             ) {
                 return Ok(ctx_table_idx.arena_index);
             } else {
@@ -1712,14 +1712,18 @@ impl LineageContext {
                 }) {
                     *using_idx
                 } else {
-                    // if there are two table (not joined with using) at the same depth -> ambiguous
-                    let is_ambiguous = target_tables
-                        .iter()
-                        .map(|idx| (&self.arena_objects[idx.arena_index].name, idx.depth))
-                        .try_fold(HashSet::new(), |mut acc, (_, depth)| {
-                            if acc.insert(depth) { Some(acc) } else { None }
-                        })
-                        .is_none();
+                    // if there are atleast two table (not joined with using) at the same maximum depth -> ambiguous
+                    let is_ambiguous = if let Some(idx_with_max_depth) =
+                        target_tables.iter().max_by_key(|idx| idx.depth)
+                    {
+                        target_tables
+                            .iter()
+                            .filter(|&idx| idx.depth == idx_with_max_depth.depth)
+                            .count()
+                            > 1
+                    } else {
+                        false
+                    };
 
                     if is_ambiguous {
                         return Err(anyhow!(GetColumnError::Ambiguous(format!(
@@ -2364,7 +2368,15 @@ impl LineageContext {
                 }
                 (NodeType::BigNumeric, NodeType::Float64)
                 | (NodeType::Float64, NodeType::BigNumeric) => NodeType::Float64,
-                (NodeType::Int64, NodeType::Int64) => NodeType::Float64,
+                (NodeType::Int64, NodeType::Int64) => {
+                    if *op == BinaryOperator::Star {
+                        NodeType::Int64
+                    } else {
+                        NodeType::Float64
+                    }
+                }
+                (NodeType::Numeric, NodeType::Numeric) => NodeType::Numeric,
+                (NodeType::BigNumeric, NodeType::BigNumeric) => NodeType::BigNumeric,
                 (known, NodeType::Unknown) | (NodeType::Unknown, known) => {
                     if *known == NodeType::Int64 {
                         NodeType::Float64
@@ -4515,7 +4527,7 @@ impl LineageContext {
                                 lineage_nodes.push(new_node_idx);
                             }
                         }
-                        _ => unreachable!(),
+                        _ => return Err(anyhow!("Expected struct type in select table value.")),
                     }
                 }
                 _ => {}
@@ -4970,6 +4982,15 @@ impl LineageContext {
                         .collect(),
                 );
                 self.add_object_nodes_to_output_lineage(table_idx);
+
+                let table_idx = if let Some(alias) = source_name {
+                    let table_alias_idx =
+                        self.create_table_alias_from_table(alias.as_str(), table_idx);
+                    self.add_object_nodes_to_output_lineage(table_alias_idx);
+                    table_alias_idx
+                } else {
+                    table_idx
+                };
 
                 let table_idx = self.table_operator_lin(
                     catalog,

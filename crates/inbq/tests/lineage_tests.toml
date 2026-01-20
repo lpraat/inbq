@@ -3263,9 +3263,130 @@ name = "project.dataset.t1"
 kind.table.columns = [
     { name = "x", dtype = "int64" },
 ]
-# NOTE: we may just have side_inputs!
 [tests.ready_lineage."project.dataset.out"]
 x.inputs = ["project.dataset.t1->x"]
 x.side_inputs = [{ name = "project.dataset.t1->x", sides = ["join", "group_by"] }]
+[tests.referenced_columns."project.dataset.t1"]
+x = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+select alias.x + ALIAS.x from (select x from project.dataset.t1) alias
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = ["project.dataset.t1->x"]
+x.side_inputs = []
+[tests.referenced_columns."project.dataset.t1"]
+x = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+select ITEM_ALIAS+item_alias from project.dataset.t1, unnest(arr_x) item_alias
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "arr_x", dtype = "array<int64>" },
+]
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = ["project.dataset.t1->arr_x[]"]
+x.side_inputs = []
+[tests.referenced_columns."project.dataset.t1"]
+arr_x = ["unnest"]
+"arr_x[]" = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+select s.x+S.y from project.dataset.t1, unnest(arr_s) s
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "arr_s", dtype = "array<struct<x int64, y int64>>" },
+]
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = ["project.dataset.t1->arr_s[].x", "project.dataset.t1->arr_s[].y"]
+x.side_inputs = []
+[tests.referenced_columns."project.dataset.t1"]
+arr_s = ["unnest"]
+"arr_s[].x" = ["select"]
+"arr_s[].y" = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+select s.x+S.y from project.dataset.t1 t, t.arr_s as s
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "arr_s", dtype = "array<struct<x int64, y int64>>" },
+]
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = ["project.dataset.t1->arr_s[].x", "project.dataset.t1->arr_s[].y"]
+x.side_inputs = []
+[tests.referenced_columns."project.dataset.t1"]
+arr_s = ["unnest"]
+"arr_s[].x" = ["select"]
+"arr_s[].y" = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+with tmp1 as (
+    select x
+    from project.dataset.t1
+)
+
+, tmp2 as (
+    select x
+    from project.dataset.t1
+)
+, another_x as (select 1 as x)
+select 1
+from tmp1 inner join tmp2 on tmp1.x = tmp2.x
+where tmp2.x=(select x from another_x)
+"""
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.t1"
+kind.table.columns = [
+    { name = "x", dtype = "int64" },
+]
+[tests.ready_lineage."project.dataset.out"]
+x.inputs = []
+x.side_inputs = [{ name = "project.dataset.t1->x", sides = ["join", "where"]}]
 [tests.referenced_columns."project.dataset.t1"]
 x = ["select"]
