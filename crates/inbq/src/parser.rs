@@ -3295,7 +3295,6 @@ impl<'a> Parser<'a> {
 
         while self.match_token_types(token_types_to_match) {
             let operator = match &self.peek_prev().kind {
-                TokenType::BitwiseNot => BinaryOperator::BitwiseNot,
                 TokenType::Star => BinaryOperator::Star,
                 TokenType::Slash => BinaryOperator::Slash,
                 TokenType::ConcatOperator => BinaryOperator::Concat,

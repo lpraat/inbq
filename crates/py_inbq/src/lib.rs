@@ -977,11 +977,6 @@ impl RsToPyObject for ParameterizedType {
 impl RsToPyObject for BinaryOperator {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            BinaryOperator::BitwiseNot => instantiate_py_class(
-                py_ctx,
-                get_ast_class!(py_ctx, BinaryOperator::BitwiseNot)?,
-                &[],
-            ),
             BinaryOperator::Star => {
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Star)?, &[])
             }

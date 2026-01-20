@@ -3066,12 +3066,11 @@ impl LineageContext {
                 let node_idx =
                     self.expr_lin(catalog, &unary_expr.right, expand_value_table, node_origin)?;
                 let node_type = match unary_expr.operator {
-                    UnaryOperator::Plus | UnaryOperator::Minus => {
+                    UnaryOperator::Plus | UnaryOperator::Minus | UnaryOperator::BitwiseNot => {
                         let node = &self.arena_lineage_nodes[node_idx];
                         node.r#type.clone()
                     }
-                    UnaryOperator::BitwiseNot
-                    | UnaryOperator::IsNull
+                    UnaryOperator::IsNull
                     | UnaryOperator::IsNotNull
                     | UnaryOperator::IsTrue
                     | UnaryOperator::IsNotTrue

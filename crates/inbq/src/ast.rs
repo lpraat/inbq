@@ -1009,7 +1009,6 @@ pub struct BinaryExpr {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Display, PartialEq, Eq)]
 pub enum BinaryOperator {
-    BitwiseNot,
     Star,
     Slash,
     Concat,

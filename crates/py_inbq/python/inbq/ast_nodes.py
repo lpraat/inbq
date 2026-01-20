@@ -301,7 +301,6 @@ class AstNode:
             "Not": "UnaryOperator_Not",
         },
         "BinaryOperator": {
-            "BitwiseNot": "BinaryOperator_BitwiseNot",
             "Star": "BinaryOperator_Star",
             "Slash": "BinaryOperator_Slash",
             "Concat": "BinaryOperator_Concat",
@@ -2631,10 +2630,6 @@ class UnaryOperator_Not(AstNode): ...
 
 
 @dataclass
-class BinaryOperator_BitwiseNot(AstNode): ...
-
-
-@dataclass
 class BinaryOperator_Star(AstNode): ...
 
 
@@ -3816,8 +3811,7 @@ UnaryOperator: TypeAlias = (
     | UnaryOperator_Not
 )
 BinaryOperator: TypeAlias = (
-    BinaryOperator_BitwiseNot
-    | BinaryOperator_Star
+    BinaryOperator_Star
     | BinaryOperator_Slash
     | BinaryOperator_Concat
     | BinaryOperator_Plus
