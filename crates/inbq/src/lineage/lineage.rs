@@ -5548,6 +5548,8 @@ impl LineageContext {
         );
 
         self.expr_lin(catalog, &delete_statement.cond, false, NodeOrigin::Where)?;
+
+        self.pop_curr_query_ctx();
         Ok(())
     }
 
