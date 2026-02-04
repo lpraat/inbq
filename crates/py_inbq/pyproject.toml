@@ -35,7 +35,7 @@ module-name = "inbq._inbq"
 
 [dependency-groups]
 dev = [
-    "maturin>=1.9.6",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
+    "maturin>=1.11.5",
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
 ]
