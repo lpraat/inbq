@@ -117,6 +117,36 @@ a = ["select"]
 
 [[tests]]
 sql = """
+create temp table FOO(some_id string);
+
+insert into FOO
+select some_id from proj.dat.in_table;
+
+insert into proj.dat.out_table
+select
+    FoO.some_id,
+    foo.some_id
+from FOO;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "some_id", dtype = "string" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "col1", dtype = "string" }, { name = "col2", dtype = "string" }]
+[tests.ready_lineage."proj.dat.out_table"]
+col1.inputs = ["proj.dat.in_table->some_id"]
+col1.side_inputs = []
+col2.inputs = ["proj.dat.in_table->some_id"]
+col2.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+some_id = ["select"]
+
+
+[[tests]]
+sql = """
 insert into proj.dat.out_table
 with tmp as (
     select a

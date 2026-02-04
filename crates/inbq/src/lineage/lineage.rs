@@ -1524,7 +1524,7 @@ impl LineageContext {
             .into_iter()
             .map(|(k, v)| {
                 (
-                    k,
+                    k.to_lowercase(),
                     IndexDepth {
                         arena_index: v,
                         depth: self.query_depth,
@@ -1639,23 +1639,8 @@ impl LineageContext {
             .curr_query_tables()
             .ok_or_else(|| anyhow!("Table `{}` not found in context.", name))?;
 
-        if let Some(ctx_table_idx) = curr_stack.get(name) {
-            return Ok(ctx_table_idx.arena_index);
-        }
         if let Some(ctx_table_idx) = curr_stack.get(&name.to_lowercase()) {
-            // Ctes, table aliases, unnests are case insensitive
-            let obj = &self.arena_objects[ctx_table_idx.arena_index];
-            if matches!(
-                obj.kind,
-                ContextObjectKind::TableAlias | ContextObjectKind::Cte | ContextObjectKind::Unnest
-            ) {
-                return Ok(ctx_table_idx.arena_index);
-            } else {
-                return Err(anyhow!(
-                    "Found matching table name {} by ignoring case but it is not an alias.",
-                    name,
-                ));
-            }
+            return Ok(ctx_table_idx.arena_index);
         }
 
         Err(anyhow!("Table `{}` not found in context.", name))
@@ -1713,17 +1698,11 @@ impl LineageContext {
                     *using_idx
                 } else {
                     // if there are atleast two table (not joined with using) at the same maximum depth -> ambiguous
-                    let is_ambiguous = if let Some(idx_with_max_depth) =
-                        target_tables.iter().max_by_key(|idx| idx.depth)
-                    {
-                        target_tables
-                            .iter()
-                            .filter(|&idx| idx.depth == idx_with_max_depth.depth)
-                            .count()
-                            > 1
-                    } else {
-                        false
-                    };
+                    let is_ambiguous = target_tables
+                        .iter()
+                        .filter(|&idx| idx.depth == self.query_depth)
+                        .count()
+                        > 1;
 
                     if is_ambiguous {
                         return Err(anyhow!(GetColumnError::Ambiguous(format!(
@@ -1746,7 +1725,7 @@ impl LineageContext {
             let ctx_table = self
                 .curr_query_tables()
                 .unwrap()
-                .get(target_table_name)
+                .get(&target_table_name.to_lowercase())
                 .map(|idx| &self.arena_objects[idx.arena_index])
                 .unwrap();
 
@@ -3775,14 +3754,19 @@ impl LineageContext {
             }
 
             let source_indices = if let Some(using_idx) = sources.iter().find(|&idx| {
-                matches!(
-                    &self.arena_objects[idx.arena_index].kind,
-                    ContextObjectKind::UsingTable
-                )
+                idx.depth == self.query_depth
+                    && matches!(
+                        &self.arena_objects[idx.arena_index].kind,
+                        ContextObjectKind::UsingTable
+                    )
             }) {
                 vec![using_idx.arena_index]
             } else {
-                sources.iter().map(|idx| idx.arena_index).collect()
+                sources
+                    .iter()
+                    .filter(|&idx| idx.depth == self.query_depth)
+                    .map(|idx| idx.arena_index)
+                    .collect()
             };
 
             for source_idx in source_indices {
