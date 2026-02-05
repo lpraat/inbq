@@ -612,7 +612,7 @@ class AstNode:
         ):
             if data is None:
                 return None
-            return cls._instantiate_type_from_data(get_args(ty)[:-1], data)
+            return cls._instantiate_type_from_data(get_args(ty)[:-1], data)  # type: ignore
 
         elif isinstance(ty, tuple):
             first_type = ty[0]
@@ -650,14 +650,6 @@ class AstNode:
     def find_all(
         self, *node_types: typing.Type["AstNode"] | UnionType, bfs: bool = True
     ) -> Iterator["AstNode"]:
-        # Expand eventual Type Alias to node_types (to find all the variants)
-        expanded_node_types = []
-        for ty in node_types:
-            if type(ty) is UnionType:
-                expanded_node_types.extend(typing.get_args(ty))
-            else:
-                expanded_node_types.append(ty)
-
         pending = deque([self]) if bfs else [self]
 
         while pending:

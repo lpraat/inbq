@@ -13,29 +13,51 @@ with open(os.path.join(this_dir, "query.sql"), mode="r") as f:
 
 pipeline = (
     inbq.Pipeline()
-    .config(raise_exception_on_error=False, parallel=True)
+    .config(
+        # If the `pipeline` is configured with `raise_exception_on_error=False`,
+        # any error that occurs during parsing or lineage extraction is
+        # captured and returned as a `inbq.PipelineError`
+        raise_exception_on_error=False,
+        # No effect with only one query (may provide a speedup with multiple queries)
+        parallel=True,
+    )
     .parse()
     .extract_lineage(catalog=catalog, include_raw=False)
 )
-pipeline_output = inbq.run_pipeline(sqls=[query], pipeline=pipeline)
+sqls = [query]
+pipeline_output = inbq.run_pipeline(sqls, pipeline=pipeline)
 
-for ast, output_lineage in zip(pipeline_output.asts, pipeline_output.lineages):
+# This loop will iterate just once as we have only one query
+for i, (ast, output_lineage) in enumerate(
+    zip(pipeline_output.asts, pipeline_output.lineages)
+):
+    assert isinstance(ast, inbq.ast_nodes.Ast), (
+        f"Could not parse query `{sqls[i][:20]}...` due to: {ast.error}"
+    )
+
     print(f"{ast=}")
+
+    assert isinstance(output_lineage, inbq.lineage.Lineage), (
+        f"Could not extract lineage from query `{sqls[i][:20]}...` due to: {output_lineage.error}"
+    )
+
     print("\nLineage:")
-    for object in output_lineage.lineage.objects:
+    for lin_obj in output_lineage.lineage.objects:
         print("Inputs:")
-        for node in object.nodes:
+        for lin_node in lin_obj.nodes:
             print(
-                f"{object.name}->{node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in node.inputs]}"
+                f"{lin_obj.name}->{lin_node.name} <- {[f'{input_node.obj_name}->{input_node.node_name}' for input_node in lin_node.inputs]}"
             )
 
         print("\nSide inputs:")
-        for node in object.nodes:
+        for lin_node in lin_obj.nodes:
             print(
-                f"""{object.name}->{node.name} <- {[f"{input_node.obj_name}->{input_node.node_name} @ {','.join(input_node.sides)}" for input_node in node.side_inputs]}"""
+                f"""{lin_obj.name}->{lin_node.name} <- {[f"{input_node.obj_name}->{input_node.node_name} @ {','.join(input_node.sides)}" for input_node in lin_node.side_inputs]}"""
             )
 
     print("\nReferenced columns:")
-    for object in output_lineage.referenced_columns.objects:
-        for node in object.nodes:
-            print(f"{object.name}->{node.name} referenced in {node.referenced_in}")
+    for ref_obj in output_lineage.referenced_columns.objects:
+        for ref_node in ref_obj.nodes:
+            print(
+                f"{ref_obj.name}->{ref_node.name} referenced in {ref_node.referenced_in}"
+            )

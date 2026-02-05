@@ -1,16 +1,34 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 
 from inbq import ast_nodes as ast_nodes
 from inbq import lineage as lineage
 from inbq._inbq import parse_sql as parse_sql
-from inbq._inbq import parse_sqls as parse_sqls
 from inbq._inbq import parse_sql_to_dict as parse_sql_to_dict
+from inbq._inbq import parse_sqls as parse_sqls
 from inbq._inbq import parse_sqls_and_extract_lineage as parse_sqls_and_extract_lineage
 from inbq._inbq import run_pipeline as run_pipeline
 
+PipelineOutputType = TypeVar("PipelineOutputType")
 
-class Pipeline:
+
+@dataclass
+class PipelineError:
+    error: str
+
+
+@dataclass
+class PipelineParsingOutput:
+    asts: list[ast_nodes.Ast | PipelineError]
+
+
+@dataclass
+class PipelineParsingLineageOutput:
+    asts: list[ast_nodes.Ast | PipelineError]
+    lineages: list[lineage.Lineage | PipelineError]
+
+
+class Pipeline(Generic[PipelineOutputType]):
     _spec: dict
 
     def __init__(self, spec: Optional[dict] = None) -> None:
@@ -18,7 +36,7 @@ class Pipeline:
 
     def config(
         self, raise_exception_on_error: bool = False, parallel: bool = True
-    ) -> "Pipeline":
+    ) -> "Pipeline[None]":
         new_spec = {**self._spec}
         new_spec["config"] = {
             "raise_exception_on_error": raise_exception_on_error,
@@ -26,12 +44,14 @@ class Pipeline:
         }
         return Pipeline(spec=new_spec)
 
-    def parse(self) -> "Pipeline":
+    def parse(self) -> "Pipeline[PipelineParsingOutput]":
         new_spec = {**self._spec}
         new_spec["parse"] = {}
         return Pipeline(spec=new_spec)
 
-    def extract_lineage(self, catalog: dict, include_raw: bool = False) -> "Pipeline":
+    def extract_lineage(
+        self, catalog: dict, include_raw: bool = False
+    ) -> "Pipeline[PipelineParsingLineageOutput]":
         if "parse" not in self._spec:
             raise ValueError(
                 "Extracting lineage requires parsing. Call `parse()` first."
@@ -46,14 +66,3 @@ class Pipeline:
 
     def __repr__(self) -> str:
         return f"Pipeline(spec={self._spec!r})"
-
-
-@dataclass
-class PipelineError:
-    error: str
-
-
-@dataclass
-class PipelineOutput:
-    asts: list[ast_nodes.Ast | PipelineError]
-    lineages: Optional[list[dict | PipelineError]]

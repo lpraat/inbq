@@ -4532,6 +4532,8 @@ fn run_pipeline(
 
     let mut py_ctx = PyContext::new(py).unwrap();
 
+    let py_kwargs = PyDict::new(py);
+
     let py_asts = {
         let mut py_list = Vec::with_capacity(asts.len());
         let py_kwargs = PyDict::new(py);
@@ -4558,10 +4560,10 @@ fn run_pipeline(
         PyList::new(py_ctx.py, py_list)?
     };
 
-    let py_lineages = if let Some(lineages) = lineages {
+    let py_lineages = if let Some(lineages) = &lineages {
         let mut py_list = Vec::with_capacity(asts.len());
         let py_kwargs = PyDict::new(py);
-        for lineage in &lineages {
+        for lineage in lineages {
             match lineage {
                 Ok(lineage) => py_list.push(lineage.to_py_obj(&mut py_ctx).unwrap()),
                 Err(err) => {
@@ -4586,14 +4588,23 @@ fn run_pipeline(
         PyNone::get(py).into_bound().as_any().to_owned()
     };
 
-    let py_kwargs = PyDict::new(py);
     py_kwargs.set_item(intern!(py, "asts"), py_asts)?;
-    py_kwargs.set_item(intern!(py, "lineages"), py_lineages)?;
 
-    let pipeline_output_cls = py_ctx.inbq_module.getattr(intern!(py, "PipelineOutput"))?;
+    let pipeline_output_cls = if lineages.is_some() {
+        py_kwargs.set_item(intern!(py, "lineages"), py_lineages)?;
+        py_ctx
+            .inbq_module
+            .getattr(intern!(py, "PipelineParsingLineageOutput"))?
+    } else {
+        py_ctx
+            .inbq_module
+            .getattr(intern!(py, "PipelineParsingOutput"))?
+    };
+
     let pipeline_output = pipeline_output_cls
         .call(PyTuple::empty(py_ctx.py), Some(&py_kwargs))
         .unwrap();
+
     Ok(pipeline_output.into())
 }
 

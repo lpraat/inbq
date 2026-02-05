@@ -1,4 +1,4 @@
-from inbq import Pipeline, PipelineOutput
+from inbq import Pipeline, PipelineOutputType
 from inbq.ast_nodes import Ast
 from inbq.lineage import Lineage
 
@@ -55,13 +55,15 @@ def parse_sqls_and_extract_lineage(
     """
     ...
 
-def run_pipeline(sqls: list[str], pipeline: Pipeline) -> PipelineOutput:
+def run_pipeline(
+    sqls: list[str], pipeline: Pipeline[PipelineOutputType]
+) -> PipelineOutputType:
     """Runs a configured Pipeline on a list of BigQuery SQLs.
 
     If the `pipeline` is configured with `raise_exception_on_error=False`, any error that occurs during
-    parsing or lineage extraction is captured and returned as a `inbq.PipelineError` in the `inbq.PipelineOutput`.
+    parsing or lineage extraction is captured and returned as a `inbq.PipelineError`.
 
-    The current Pipeline supports a two‑step workflow: parsing the SQL into an AST followed by lineage extraction against a catalog.
+    The current Pipeline supports a two-step workflow: parsing the SQL into an AST followed by lineage extraction against a catalog.
     Future releases may allow additional stages to be chained in the same pipeline.
 
     Args:
@@ -69,5 +71,5 @@ def run_pipeline(sqls: list[str], pipeline: Pipeline) -> PipelineOutput:
         pipeline (Pipeline): configured pipeline instance.
 
     Returns:
-        `inbq.PipelineOutput`: pipeline output.
+        `PipelineOutputType`: pipeline output.
     """
