@@ -37,6 +37,8 @@ class Pipeline(Generic[PipelineOutputType]):
     def config(
         self, raise_exception_on_error: bool = False, parallel: bool = True
     ) -> "Pipeline[None]":
+        if "config" in self._spec:
+            raise ValueError("`config()` was already called.")
         new_spec = {**self._spec}
         new_spec["config"] = {
             "raise_exception_on_error": raise_exception_on_error,
@@ -45,6 +47,10 @@ class Pipeline(Generic[PipelineOutputType]):
         return Pipeline(spec=new_spec)
 
     def parse(self) -> "Pipeline[PipelineParsingOutput]":
+        if "config" not in self._spec:
+            raise ValueError("`config()` must be called before `parse()`.")
+        if "parse" in self._spec:
+            raise ValueError("`parse()` was already called.")
         new_spec = {**self._spec}
         new_spec["parse"] = {}
         return Pipeline(spec=new_spec)
@@ -56,6 +62,8 @@ class Pipeline(Generic[PipelineOutputType]):
             raise ValueError(
                 "Extracting lineage requires parsing. Call `parse()` first."
             )
+        if "extract_lineage" in self._spec:
+            raise ValueError("`extract_lineage()` was already called.")
         new_spec = {**self._spec}
         new_spec["extract_lineage"] = {"catalog": catalog, "include_raw": include_raw}
         return Pipeline(spec=new_spec)
