@@ -3420,3 +3420,24 @@ x.inputs = []
 x.side_inputs = [{ name = "project.dataset.t1->x", sides = ["join", "where"]}]
 [tests.referenced_columns."project.dataset.t1"]
 x = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+with tmp as (
+select distinct (a)
+from proj.dat.in_table
+)
+select a from tmp
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]

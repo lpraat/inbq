@@ -3068,12 +3068,21 @@ impl LineageContext {
                     node_origin,
                 )?;
                 let node = &self.arena_lineage_nodes[node_idx];
-                self.allocate_expr_node(
+                let allocated_node_idx = self.allocate_expr_node(
                     "grouping",
                     node.r#type.clone(),
                     node_origin,
                     vec![node_idx],
-                )
+                );
+                if let Expr::Identifier(Identifier { name })
+                | Expr::QuotedIdentifier(QuotedIdentifier { name }) = &*grouping_expr.expr
+                {
+                    let allocated_node = &mut self.arena_lineage_nodes[allocated_node_idx];
+                    allocated_node.name = NodeName::Defined(name.clone());
+                    allocated_node_idx
+                } else {
+                    allocated_node_idx
+                }
             }
             Expr::Identifier(Identifier { name: ident })
             | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
