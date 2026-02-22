@@ -29,3 +29,14 @@ strum_macros = { workspace = true }
 toml = { workspace = true }
 rayon = { workspace = true }
 bitflags = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "bench_parsing"
+harness = false
+
+[[bench]]
+name = "bench_lineage"
+harness = false

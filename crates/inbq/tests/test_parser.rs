@@ -1,17 +1,6 @@
-use inbq::parser::parse_sql;
-use serde::Deserialize;
+use inbq::{parser::parse_sql, test_utils::TestParsingData};
 
 const PARSING_TESTS_FILE: &str = "tests/parsing_tests.toml";
-
-#[derive(Deserialize, Debug)]
-struct ParsingTest {
-    sql: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct ParsingTestData {
-    tests: Vec<ParsingTest>,
-}
 
 fn test_sql(sql: &str) {
     let ast = parse_sql(sql);
@@ -25,7 +14,7 @@ fn test_sql(sql: &str) {
 fn test_should_parse() {
     let parsing_test_file =
         std::fs::read_to_string(PARSING_TESTS_FILE).expect("Cannot open parsing test cases");
-    let test_parsing_data: ParsingTestData =
+    let test_parsing_data: TestParsingData =
         toml::from_str(&parsing_test_file).expect("Cannot parse test cases defined in toml");
 
     for test in test_parsing_data.tests {

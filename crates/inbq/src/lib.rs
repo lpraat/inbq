@@ -89,3 +89,6 @@ pub mod ast;
 pub mod lineage;
 pub mod parser;
 pub mod scanner;
+
+#[doc(hidden)]
+pub mod test_utils;

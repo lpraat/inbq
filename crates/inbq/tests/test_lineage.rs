@@ -1,42 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use inbq::lineage::catalog::{Catalog, SchemaObject};
+use inbq::{
+    lineage::catalog::Catalog,
+    test_utils::{LINEAGE_TESTS_FILE, TestLineageData, TestSideInput},
+};
 use indexmap::IndexMap;
-use serde::Deserialize;
-
-#[derive(Deserialize, Debug, Clone)]
-struct SideInput {
-    name: String,
-    sides: Vec<String>,
-}
-
-impl PartialEq for SideInput {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.sides.iter().collect::<HashSet<_>>() == other.sides.iter().collect()
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct LineageInputs {
-    inputs: Vec<String>,
-    side_inputs: Vec<SideInput>,
-}
-
-#[derive(Deserialize, Debug)]
-struct LineageTest {
-    sql: String,
-    schema_objects: Vec<SchemaObject>,
-    ready_lineage: HashMap<String, HashMap<String, LineageInputs>>,
-    referenced_columns: HashMap<String, HashMap<String, Vec<String>>>,
-}
-
-#[derive(Deserialize, Debug)]
-struct LineageTestData {
-    tests: Vec<LineageTest>,
-}
-
-const LINEAGE_TESTS_FILE: &str = "tests/lineage_tests.toml";
 
 #[test]
 fn test_lineage() {
@@ -44,7 +12,7 @@ fn test_lineage() {
 
     let lineage_data_file =
         std::fs::read_to_string(LINEAGE_TESTS_FILE).expect("Cannot open lineage test cases");
-    let test_lineage_data: LineageTestData =
+    let test_lineage_data: TestLineageData =
         toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in toml");
 
     for test in test_lineage_data.tests {
@@ -74,7 +42,7 @@ fn test_lineage() {
         // Test ready lineage
         let mut ready_lineage_map: IndexMap<
             String,
-            IndexMap<String, (Vec<String>, Vec<SideInput>)>,
+            IndexMap<String, (Vec<String>, Vec<TestSideInput>)>,
         > = IndexMap::new();
         for obj in ready_lineage.objects {
             ready_lineage_map.insert(
@@ -91,7 +59,7 @@ fn test_lineage() {
                                     .collect(),
                                 node.side_inputs
                                     .into_iter()
-                                    .map(|inp| SideInput {
+                                    .map(|inp| TestSideInput {
                                         name: format!("{}->{}", inp.obj_name, inp.node_name),
                                         sides: inp.sides,
                                     })
