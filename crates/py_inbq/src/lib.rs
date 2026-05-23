@@ -15,23 +15,24 @@ use inbq::{
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
         BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-        CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema,
-        ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr, CreateJsFunctionStatement,
-        CreateSchemaStatement, CreateSqlFunctionStatement, CreateTableStatement,
-        CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
-        CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr, DateDiffFunctionExpr,
-        DateTruncFunctionExpr, DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption,
-        DeclareVarStatement, DeleteStatement, DifferentialPrivacy, DifferentialPrivacyOption,
-        DropFunctionStatement, DropSchemaMode, DropSchemaStatement, DropTableStatement,
-        DropViewStatement, ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr,
-        ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
-        ForeignKeyReference, FrameBound, FromExpr, FromGroupingQueryExpr, FromPathExpr,
-        FromUnnestExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
-        FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
-        FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy,
-        GroupByExpr, GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier,
-        IfBranch, IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart,
-        JoinCondition, JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr,
+        CastFunctionExpr, CastFunctionFormat, ChainedFunctionExpr, ChainedGenericFunctionExpr,
+        CoalesceFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot,
+        ConcatFunctionExpr, CreateJsFunctionStatement, CreateSchemaStatement,
+        CreateSqlFunctionStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
+        CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr,
+        DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
+        DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
+        DifferentialPrivacy, DifferentialPrivacyOption, DropFunctionStatement, DropSchemaMode,
+        DropSchemaStatement, DropTableStatement, DropViewStatement, ExecuteImmediateStatement,
+        ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
+        ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, FromExpr,
+        FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
+        FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
+        FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
+        GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr,
+        GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+        IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+        JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr,
         LikeQuantifier, Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement,
         MergeUpdate, MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte,
         NormalizationMode, NormalizeAndCasefoldFunctionExpr, NormalizeFunctionExpr, Number,
@@ -1105,6 +1106,11 @@ impl RsToPyObject for BinaryOperator {
                 get_ast_class!(py_ctx, BinaryOperator::IsNotDistinctFrom)?,
                 &[],
             ),
+            BinaryOperator::FunctionAccess => instantiate_py_class(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::FunctionAccess)?,
+                &[],
+            ),
         }
     }
 }
@@ -1537,6 +1543,24 @@ impl RsToPyObject for GenericFunctionExpr {
             kwarg!(py_ctx, "over", self.over),
         ];
         instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GenericFunctionExpr)?, kwargs)
+    }
+}
+
+impl RsToPyObject for ChainedGenericFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "function", self.function)];
+        instantiate_py_class(
+            py_ctx,
+            get_ast_class!(py_ctx, ChainedGenericFunctionExpr)?,
+            kwargs,
+        )
+    }
+}
+
+impl RsToPyObject for ChainedFunctionExpr {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        let kwargs = &[kwarg!(py_ctx, "function", self.function)];
+        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ChainedFunctionExpr)?, kwargs)
     }
 }
 
@@ -2528,9 +2552,29 @@ impl RsToPyObject for Expr {
                     kwargs,
                 )
             }
+            Expr::ChainedGenericFunction(chained_generic_function_expr) => {
+                let kwargs = &[kwarg!(
+                    py_ctx,
+                    VARIANT_FIELD_NAME,
+                    chained_generic_function_expr
+                )];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::ChainedGenericFunction)?,
+                    kwargs,
+                )
+            }
             Expr::Function(function_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, function_expr)];
                 instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Function)?, kwargs)
+            }
+            Expr::ChainedFunction(chained_function_expr) => {
+                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, chained_function_expr)];
+                instantiate_py_class(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::ChainedFunction)?,
+                    kwargs,
+                )
             }
             Expr::QuantifiedLike(quantified_like_expr) => {
                 let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quantified_like_expr)];

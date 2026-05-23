@@ -180,8 +180,10 @@ class AstNode:
             "Star": "Expr_Star",
             "Query": "Expr_Query",
             "Case": "Expr_Case",
+            "ChainedGenericFunction": "Expr_ChainedGenericFunction",
             "GenericFunction": "Expr_GenericFunction",
             "Function": "Expr_Function",
+            "ChainedFunction": "Expr_ChainedFunction",
             "QuantifiedLike": "Expr_QuantifiedLike",
             "Exists": "Expr_Exists",
             "Unnest": "Expr_Unnest",
@@ -331,6 +333,7 @@ class AstNode:
             "Or": "BinaryOperator_Or",
             "ArrayIndex": "BinaryOperator_ArrayIndex",
             "FieldAccess": "BinaryOperator_FieldAccess",
+            "FunctionAccess": "BinaryOperator_FunctionAccess",
         },
         "LikeQuantifier": {
             "Any": "LikeQuantifier_Any",
@@ -1005,6 +1008,16 @@ class WhenNotMatchedBySource(AstNode):
 
 
 @dataclass
+class ChainedGenericFunctionExpr(AstNode):
+    function: "GenericFunctionExpr"
+
+
+@dataclass
+class ChainedFunctionExpr(AstNode):
+    function: "FunctionExpr"
+
+
+@dataclass
 class UnnestExpr(AstNode):
     array: "Expr"
 
@@ -1225,7 +1238,7 @@ class IfFunctionExpr(AstNode):
 
 @dataclass
 class GenericFunctionExpr(AstNode):
-    name: "Name"
+    name: "PathName"
     arguments: "list[GenericFunctionExprArg]"
     over: "Optional[NamedWindowExpr]"
 
@@ -2190,6 +2203,11 @@ class Expr_Case(AstNode):
 
 
 @dataclass
+class Expr_ChainedGenericFunction(AstNode):
+    vty: "ChainedGenericFunctionExpr"
+
+
+@dataclass
 class Expr_GenericFunction(AstNode):
     vty: "GenericFunctionExpr"
 
@@ -2197,6 +2215,11 @@ class Expr_GenericFunction(AstNode):
 @dataclass
 class Expr_Function(AstNode):
     vty: "FunctionExpr"
+
+
+@dataclass
+class Expr_ChainedFunction(AstNode):
+    vty: "ChainedFunctionExpr"
 
 
 @dataclass
@@ -2739,6 +2762,10 @@ class BinaryOperator_ArrayIndex(AstNode): ...
 
 @dataclass
 class BinaryOperator_FieldAccess(AstNode): ...
+
+
+@dataclass
+class BinaryOperator_FunctionAccess(AstNode): ...
 
 
 @dataclass
@@ -3687,8 +3714,10 @@ Expr: TypeAlias = (
     | Expr_Star
     | Expr_Query
     | Expr_Case
+    | Expr_ChainedGenericFunction
     | Expr_GenericFunction
     | Expr_Function
+    | Expr_ChainedFunction
     | Expr_QuantifiedLike
     | Expr_Exists
     | Expr_Unnest
@@ -3833,6 +3862,7 @@ BinaryOperator: TypeAlias = (
     | BinaryOperator_Or
     | BinaryOperator_ArrayIndex
     | BinaryOperator_FieldAccess
+    | BinaryOperator_FunctionAccess
 )
 LikeQuantifier: TypeAlias = (
     LikeQuantifier_Any | LikeQuantifier_Some | LikeQuantifier_All

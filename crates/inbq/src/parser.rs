@@ -5,27 +5,27 @@ use strum::IntoDiscriminant;
 use crate::ast::{
     ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
     BytesConcatExpr, CallStatement, CaseExpr, CaseStatement, CaseWhenThenStatements,
-    CastFunctionExpr, CastFunctionFormat, CoalesceFunctionExpr, ColumnSchema, ColumnSetToUnpivot,
-    ColumnToUnpivot, ConcatFunctionExpr, CreateJsFunctionStatement, CreateSchemaStatement,
-    CreateSqlFunctionStatement, CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte,
-    CurrentDateFunctionExpr, CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr,
-    DateDiffFunctionExpr, DateTruncFunctionExpr, DatetimeDiffFunctionExpr,
-    DatetimeTruncFunctionExpr, DdlOption, DeclareVarStatement, DeleteStatement,
-    DifferentialPrivacy, DifferentialPrivacyOption, DropFunctionStatement, DropSchemaMode,
-    DropSchemaStatement, DropTableStatement, DropViewStatement, ExecuteImmediateStatement,
-    ExecuteImmediateUsingIdentifier, Expr, ExtractFunctionExpr, ExtractFunctionPart,
-    ForInStatement, ForeignKeyConstraintNotEnforced, ForeignKeyReference, FrameBound, From,
-    FromExpr, FromGroupingQueryExpr, FromPathExpr, FromUnnestExpr, FunctionAggregate,
-    FunctionAggregateHaving, FunctionAggregateHavingKind, FunctionAggregateNulls,
-    FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType, FunctionExpr,
-    GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr, GroupingExpr,
-    GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch, IfFunctionExpr, IfStatement,
-    InsertStatement, IntervalExpr, IntervalPart, JoinCondition, JoinExpr, JoinKind,
-    LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier, Limit, LoopStatement,
-    Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, MultiColumnUnpivot, Name,
-    NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy, OrderByExpr, OrderByNulls,
-    OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot, PivotAggregate,
-    PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
+    CastFunctionExpr, CastFunctionFormat, ChainedFunctionExpr, ChainedGenericFunctionExpr,
+    CoalesceFunctionExpr, ColumnSchema, ColumnSetToUnpivot, ColumnToUnpivot, ConcatFunctionExpr,
+    CreateJsFunctionStatement, CreateSchemaStatement, CreateSqlFunctionStatement,
+    CreateTableStatement, CreateViewStatement, CrossJoinExpr, Cte, CurrentDateFunctionExpr,
+    CurrentDatetimeFunctionExpr, CurrentTimeFunctionExpr, DateDiffFunctionExpr,
+    DateTruncFunctionExpr, DatetimeDiffFunctionExpr, DatetimeTruncFunctionExpr, DdlOption,
+    DeclareVarStatement, DeleteStatement, DifferentialPrivacy, DifferentialPrivacyOption,
+    DropFunctionStatement, DropSchemaMode, DropSchemaStatement, DropTableStatement,
+    DropViewStatement, ExecuteImmediateStatement, ExecuteImmediateUsingIdentifier, Expr,
+    ExtractFunctionExpr, ExtractFunctionPart, ForInStatement, ForeignKeyConstraintNotEnforced,
+    ForeignKeyReference, FrameBound, From, FromExpr, FromGroupingQueryExpr, FromPathExpr,
+    FromUnnestExpr, FunctionAggregate, FunctionAggregateHaving, FunctionAggregateHavingKind,
+    FunctionAggregateNulls, FunctionAggregateOrderBy, FunctionArgument, FunctionArgumentType,
+    FunctionExpr, GenericFunctionExpr, GenericFunctionExprArg, Granularity, GroupBy, GroupByExpr,
+    GroupingExpr, GroupingFromExpr, GroupingQueryExpr, Having, Identifier, IfBranch,
+    IfFunctionExpr, IfStatement, InsertStatement, IntervalExpr, IntervalPart, JoinCondition,
+    JoinExpr, JoinKind, LabeledStatement, LastDayFunctionExpr, LeftFunctionExpr, LikeQuantifier,
+    Limit, LoopStatement, Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate,
+    MultiColumnUnpivot, Name, NamedWindow, NamedWindowExpr, NonRecursiveCte, Number, OrderBy,
+    OrderByExpr, OrderByNulls, OrderBySortDirection, ParameterizedType, PathName, PathPart, Pivot,
+    PivotAggregate, PivotColumn, PrimaryKeyConstraintNotEnforced, Qualify, QuantifiedLikeExpr,
     QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, RaiseStatement,
     RangeExpr, RecursiveCte, RepeatStatement, RightFunctionExpr, SafeCastFunctionExpr, Select,
     SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
@@ -41,6 +41,19 @@ use crate::ast::{
     WithExprVar,
 };
 use crate::scanner::Scanner;
+
+#[derive(Debug, Clone)]
+pub struct ImplicitArgExpr {
+    expr: Expr,
+    is_parenthesized: bool,
+    is_receiver_parenthesized: bool,
+}
+
+impl ImplicitArgExpr {
+    fn is_identifier(&self) -> bool {
+        !matches!(self.expr, Expr::Identifier(_) | Expr::QuotedIdentifier(_))
+    }
+}
 
 pub struct Parser<'a> {
     source_tokens: &'a Vec<Token>,
@@ -191,6 +204,27 @@ impl<'a> Parser<'a> {
             TokenTypeVariant::Identifier,
             TokenTypeVariant::QuotedIdentifier,
         ])
+    }
+
+    /// Consumes a function identifier.
+    ///
+    /// If `is_chained` is true, it consumes optional enclosing parentheses
+    /// surrounding the identifier (e.g., `.(concat)()`).
+    fn consume_function_name(&mut self, is_chained: bool) -> anyhow::Result<()> {
+        if is_chained {
+            self.match_token_type(TokenTypeVariant::LeftParen);
+            self.consume_one_of(&[
+                TokenTypeVariant::Identifier,
+                TokenTypeVariant::QuotedIdentifier,
+            ])?;
+            self.match_token_type(TokenTypeVariant::RightParen);
+        } else {
+            self.consume_one_of(&[
+                TokenTypeVariant::Identifier,
+                TokenTypeVariant::QuotedIdentifier,
+            ])?;
+        }
+        Ok(())
     }
 
     fn consume_identifier_into_name(&mut self) -> anyhow::Result<Name> {
@@ -2318,10 +2352,10 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let distinct = if self.match_token_type(TokenTypeVariant::Distinct) {
-            true
+        let distinct = if self.match_token_type(TokenTypeVariant::All) {
+            false
         } else {
-            !self.match_token_type(TokenTypeVariant::All)
+            self.match_token_type(TokenTypeVariant::Distinct)
         };
 
         let table_value = if self.match_token_type(TokenTypeVariant::As) {
@@ -2771,9 +2805,9 @@ impl<'a> Parser<'a> {
                 columns: using_columns,
             })
         } else {
-            return Err(anyhow!(
+            Err(anyhow!(
                 self.error(self.peek(), "Expected `ON` or `USING`.")
-            ));
+            ))
         }
     }
 
@@ -3594,7 +3628,9 @@ impl<'a> Parser<'a> {
                     right: Box::new(Expr::Star),
                 }));
             }
+
             let right = self.parse_array_subscript_operator()?;
+
             output = Expr::Binary(BinaryExpr {
                 left: Box::new(output),
                 operator: BinaryOperator::FieldAccess,
@@ -3606,10 +3642,10 @@ impl<'a> Parser<'a> {
 
     /// Rule:
     /// ```text
-    /// array_subscript_operator -> primary_expr | primary_expr ("[" expr "]")*
+    /// array_subscript_operator -> chained_function_expr | chained_function_expr ("[" expr "]")*
     /// ```
     fn parse_array_subscript_operator(&mut self) -> anyhow::Result<Expr> {
-        let mut output = self.parse_primary_expr()?;
+        let mut output = self.parse_chained_function_expr()?;
 
         while self.match_token_type(TokenTypeVariant::LeftSquare) {
             let index = self.parse_expr()?;
@@ -3619,6 +3655,43 @@ impl<'a> Parser<'a> {
                 operator: BinaryOperator::ArrayIndex,
                 right: Box::new(index),
             });
+        }
+        Ok(output)
+    }
+
+    /// Rule:
+    /// ```text
+    /// chained_function_expr -> primary_expr | primary_expr ("." function_expr)*
+    /// ```
+    fn parse_chained_function_expr(&mut self) -> anyhow::Result<Expr> {
+        let mut output = self.parse_primary_expr()?;
+
+        while self.check_token_type(TokenTypeVariant::Dot) {
+            let is_parenthesized_chained = self.peek_next_i(1).kind == TokenType::LeftParen;
+
+            let is_normal_chained = matches!(
+                &self.peek_next_i(1).kind,
+                TokenType::Identifier(_) | TokenType::QuotedIdentifier(_)
+            ) && self.peek_next_i(2).kind == TokenType::LeftParen;
+
+            if is_normal_chained || is_parenthesized_chained {
+                self.consume(TokenTypeVariant::Dot)?;
+
+                let implicit_arg = Some(ImplicitArgExpr {
+                    expr: output.clone(),
+                    is_parenthesized: matches!(output, Expr::Grouping(_)),
+                    is_receiver_parenthesized: is_parenthesized_chained,
+                });
+
+                let right = self.parse_function_expr(implicit_arg)?;
+                output = Expr::Binary(BinaryExpr {
+                    left: Box::new(output),
+                    operator: BinaryOperator::FunctionAccess,
+                    right: Box::new(right),
+                });
+            } else {
+                break;
+            }
         }
         Ok(output)
     }
@@ -4166,19 +4239,23 @@ impl<'a> Parser<'a> {
     /// ```text
     /// concat_fn -> "CONCAT" "(" expr  ( "," expr )* ")"
     /// ```
-    fn parse_concat_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_concat_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
 
-        let mut values = vec![];
-        loop {
-            let value = self.parse_expr()?;
-            values.push(value);
-            if !self.match_token_type(TokenTypeVariant::Comma) {
-                break;
+        let mut values = if let Some(arg) = implicit_arg {
+            vec![arg.clone()]
+        } else {
+            vec![]
+        };
+
+        if implicit_arg.is_none() || !self.check_token_type(TokenTypeVariant::RightParen) {
+            loop {
+                let value = self.parse_expr()?;
+                values.push(value);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
             }
         }
         self.consume(TokenTypeVariant::RightParen)?;
@@ -4231,12 +4308,30 @@ impl<'a> Parser<'a> {
     /// ```text
     /// safe_cast -> "SAFE_CAST" "(" expr "AS" bq_parameterized_type ["FORMAT" expr] ")"
     /// ```
-    fn parse_safe_cast_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
-        let (expr, r#type, format) = self.parse_cast_fn_arguments()?;
+    fn parse_safe_cast_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
+        let (expr, r#type, format) = if let Some(arg) = implicit_arg {
+            self.consume(TokenTypeVariant::LeftParen)?;
+            self.consume(TokenTypeVariant::As)?;
+            let r#type = self.parse_parameterized_bq_type()?;
+            let format = if self.match_non_reserved_keyword("format") {
+                let format = self.parse_expr()?;
+                let time_zone = if self.match_token_type(TokenTypeVariant::At) {
+                    self.consume_non_reserved_keyword("time")?;
+                    self.consume_non_reserved_keyword("zone")?;
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+                Some(CastFunctionFormat { format, time_zone })
+            } else {
+                None
+            };
+            self.consume(TokenTypeVariant::RightParen)?;
+            (Box::new(arg.clone()), r#type, format)
+        } else {
+            self.parse_cast_fn_arguments()?
+        };
         Ok(Expr::Function(Box::new(FunctionExpr::SafeCast(
             SafeCastFunctionExpr {
                 expr,
@@ -4258,16 +4353,17 @@ impl<'a> Parser<'a> {
     ///  ["ORDER" "BY" expr ("ASC" | "DESC") ("," expr ("ASC" | "DESC"))*]
     ///  ["LIMIT" "Number"]
     /// ```
-    fn parse_array_agg_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_array_agg_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
 
         let distinct = self.match_token_type(TokenTypeVariant::Distinct);
 
-        let arg_expr = self.parse_expr()?;
+        let arg_expr = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            self.parse_expr()?
+        };
 
         let nulls =
             if self.match_token_types(&[TokenTypeVariant::Ignore, TokenTypeVariant::Respect]) {
@@ -4392,22 +4488,26 @@ impl<'a> Parser<'a> {
     /// ```text
     /// current_time -> "CURRENT_TIME" | "CURRENT_TIME" "(" [expr] ")"
     /// ```
-    fn parse_current_time_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_current_time_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
 
-        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
-            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
-                None
-            } else {
-                Some(self.parse_expr()?)
-            };
-            self.consume(TokenTypeVariant::RightParen)?;
-            timezone
+        let timezone = if let Some(arg) = implicit_arg {
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                self.consume(TokenTypeVariant::RightParen)?;
+            }
+            Some(arg.clone())
         } else {
-            None
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                    None
+                } else {
+                    Some(self.parse_expr()?)
+                };
+                self.consume(TokenTypeVariant::RightParen)?;
+                timezone
+            } else {
+                None
+            }
         };
 
         Ok(Expr::Function(Box::new(FunctionExpr::CurrentTime(
@@ -4419,22 +4519,29 @@ impl<'a> Parser<'a> {
     /// ```text
     /// current_datetime -> "CURRENT_DATETIME" | "CURRENT_DATETIME" "(" [expr] ")"
     /// ```
-    fn parse_current_datetime_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_current_datetime_fn_expr(
+        &mut self,
+        implicit_arg: Option<&Expr>,
+    ) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
 
-        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
-            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
-                None
-            } else {
-                Some(self.parse_expr()?)
-            };
-            self.consume(TokenTypeVariant::RightParen)?;
-            timezone
+        let timezone = if let Some(arg) = implicit_arg {
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                self.consume(TokenTypeVariant::RightParen)?;
+            }
+            Some(arg.clone())
         } else {
-            None
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                    None
+                } else {
+                    Some(self.parse_expr()?)
+                };
+                self.consume(TokenTypeVariant::RightParen)?;
+                timezone
+            } else {
+                None
+            }
         };
 
         Ok(Expr::Function(Box::new(FunctionExpr::CurrentDatetime(
@@ -4446,22 +4553,26 @@ impl<'a> Parser<'a> {
     /// ```text
     /// current_date -> "CURRENT_DATE" | "CURRENT_DATE" "(" [expr] ")"
     /// ```
-    fn parse_current_date_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_current_date_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
 
-        let timezone = if self.match_token_type(TokenTypeVariant::LeftParen) {
-            let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
-                None
-            } else {
-                Some(self.parse_expr()?)
-            };
-            self.consume(TokenTypeVariant::RightParen)?;
-            timezone
+        let timezone = if let Some(arg) = implicit_arg {
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                self.consume(TokenTypeVariant::RightParen)?;
+            }
+            Some(arg.clone())
         } else {
-            None
+            if self.match_token_type(TokenTypeVariant::LeftParen) {
+                let timezone = if self.check_token_type(TokenTypeVariant::RightParen) {
+                    None
+                } else {
+                    Some(self.parse_expr()?)
+                };
+                self.consume(TokenTypeVariant::RightParen)?;
+                timezone
+            } else {
+                None
+            }
         };
 
         Ok(Expr::Function(Box::new(FunctionExpr::CurrentDate(
@@ -4473,11 +4584,11 @@ impl<'a> Parser<'a> {
     /// ```text
     /// current_timestamp -> "CURRENT_TIMESTAMP" | "CURRENT_TIMESTAMP" "(" ")"
     /// ```
-    fn parse_current_timestamp_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_one_of(&[
-            TokenTypeVariant::Identifier,
-            TokenTypeVariant::QuotedIdentifier,
-        ])?;
+    fn parse_current_timestamp_fn_expr(
+        &mut self,
+        implicit_arg: Option<&Expr>,
+    ) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
 
         if self.match_token_type(TokenTypeVariant::LeftParen) {
             self.consume(TokenTypeVariant::RightParen)?;
@@ -4593,11 +4704,16 @@ impl<'a> Parser<'a> {
     /// ```text
     /// date_diff -> "DATE_DIFF" "(" expr "," expr "," granularity ")"
     /// ```
-    fn parse_date_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_date_diff_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let start_date = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let start_date = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let start = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            start
+        };
         let end_date = self.parse_expr()?;
         self.consume(TokenTypeVariant::Comma)?;
         let granularity = self.parse_granularity()?;
@@ -4615,11 +4731,16 @@ impl<'a> Parser<'a> {
     /// ```text
     /// datetime_diff -> "DATETIME_DIFF" "(" expr "," expr "," granularity ")"
     /// ```
-    fn parse_datetime_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_datetime_diff_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let start_datetime = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let start_datetime = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let start = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            start
+        };
         let end_datetime = self.parse_expr()?;
         self.consume(TokenTypeVariant::Comma)?;
         let granularity = self.parse_granularity()?;
@@ -4637,11 +4758,19 @@ impl<'a> Parser<'a> {
     /// ```text
     /// timestamp_diff -> "TIMESTAMP_DIFF" "(" expr "," expr "," granularity ")"
     /// ```
-    fn parse_timestamp_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_timestamp_diff_fn_expr(
+        &mut self,
+        implicit_arg: Option<&Expr>,
+    ) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let start_timestamp = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let start_timestamp = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let start = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            start
+        };
         let end_timestamp = self.parse_expr()?;
         self.consume(TokenTypeVariant::Comma)?;
         let granularity = self.parse_granularity()?;
@@ -4659,11 +4788,16 @@ impl<'a> Parser<'a> {
     /// ```text
     /// time_diff -> "TIME_DIFF" "(" expr "," expr "," granularity ")"
     /// ```
-    fn parse_time_diff_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_time_diff_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let start_time = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let start_time = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let start = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            start
+        };
         let end_time = self.parse_expr()?;
         self.consume(TokenTypeVariant::Comma)?;
         let granularity = self.parse_granularity()?;
@@ -4681,11 +4815,16 @@ impl<'a> Parser<'a> {
     /// ```text
     /// date_trunc -> "DATE_TRUNC" "(" expr "," granularity ")"
     /// ```
-    fn parse_date_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_date_trunc_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let date = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let date = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let d = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            d
+        };
         let granularity = self.parse_granularity()?;
         self.consume(TokenTypeVariant::RightParen)?;
         Ok(Expr::Function(Box::new(FunctionExpr::DateTrunc(
@@ -4697,11 +4836,19 @@ impl<'a> Parser<'a> {
     /// ```text
     /// datetime_trunc -> "DATETIME_TRUNC" "(" expr "," granularity ("," expr) ")"
     /// ```
-    fn parse_datetime_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_datetime_trunc_fn_expr(
+        &mut self,
+        implicit_arg: Option<&Expr>,
+    ) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let datetime = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let datetime = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let dt = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            dt
+        };
         let granularity = self.parse_granularity()?;
         let timezone = if self.match_token_type(TokenTypeVariant::Comma) {
             Some(self.parse_expr()?)
@@ -4722,11 +4869,19 @@ impl<'a> Parser<'a> {
     /// ```text
     /// timestamp_trunc -> "TIMESTAMP_TRUNC" "(" expr "," granularity ("," expr) ")"
     /// ```
-    fn parse_timestamp_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_timestamp_trunc_fn_expr(
+        &mut self,
+        implicit_arg: Option<&Expr>,
+    ) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let timestamp = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let timestamp = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let ts = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            ts
+        };
         let granularity = self.parse_granularity()?;
         let timezone = if self.match_token_type(TokenTypeVariant::Comma) {
             Some(self.parse_expr()?)
@@ -4747,11 +4902,16 @@ impl<'a> Parser<'a> {
     /// ```text
     /// time_trunc -> "TIME_TRUNC" "(" expr "," granularity ")"
     /// ```
-    fn parse_time_trunc_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_time_trunc_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let time = self.parse_expr()?;
-        self.consume(TokenTypeVariant::Comma)?;
+        let time = if let Some(arg) = implicit_arg {
+            arg.clone()
+        } else {
+            let t = self.parse_expr()?;
+            self.consume(TokenTypeVariant::Comma)?;
+            t
+        };
         let granularity = self.parse_granularity()?;
         self.consume(TokenTypeVariant::RightParen)?;
         Ok(Expr::Function(Box::new(FunctionExpr::TimeTrunc(
@@ -4763,14 +4923,26 @@ impl<'a> Parser<'a> {
     /// ```text
     /// last_day -> "LAST_DAY" "(" expr ["," granularity] ")"
     /// ```
-    fn parse_last_day_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_last_day_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let expr = self.parse_expr()?;
-        let part = if self.match_token_type(TokenTypeVariant::Comma) {
-            Some(self.parse_granularity()?)
+        let expr = if let Some(arg) = implicit_arg {
+            arg.clone()
         } else {
-            None
+            self.parse_expr()?
+        };
+        let part = if implicit_arg.is_some() {
+            if !self.check_token_type(TokenTypeVariant::RightParen) {
+                Some(self.parse_granularity()?)
+            } else {
+                None
+            }
+        } else {
+            if self.match_token_type(TokenTypeVariant::Comma) {
+                Some(self.parse_granularity()?)
+            } else {
+                None
+            }
         };
         self.consume(TokenTypeVariant::RightParen)?;
         Ok(Expr::Function(Box::new(FunctionExpr::LastDay(
@@ -4785,14 +4957,22 @@ impl<'a> Parser<'a> {
     /// ```text
     /// coalesce -> "COALESCE" "(" expr ("," expr)* ")"
     /// ```
-    fn parse_coalesce_fn_expr(&mut self) -> anyhow::Result<Expr> {
-        self.consume_identifier()?;
+    fn parse_coalesce_fn_expr(&mut self, implicit_arg: Option<&Expr>) -> anyhow::Result<Expr> {
+        self.consume_function_name(implicit_arg.is_some())?;
         self.consume(TokenTypeVariant::LeftParen)?;
-        let mut exprs = vec![];
-        loop {
-            exprs.push(self.parse_expr()?);
-            if !self.match_token_type(TokenTypeVariant::Comma) {
-                break;
+
+        let mut exprs = if let Some(arg) = implicit_arg {
+            vec![arg.clone()]
+        } else {
+            vec![]
+        };
+
+        if implicit_arg.is_none() || !self.check_token_type(TokenTypeVariant::RightParen) {
+            loop {
+                exprs.push(self.parse_expr()?);
+                if !self.match_token_type(TokenTypeVariant::Comma) {
+                    break;
+                }
             }
         }
         self.consume(TokenTypeVariant::RightParen)?;
@@ -4802,32 +4982,79 @@ impl<'a> Parser<'a> {
         ))))
     }
 
-    fn parse_function_expr(&mut self) -> anyhow::Result<Expr> {
-        match &self.peek().kind {
+    fn parse_function_expr(
+        &mut self,
+        implicit_arg: Option<ImplicitArgExpr>,
+    ) -> anyhow::Result<Expr> {
+        macro_rules! parse_fn {
+            ($fn_name:ident) => {
+                self.$fn_name(implicit_arg.as_ref().map(|arg| &arg.expr))
+            };
+        }
+
+        let peek = if let Some(implicit_arg) = &implicit_arg
+            && implicit_arg.is_receiver_parenthesized
+        {
+            self.peek_next_i(1)
+        } else {
+            self.peek()
+        };
+        let mut expr = match &peek.kind {
             TokenType::Identifier(ident) | TokenType::QuotedIdentifier(ident) => {
                 match ident.to_lowercase().as_str() {
-                    "concat" => self.parse_concat_fn_expr(),
-                    "coalesce" => self.parse_coalesce_fn_expr(),
-                    "safe_cast" => self.parse_safe_cast_fn_expr(),
-                    "array_agg" => self.parse_array_agg_fn_expr(),
-                    "current_date" => self.parse_current_date_fn_expr(),
-                    "current_datetime" => self.parse_current_datetime_fn_expr(),
-                    "date_diff" => self.parse_date_diff_fn_expr(),
-                    "date_trunc" => self.parse_date_trunc_fn_expr(),
-                    "last_day" => self.parse_last_day_fn_expr(),
-                    "datetime_diff" => self.parse_datetime_diff_fn_expr(),
-                    "datetime_trunc" => self.parse_datetime_trunc_fn_expr(),
-                    "current_time" => self.parse_current_time_fn_expr(),
-                    "current_timestamp" => self.parse_current_timestamp_fn_expr(),
-                    "timestamp_trunc" => self.parse_timestamp_trunc_fn_expr(),
-                    "timestamp_diff" => self.parse_timestamp_diff_fn_expr(),
-                    "time_diff" => self.parse_time_diff_fn_expr(),
-                    "time_trunc" => self.parse_time_trunc_fn_expr(),
-                    _ => self.parse_generic_function(),
+                    "concat" => parse_fn!(parse_concat_fn_expr),
+                    "coalesce" => parse_fn!(parse_coalesce_fn_expr),
+                    "safe_cast" => parse_fn!(parse_safe_cast_fn_expr),
+                    "array_agg" => parse_fn!(parse_array_agg_fn_expr),
+                    "current_date" => parse_fn!(parse_current_date_fn_expr),
+                    "current_datetime" => parse_fn!(parse_current_datetime_fn_expr),
+                    "date_diff" => parse_fn!(parse_date_diff_fn_expr),
+                    "date_trunc" => parse_fn!(parse_date_trunc_fn_expr),
+                    "last_day" => parse_fn!(parse_last_day_fn_expr),
+                    "datetime_diff" => parse_fn!(parse_datetime_diff_fn_expr),
+                    "datetime_trunc" => parse_fn!(parse_datetime_trunc_fn_expr),
+                    "current_time" => parse_fn!(parse_current_time_fn_expr),
+                    "current_timestamp" => parse_fn!(parse_current_timestamp_fn_expr),
+                    "timestamp_trunc" => parse_fn!(parse_timestamp_trunc_fn_expr),
+                    "timestamp_diff" => parse_fn!(parse_timestamp_diff_fn_expr),
+                    "time_diff" => parse_fn!(parse_time_diff_fn_expr),
+                    "time_trunc" => parse_fn!(parse_time_trunc_fn_expr),
+                    _ => self.parse_generic_function(implicit_arg.clone()),
                 }
             }
             _ => unreachable!(),
+        }?;
+
+        if let Some(implicit_arg) = &implicit_arg {
+            // Create a Chained expr by wrapping the function objects
+            match expr {
+                Expr::Function(ref function_expr)
+                    if implicit_arg.is_receiver_parenthesized
+                        || implicit_arg.is_parenthesized
+                        || implicit_arg.is_identifier() =>
+                {
+                    expr = Expr::ChainedFunction(Box::new(ChainedFunctionExpr {
+                        function: *function_expr.to_owned(),
+                    }));
+                }
+                Expr::GenericFunction(ref mut generic_function_expr) => {
+                    if implicit_arg.is_receiver_parenthesized
+                        || implicit_arg.is_parenthesized
+                        || implicit_arg.is_identifier()
+                    {
+                        expr = Expr::ChainedGenericFunction(Box::new(ChainedGenericFunctionExpr {
+                            function: *generic_function_expr.to_owned(),
+                        }));
+                    } else {
+                        // It is not a chained call, remove the first implicit argument
+                        generic_function_expr.arguments.remove(0);
+                    }
+                }
+                _ => {}
+            }
         }
+
+        Ok(expr)
     }
 
     /// Rule:
@@ -4842,8 +5069,22 @@ impl<'a> Parser<'a> {
     ///  ["ORDER" "BY" expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")] ("," expr [("ASC" | "DESC")] [("NULLS" "FIRST" | "NULLS" "LAST")])*]
     ///  ["LIMIT" "Number"]
     /// ```
-    fn parse_generic_function(&mut self) -> anyhow::Result<Expr> {
-        let function_name = self.consume_identifier_into_name()?;
+    fn parse_generic_function(
+        &mut self,
+        implicit_arg: Option<ImplicitArgExpr>,
+    ) -> anyhow::Result<Expr> {
+        let is_chained = implicit_arg.is_some();
+
+        let is_parenthesized = if is_chained {
+            self.match_token_type(TokenTypeVariant::LeftParen)
+        } else {
+            false
+        };
+        let function_name = self.parse_path()?;
+
+        if is_parenthesized {
+            self.consume(TokenTypeVariant::RightParen)?;
+        }
         self.consume(TokenTypeVariant::LeftParen)?;
 
         let mut arguments = vec![];
@@ -4852,6 +5093,13 @@ impl<'a> Parser<'a> {
                 return Err(anyhow!("Expected `)`."));
             }
             if self.match_token_type(TokenTypeVariant::RightParen) {
+                if is_chained && arguments.is_empty() {
+                    arguments.push(GenericFunctionExprArg {
+                        name: None,
+                        expr: implicit_arg.as_ref().unwrap().expr.clone(),
+                        aggregate: None,
+                    });
+                }
                 break;
             }
 
@@ -4863,7 +5111,11 @@ impl<'a> Parser<'a> {
                 self.consume(TokenTypeVariant::RightArrow)?;
                 (Some(name), self.parse_expr()?)
             } else {
-                (None, self.parse_expr()?)
+                if is_chained && arguments.is_empty() {
+                    (None, implicit_arg.as_ref().unwrap().expr.clone())
+                } else {
+                    (None, self.parse_expr()?)
+                }
             };
 
             let nulls =
@@ -4972,6 +5224,11 @@ impl<'a> Parser<'a> {
                 expr: arg_expr,
                 aggregate,
             });
+
+            if is_chained && arguments.len() == 1 {
+                continue;
+            }
+
             if !self.match_token_type(TokenTypeVariant::Comma) {
                 self.consume(TokenTypeVariant::RightParen)?;
                 break;
@@ -5265,7 +5522,7 @@ impl<'a> Parser<'a> {
                     || lower_ident == "current_timestamp"
                     || lower_ident == "current_time"
                 {
-                    return self.parse_function_expr();
+                    return self.parse_function_expr(None);
                 } else if self.peek_prev().kind != TokenType::Dot {
                     match lower_ident.as_str() {
                         "date" => {
@@ -5359,7 +5616,7 @@ impl<'a> Parser<'a> {
             }
             TokenType::QuotedIdentifier(qident) => {
                 if self.peek_next_i(1).kind == TokenType::LeftParen {
-                    return self.parse_function_expr();
+                    return self.parse_function_expr(None);
                 } else {
                     self.advance();
                     Expr::QuotedIdentifier(QuotedIdentifier { name: qident })

@@ -1,17 +1,17 @@
+use crate::ast::CreateJsFunctionStatement;
 use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
         ArrayAggFunctionExpr, ArrayExpr, ArrayFunctionExpr, Ast, BinaryExpr, BinaryOperator,
-        CreateJsFunctionStatement, CreateSqlFunctionStatement, CreateTableStatement, Cte,
-        DeclareVarStatement, DeleteStatement, DropFunctionStatement, DropTableStatement, Expr,
-        ForInStatement, FromExpr, FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr,
-        GroupingQueryExpr, Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr,
-        Merge, MergeInsert, MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr,
-        ParameterizedType, PivotColumn, QuantifiedLikeExprPattern, QueryExpr, QueryStatement,
-        QuotedIdentifier, SelectAllExpr, SelectColAllExpr, SelectColExpr, SelectExpr,
-        SelectQueryExpr, SelectTableValue, SetSelectQueryExpr, SetVarStatement, SetVariable,
-        Statement, StatementsBlock, StructExpr, TableOperator, Type, UnaryExpr, UnaryOperator,
-        UnpivotKind, UpdateStatement, When, With,
+        CreateSqlFunctionStatement, CreateTableStatement, Cte, DeclareVarStatement,
+        DeleteStatement, DropFunctionStatement, DropTableStatement, Expr, ForInStatement, FromExpr,
+        FromPathExpr, FunctionExpr, GenericFunctionExpr, GroupByExpr, GroupingQueryExpr,
+        Identifier, InsertStatement, IntervalExpr, JoinCondition, JoinExpr, Merge, MergeInsert,
+        MergeSource, MergeStatement, MergeUpdate, NamedWindowExpr, ParameterizedType, PivotColumn,
+        QuantifiedLikeExprPattern, QueryExpr, QueryStatement, QuotedIdentifier, SelectAllExpr,
+        SelectColAllExpr, SelectColExpr, SelectExpr, SelectQueryExpr, SelectTableValue,
+        SetSelectQueryExpr, SetVarStatement, SetVariable, Statement, StatementsBlock, StructExpr,
+        TableOperator, Type, UnaryExpr, UnaryOperator, UnpivotKind, UpdateStatement, When, With,
     },
     parser::Parser,
     scanner::Scanner,
@@ -22,6 +22,7 @@ use bitflags::{Flags, bitflags};
 use indexmap::{IndexMap, IndexSet};
 use rayon::prelude::*;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::{
     collections::HashSet,
     fmt::{Debug, Display},
@@ -136,18 +137,18 @@ enum NodeName {
 
 impl Display for NodeName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.string())
+        write!(f, "{}", self.as_str())
     }
 }
 
 impl From<NodeName> for String {
     fn from(val: NodeName) -> Self {
-        val.string().into()
+        val.as_str().into()
     }
 }
 
-impl NodeName {
-    fn string(&self) -> &str {
+impl<'a> NodeName {
+    fn as_str(&self) -> &str {
         match self {
             NodeName::Anonymous => "!anonymous",
             NodeName::Defined(s) => s,
@@ -158,11 +159,11 @@ impl NodeName {
         }
     }
 
-    fn nested_path(&self) -> String {
+    fn nested_path(&'a self) -> Cow<'a, str> {
         match self {
-            NodeName::Anonymous => self.string().to_owned(),
-            NodeName::Defined(s) => s.to_owned(),
-            NodeName::Nested(nested) => nested.nested_path(),
+            NodeName::Anonymous => self.as_str().into(),
+            NodeName::Defined(s) => s.into(),
+            NodeName::Nested(nested) => nested.nested_path().into(),
         }
     }
 }
@@ -1540,7 +1541,7 @@ impl LineageContext {
             for node_idx in &query_table.lineage_nodes {
                 let node = &self.arena_lineage_nodes[*node_idx];
                 new_columns
-                    .entry(node.name.string().to_lowercase())
+                    .entry(node.name.as_str().to_lowercase())
                     .or_default()
                     .push(IndexDepth {
                         arena_index: new_tables[key].arena_index,
@@ -1558,7 +1559,7 @@ impl LineageContext {
                         for node_idx in &query_table.lineage_nodes {
                             let node = &self.arena_lineage_nodes[*node_idx];
                             new_columns
-                                .entry(node.name.string().to_lowercase())
+                                .entry(node.name.as_str().to_lowercase())
                                 .or_default()
                                 .push(outer_tables[key]);
                         }
@@ -1660,7 +1661,7 @@ impl LineageContext {
                 .lineage_nodes
                 .iter()
                 .map(|n_idx| (&self.arena_lineage_nodes[*n_idx], *n_idx))
-                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column));
+                .find(|(n, _)| n.name.as_str().eq_ignore_ascii_case(&column));
             if let Some((_, col_idx)) = col_in_schema {
                 return Ok(col_idx);
             }
@@ -1671,10 +1672,10 @@ impl LineageContext {
         } else if let Some(target_tables) =
             self.curr_query_columns().and_then(|map| map.get(&column))
         {
-            if let Some(selected_columns) = self.curr_selected_columns() {
-                if let Some(node_idx) = selected_columns.get(&column) {
-                    return Ok(*node_idx);
-                }
+            if let Some(selected_columns) = self.curr_selected_columns()
+                && let Some(node_idx) = selected_columns.get(&column)
+            {
+                return Ok(*node_idx);
             }
 
             if self
@@ -1733,15 +1734,15 @@ impl LineageContext {
                 .lineage_nodes
                 .iter()
                 .map(|n_idx| (&self.arena_lineage_nodes[*n_idx], *n_idx))
-                .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&column))
+                .find(|(n, _)| n.name.as_str().eq_ignore_ascii_case(&column))
                 .unwrap()
                 .1;
-            return Ok(node_idx);
+            Ok(node_idx)
         } else {
-            return Err(anyhow!(GetColumnError::NotFound(format!(
+            Err(anyhow!(GetColumnError::NotFound(format!(
                 "Column `{}` not found in context.",
                 column
-            ))));
+            ))))
         }
     }
 
@@ -1899,8 +1900,9 @@ impl LineageContext {
             let op = &b.operator;
 
             // TODO: add field element access in structs via literal integer positions
-
-            if matches!(op, BinaryOperator::FieldAccess) || matches!(op, BinaryOperator::ArrayIndex)
+            if matches!(op, BinaryOperator::FieldAccess)
+                || matches!(op, BinaryOperator::ArrayIndex)
+                || matches!(op, BinaryOperator::FunctionAccess)
             {
                 match (left, right) {
                     (
@@ -1997,6 +1999,48 @@ impl LineageContext {
                             }
                         }
                         b = left;
+                    }
+                    (_, Expr::ChainedGenericFunction(chained_generic_function_expr)) => {
+                        let node_idx = self.expr_lin(
+                            catalog,
+                            &Expr::GenericFunction(Box::new(
+                                chained_generic_function_expr.function.to_owned(),
+                            )),
+                            false,
+                            node_origin,
+                        )?;
+                        if access_path.path.is_empty() {
+                            return Ok(node_idx);
+                        }
+                        access_path.path.reverse();
+                        let node = &self.arena_lineage_nodes[node_idx];
+                        let nested_node_idx = node.access(&access_path)?;
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
+                    }
+                    (_, Expr::ChainedFunction(chained_function_expr)) => {
+                        let node_idx = self.expr_lin(
+                            catalog,
+                            &Expr::Function(Box::new(chained_function_expr.function.to_owned())),
+                            false,
+                            node_origin,
+                        )?;
+                        if access_path.path.is_empty() {
+                            return Ok(node_idx);
+                        }
+                        access_path.path.reverse();
+                        let node = &self.arena_lineage_nodes[node_idx];
+                        let nested_node_idx = node.access(&access_path)?;
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
                     }
                     (Expr::Function(function_expr), _)
                         if (matches!(op, BinaryOperator::ArrayIndex))
@@ -2107,6 +2151,31 @@ impl LineageContext {
                         debug_assert!(matches!(op, BinaryOperator::FieldAccess));
                         access_path.path.push(AccessOp::FieldStar);
                         access_path.path.reverse();
+                        let node_idx = self.struct_expr_lin(catalog, struct_expr, node_origin)?;
+                        self.add_node_to_output_lineage(node_idx);
+                        let node = &self.arena_lineage_nodes[node_idx];
+                        let nested_node_idx = node.access(&access_path)?;
+                        return Ok(self.nested_node_lin(
+                            &access_path,
+                            nested_node_idx,
+                            node_origin,
+                            &[],
+                        ));
+                    }
+                    (Expr::Struct(struct_expr), Expr::Binary(bin_expr)) => {
+                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
+                        // struct_col.array_field
+                        let array_field = match bin_expr.left.as_ref() {
+                            Expr::Identifier(Identifier { name: ident })
+                            | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => ident,
+                            _ => unreachable!(),
+                        };
+                        access_path.path.extend_from_slice(&[
+                            AccessOp::Index,
+                            AccessOp::Field(array_field.clone()),
+                        ]);
+                        access_path.path.reverse();
+
                         let node_idx = self.struct_expr_lin(catalog, struct_expr, node_origin)?;
                         self.add_node_to_output_lineage(node_idx);
                         let node = &self.arena_lineage_nodes[node_idx];
@@ -2268,12 +2337,13 @@ impl LineageContext {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::GenericFunction(function_expr),
                     ) => {
+                        debug_assert!(matches!(op, BinaryOperator::FunctionAccess));
                         if ident.eq_ignore_ascii_case("safe") {
                             return self.expr_lin(catalog, right, false, node_origin);
                         }
                         let node_idx = self.generic_function_expr_lin(
                             catalog,
-                            &format!("{}.{}", ident, function_expr.name.as_str()),
+                            &format!("{}.{}", ident, function_expr.name.name),
                             function_expr,
                             false,
                             node_origin,
@@ -2287,6 +2357,7 @@ impl LineageContext {
                         | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }),
                         Expr::Function(_),
                     ) => {
+                        debug_assert!(matches!(op, BinaryOperator::FunctionAccess));
                         if ident.eq_ignore_ascii_case("safe") {
                             return self.expr_lin(catalog, right, false, node_origin);
                         }
@@ -2296,7 +2367,6 @@ impl LineageContext {
                             right
                         ));
                     }
-
                     _ => {
                         return Err(anyhow!(
                             "Found unexpected binary expr with left: {:?} and right {:?} with op {:?}.",
@@ -2597,7 +2667,7 @@ impl LineageContext {
         for node_idx in nodes {
             let node = &self.arena_lineage_nodes[*node_idx];
             fields.push(StructNodeFieldType::new(
-                node.name.string(),
+                node.name.as_str(),
                 node.r#type.clone(),
                 node.input.clone(),
             ));
@@ -2984,12 +3054,10 @@ impl LineageContext {
             Expr::QueryPositionalParameter => {
                 self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
-
             // todo: retrieve type from sysvars
             Expr::SystemVariable(_) => {
                 self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
-
             Expr::Null => {
                 self.allocate_expr_node("literal", NodeType::Unknown, node_origin, vec![])
             }
@@ -3242,7 +3310,7 @@ impl LineageContext {
             }
             Expr::GenericFunction(function_expr) => self.generic_function_expr_lin(
                 catalog,
-                function_expr.name.as_str(),
+                &function_expr.name.name,
                 function_expr,
                 expand_value_table,
                 node_origin,
@@ -3734,6 +3802,24 @@ impl LineageContext {
                 input.push(result_idx);
                 self.allocate_expr_node("with", result.r#type.clone(), node_origin, input)
             }
+            Expr::ChainedGenericFunction(chained_generic_function_expr) => {
+                return self.expr_lin(
+                    catalog,
+                    &Expr::GenericFunction(Box::new(
+                        chained_generic_function_expr.function.clone(),
+                    )),
+                    expand_value_table,
+                    node_origin,
+                );
+            }
+            Expr::ChainedFunction(chained_function_expr) => {
+                return self.expr_lin(
+                    catalog,
+                    &Expr::Function(Box::new(chained_function_expr.function.clone())),
+                    expand_value_table,
+                    node_origin,
+                );
+            }
         };
 
         self.add_node_to_output_lineage(node_idx);
@@ -3784,7 +3870,7 @@ impl LineageContext {
                     .lineage_nodes
                     .iter()
                     .map(|&n_idx| (&self.arena_lineage_nodes[n_idx], n_idx))
-                    .filter(|(n, _)| n.name.string().eq_ignore_ascii_case(col_name))
+                    .filter(|(n, _)| n.name.as_str().eq_ignore_ascii_case(col_name))
                     .collect::<Vec<_>>()[0]
                     .1;
                 new_lineage_nodes.push((
@@ -3827,7 +3913,7 @@ impl LineageContext {
         let mut new_lineage_nodes = Vec::with_capacity(node.input.len());
         for node_idx in &node.input {
             let node = &self.arena_lineage_nodes[*node_idx];
-            if except_columns.contains(&node.name.string().to_lowercase()) {
+            if except_columns.contains(&node.name.as_str().to_lowercase()) {
                 continue;
             }
 
@@ -3880,7 +3966,7 @@ impl LineageContext {
         if let Some(alias) = &col_expr.alias {
             pending_node.name = NodeName::Defined(alias.as_str().to_lowercase());
         } else if matches!(node_name, NodeName::Defined(_) | NodeName::Nested(_)) {
-            pending_node.name = NodeName::Defined(node_name.nested_path().to_owned());
+            pending_node.name = NodeName::Defined(node_name.nested_path().into_owned());
         }
 
         pending_node.r#type = node_type;
@@ -4148,7 +4234,7 @@ impl LineageContext {
                 for node_idx in &obj.lineage_nodes {
                     if self.arena_lineage_nodes[*node_idx]
                         .name
-                        .string()
+                        .as_str()
                         .eq_ignore_ascii_case(pivot.input_column.as_str())
                     {
                         pivot_column_idx = Some(*node_idx);
@@ -4209,7 +4295,7 @@ impl LineageContext {
                                 unpivot_column_names.contains(
                                     &self.arena_lineage_nodes[*node_idx]
                                         .name
-                                        .string()
+                                        .as_str()
                                         .to_lowercase(),
                                 )
                             })
@@ -4218,7 +4304,7 @@ impl LineageContext {
 
                         for node_idx in &self.arena_objects[obj_idx].lineage_nodes {
                             let node = &self.arena_lineage_nodes[*node_idx];
-                            if !unpivot_column_names.contains(&node.name.string().to_lowercase()) {
+                            if !unpivot_column_names.contains(&node.name.as_str().to_lowercase()) {
                                 new_lineage_nodes.push((
                                     node.name.clone(),
                                     node.r#type.clone(),
@@ -4280,7 +4366,7 @@ impl LineageContext {
                                     unpivot_column_names.contains(
                                         self.arena_lineage_nodes[*node_idx]
                                             .name
-                                            .string()
+                                            .as_str()
                                             .to_lowercase()
                                             .as_str(),
                                     )
@@ -4331,7 +4417,7 @@ impl LineageContext {
                         for node_idx in &self.arena_objects[obj_idx].lineage_nodes {
                             let node = &self.arena_lineage_nodes[*node_idx];
                             if !all_unpivot_column_names
-                                .contains(&node.name.string().to_lowercase())
+                                .contains(&node.name.as_str().to_lowercase())
                             {
                                 new_lineage_nodes.push((
                                     node.name.clone(),
@@ -4474,7 +4560,7 @@ impl LineageContext {
                     for node_idx in &lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
                         struct_node_types.push(StructNodeFieldType::new(
-                            node.name.string(),
+                            node.name.as_str(),
                             node.r#type.clone(),
                             vec![*node_idx],
                         ));
@@ -4509,7 +4595,7 @@ impl LineageContext {
                                 let nested_field = &self.arena_lineage_nodes[nested_field_idx];
 
                                 let new_node_idx = self.allocate_lineage_node(
-                                    NodeName::Defined(nested_field.name.string().to_owned()),
+                                    NodeName::Defined(nested_field.name.as_str().to_owned()),
                                     nested_field.r#type.clone(),
                                     NodeOrigin::Select,
                                     anon_obj_idx,
@@ -4550,7 +4636,7 @@ impl LineageContext {
                 .iter()
                 .map(|idx| {
                     let node = &self.arena_lineage_nodes[*idx];
-                    (node.name.string().to_lowercase(), *idx)
+                    (node.name.as_str().to_lowercase(), *idx)
                 })
                 .collect::<IndexMap<_, _>>(),
         );
@@ -4841,7 +4927,7 @@ impl LineageContext {
                 let mut add_lineage_nodes = |table: &ContextObject| {
                     for node_idx in &table.lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
-                        let newly_inserted = joined_columns.insert(node.name.string());
+                        let newly_inserted = joined_columns.insert(node.name.as_str());
                         if newly_inserted {
                             lineage_nodes.push((
                                 node.name.clone(),
@@ -5241,7 +5327,7 @@ impl LineageContext {
                         .lineage_nodes
                         .iter()
                         .map(|&idx| (&self.arena_lineage_nodes[idx], idx))
-                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
+                        .find(|(n, _)| n.name.as_str().eq_ignore_ascii_case(&col_name))
                         .ok_or_else(|| {
                             anyhow!(
                                 "Cannot find column {:?} in table {:?}.",
@@ -5255,7 +5341,7 @@ impl LineageContext {
                         .lineage_nodes
                         .iter()
                         .map(|&idx| (&self.arena_lineage_nodes[idx], idx))
-                        .find(|(n, _)| n.name.string().eq_ignore_ascii_case(&col_name))
+                        .find(|(n, _)| n.name.as_str().eq_ignore_ascii_case(&col_name))
                         .ok_or_else(|| {
                             anyhow!(
                                 "Cannot find column {:?} in table {:?}.",
@@ -5304,12 +5390,12 @@ impl LineageContext {
                 let left_columns: HashSet<&str> = self.arena_objects[left_join_table_idx]
                     .lineage_nodes
                     .iter()
-                    .map(|&idx| self.arena_lineage_nodes[idx].name.string())
+                    .map(|&idx| self.arena_lineage_nodes[idx].name.as_str())
                     .collect();
                 let right_columns: HashSet<&str> = self.arena_objects[right_join_table_idx]
                     .lineage_nodes
                     .iter()
-                    .map(|&idx| self.arena_lineage_nodes[idx].name.string())
+                    .map(|&idx| self.arena_lineage_nodes[idx].name.as_str())
                     .collect();
 
                 for col in left_columns.intersection(&right_columns) {
@@ -5324,7 +5410,7 @@ impl LineageContext {
                         .lineage_nodes
                         .iter()
                         .map(|idx| (&self.arena_lineage_nodes[*idx], idx))
-                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                        .filter(|(node, _)| !using_columns_added.contains(node.name.as_str()))
                         .map(|(node, idx)| {
                             (
                                 node.name.clone(),
@@ -5340,7 +5426,7 @@ impl LineageContext {
                         .lineage_nodes
                         .iter()
                         .map(|idx| (&self.arena_lineage_nodes[*idx], idx))
-                        .filter(|(node, _)| !using_columns_added.contains(node.name.string()))
+                        .filter(|(node, _)| !using_columns_added.contains(node.name.as_str()))
                         .map(|(node, idx)| {
                             (
                                 node.name.clone(),
@@ -5379,7 +5465,7 @@ impl LineageContext {
                 let mut add_lineage_nodes = |table: &ContextObject| {
                     for node_idx in &table.lineage_nodes {
                         let node = &self.arena_lineage_nodes[*node_idx];
-                        let newly_inserted = joined_columns.insert(node.name.string());
+                        let newly_inserted = joined_columns.insert(node.name.as_str());
                         if newly_inserted {
                             lineage_nodes.push((
                                 node.name.clone(),
@@ -5507,7 +5593,7 @@ impl LineageContext {
             .iter()
             .map(|idx| {
                 (
-                    self.arena_lineage_nodes[*idx].name.string().to_lowercase(),
+                    self.arena_lineage_nodes[*idx].name.as_str().to_lowercase(),
                     *idx,
                 )
             })
@@ -6142,7 +6228,7 @@ impl LineageContext {
             let var_obj = &self.arena_objects[*obj_idx];
             let var_node_name = self.arena_lineage_nodes[var_obj.lineage_nodes[0]]
                 .name
-                .string();
+                .as_str();
             self.vars.remove(var_node_name);
         });
     }
@@ -6190,7 +6276,7 @@ impl LineageContext {
         for node_idx in &obj.lineage_nodes {
             let node = &self.arena_lineage_nodes[*node_idx];
             struct_node_types.push(StructNodeFieldType::new(
-                node.name.string(),
+                node.name.as_str(),
                 node.r#type.clone(),
                 vec![*node_idx],
             ));
@@ -6968,7 +7054,7 @@ fn _extract_lineage(
                         node_input.push(ReadyLineageNodeInput {
                             obj_name: inp_obj.name.clone(),
                             obj_kind: inp_obj.kind.into(),
-                            node_name: inp_node.name.nested_path().to_owned(),
+                            node_name: inp_node.name.nested_path().into_owned(),
                         });
                         // Add in nodes from output lineage to referenced columns
                         lineage_extractor
@@ -6996,13 +7082,13 @@ fn _extract_lineage(
                     node_side_input.push(ReadyLineageNodeSideInput {
                         obj_name: inp_obj.name.clone(),
                         obj_kind: inp_obj.kind.into(),
-                        node_name: inp_node.name.nested_path().to_owned(),
+                        node_name: inp_node.name.nested_path().into_owned(),
                         sides,
                     });
                 }
 
                 obj_nodes.push(ReadyLineageNode {
-                    name: node_name.nested_path().to_owned(),
+                    name: node_name.nested_path().into_owned(),
                     r#type: node_type.to_string(),
                     inputs: node_input,
                     side_inputs: node_side_input,
@@ -7140,7 +7226,7 @@ fn _extract_lineage(
 
                     let node = &lineage_extractor.context.arena_lineage_nodes[col_idx];
                     nodes.push(ReferencedNode {
-                        name: node.name.nested_path().to_owned(),
+                        name: node.name.nested_path().into_owned(),
                         referenced_in: sorted_kinds,
                     });
                 }

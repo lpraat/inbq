@@ -3441,3 +3441,85 @@ a.inputs = ["proj.dat.in_table->a"]
 a.side_inputs = []
 [tests.referenced_columns."proj.dat.in_table"]
 a = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select a.(concat)("suffix") as a
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select (a).concat("suffix") as a
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.in_table->a"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select struct([a, 2] as x, b as y).coalesce(struct([3, 4] as x, b as y)).x[0] as res
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "int64" },
+    { name = "b", dtype = "int64" }
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "res", dtype = "int64" }]
+[tests.ready_lineage."proj.dat.out_table"]
+res.inputs = ["proj.dat.in_table->a"]
+res.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
+
+[[tests]]
+sql = """
+insert into project.dataset.out
+SELECT (x).ARRAY_AGG() AS array_agg FROM proj.dat.in_table, UNNEST(arr_col) AS x
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "arr_col", dtype = "ARRAY<int64>" },
+]
+[[tests.schema_objects]]
+name = "project.dataset.out"
+kind.table.columns = [
+    { name = "array_agg", dtype = "ARRAY<int64>" },
+]
+[tests.ready_lineage."project.dataset.out"]
+array_agg.inputs = ["proj.dat.in_table->arr_col[]"]
+array_agg.side_inputs = []
+"array_agg[]".inputs = ["proj.dat.in_table->arr_col[]"]
+"array_agg[]".side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+arr_col = ["unnest"]
+"arr_col[]" = ["select"]

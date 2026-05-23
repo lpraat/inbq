@@ -1620,3 +1620,425 @@ CASE product_id
 END CASE;
 select 1;
 """
+
+[[tests]]
+sql = """
+SELECT
+  'one two three four five'
+  .REPLACE('one', '1')
+  .REPLACE('two', '2')
+  .REPLACE('three', '3')
+  .REPLACE('four', '4')
+  .REPLACE('five', '5');
+"""
+
+[[tests]]
+sql = """
+select (9).sqrt()
+"""
+
+[[tests]]
+sql = """
+select ((9)).sqrt()
+"""
+
+[[tests]]
+sql = """
+select s.(upper)()
+"""
+
+[[tests]]
+sql = """
+select (s).(SAFE.SUBSTR)(0, -2)
+from (
+  select "aaa" as s
+)
+"""
+
+[[tests]]
+sql = """
+select s.(SAFE.SUBSTR)(0, -2)
+from (
+  select "aaa" as s
+)
+"""
+
+[[tests]]
+sql = """
+select (x).COUNT(DISTINCT)
+"""
+
+[[tests]]
+sql = """
+select "foo".concat("a", "b")
+"""
+
+[[tests]]
+sql = """
+select "foo".(concat)("a", "b")
+"""
+
+[[tests]]
+sql = """
+select col.coalesce("val1", "val2")
+"""
+
+[[tests]]
+sql = """
+select col.(coalesce)("val1", "val2")
+"""
+
+[[tests]]
+sql = """
+select col.safe_cast(as INT64)
+"""
+
+[[tests]]
+sql = """
+select col.(safe_cast)(as INT64)
+"""
+
+[[tests]]
+sql = """
+select col.array_agg()
+"""
+
+[[tests]]
+sql = """
+select col.(array_agg)()
+"""
+
+[[tests]]
+sql = """
+select tz.current_date()
+"""
+
+[[tests]]
+sql = """
+select tz.(current_date)()
+"""
+
+[[tests]]
+sql = """
+select tz.current_datetime()
+"""
+
+[[tests]]
+sql = """
+select tz.(current_datetime)()
+"""
+
+[[tests]]
+sql = """
+select tz.current_time()
+"""
+
+[[tests]]
+sql = """
+select tz.(current_time)()
+"""
+
+[[tests]]
+sql = """
+select tz.current_timestamp()
+"""
+
+[[tests]]
+sql = """
+select tz.(current_timestamp)()
+"""
+
+[[tests]]
+sql = """
+select d1.date_diff(d2, DAY)
+"""
+
+[[tests]]
+sql = """
+select d1.(date_diff)(d2, DAY)
+"""
+
+[[tests]]
+sql = """
+select dt1.datetime_diff(dt2, DAY)
+"""
+
+[[tests]]
+sql = """
+select dt1.(datetime_diff)(dt2, DAY)
+"""
+
+[[tests]]
+sql = """
+select ts1.timestamp_diff(ts2, DAY)
+"""
+
+[[tests]]
+sql = """
+select ts1.(timestamp_diff)(ts2, DAY)
+"""
+
+[[tests]]
+sql = """
+select t1.time_diff(t2, DAY)
+"""
+
+[[tests]]
+sql = """
+select t1.(time_diff)(t2, DAY)
+"""
+
+[[tests]]
+sql = """
+select d1.date_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select d1.(date_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select dt1.datetime_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select dt1.(datetime_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select ts1.timestamp_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select ts1.(timestamp_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select t1.time_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select t1.(time_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select d1.last_day(MONTH)
+"""
+
+[[tests]]
+sql = """
+select d1.(last_day)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (col).concat("a", "b")
+"""
+
+[[tests]]
+sql = """
+select (col).(concat)("a", "b")
+"""
+
+[[tests]]
+sql = """
+select (col).coalesce("val1", "val2")
+"""
+
+[[tests]]
+sql = """
+select (col).(coalesce)("val1", "val2")
+"""
+
+[[tests]]
+sql = """
+select (col).safe_cast(as INT64)
+"""
+
+[[tests]]
+sql = """
+select (col).(safe_cast)(as INT64)
+"""
+
+[[tests]]
+sql = """
+select (col).array_agg()
+"""
+
+[[tests]]
+sql = """
+select (col).(array_agg)()
+"""
+
+[[tests]]
+sql = """
+select (tz).current_date()
+"""
+
+[[tests]]
+sql = """
+select (tz).(current_date)()
+"""
+
+[[tests]]
+sql = """
+select (tz).current_datetime()
+"""
+
+[[tests]]
+sql = """
+select (tz).(current_datetime)()
+"""
+
+[[tests]]
+sql = """
+select (tz).current_time()
+"""
+
+[[tests]]
+sql = """
+select (tz).(current_time)()
+"""
+
+[[tests]]
+sql = """
+select (tz).current_timestamp()
+"""
+
+[[tests]]
+sql = """
+select (tz).(current_timestamp)()
+"""
+
+[[tests]]
+sql = """
+select (d1).date_diff(d2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (d1).(date_diff)(d2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (dt1).datetime_diff(dt2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (dt1).(datetime_diff)(dt2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (ts1).timestamp_diff(ts2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (ts1).(timestamp_diff)(ts2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (t1).time_diff(t2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (t1).(time_diff)(t2, DAY)
+"""
+
+[[tests]]
+sql = """
+select (d1).date_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (d1).(date_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (dt1).datetime_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (dt1).(datetime_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (ts1).timestamp_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (ts1).(timestamp_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (t1).time_trunc(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (t1).(time_trunc)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (d1).last_day(MONTH)
+"""
+
+[[tests]]
+sql = """
+select (d1).(last_day)(MONTH)
+"""
+
+[[tests]]
+sql = """
+select dat.t1((x,y))
+"""
+
+[[tests]]
+sql = """
+select (dat).t1((x,y))
+"""
+
+[[tests]]
+sql = """
+select dat.(t1)((x,y))
+"""
+
+[[tests]]
+sql = """
+SELECT [1,2,3].coalesce([2,3])[0]
+"""
+
+[[tests]]
+sql = """
+select "ciao".concat("suffix")
+"""
+
+[[tests]]
+sql = """
+SELECT (x).ARRAY_AGG() AS array_agg FROM UNNEST([2, 1,-2, 3, -2, 1, 2]) AS x
+"""
+
+[[tests]]
+sql = """
+select struct([1,2] as x, 2 as y).coalesce(struct([3,4] as x, 4 as y)).x[0]
+"""

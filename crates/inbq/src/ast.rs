@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumDiscriminants};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Ast {
     pub statements: Vec<Statement>,
 }
@@ -276,7 +276,7 @@ pub struct CallStatement {
     pub arguments: Vec<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RaiseStatement {
     pub message: Option<Expr>,
 }
@@ -294,7 +294,7 @@ pub struct IfBranch {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StatementsBlock {
     pub statements: Vec<Statement>,
     pub exception_statements: Option<Vec<Statement>>,
@@ -341,7 +341,7 @@ pub enum TableConstraint {
     ForeignKeyNotEnforced(ForeignKeyConstraintNotEnforced),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PrimaryKeyConstraintNotEnforced {
     pub columns: Vec<Name>,
 }
@@ -576,11 +576,23 @@ pub enum Expr {
     Star,
     Query(Box<QueryExpr>),
     Case(CaseExpr),
+    ChainedGenericFunction(Box<ChainedGenericFunctionExpr>),
     GenericFunction(Box<GenericFunctionExpr>),
     Function(Box<FunctionExpr>),
+    ChainedFunction(Box<ChainedFunctionExpr>),
     QuantifiedLike(QuantifiedLikeExpr),
     Exists(Box<QueryExpr>),
     Unnest(UnnestExpr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainedGenericFunctionExpr {
+    pub function: GenericFunctionExpr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainedFunctionExpr {
+    pub function: FunctionExpr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -620,12 +632,12 @@ pub struct QuotedIdentifier {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StringConcatExpr {
     pub strings: Vec<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BytesConcatExpr {
     pub bytes: Vec<Expr>,
 }
@@ -719,7 +731,7 @@ pub enum FunctionExpr {
     NormalizeAndCasefold(NormalizeAndCasefoldFunctionExpr),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CoalesceFunctionExpr {
     pub exprs: Vec<Expr>,
 }
@@ -744,12 +756,12 @@ pub enum NormalizationMode {
     NFKD,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CurrentDatetimeFunctionExpr {
     pub timezone: Option<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CurrentTimeFunctionExpr {
     pub timezone: Option<Expr>,
 }
@@ -883,7 +895,7 @@ pub enum WeekBegin {
     Saturday,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CurrentDateFunctionExpr {
     pub timezone: Option<Expr>,
 }
@@ -899,7 +911,7 @@ pub struct ArrayFunctionExpr {
     pub query: QueryExpr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConcatFunctionExpr {
     pub values: Vec<Expr>,
 }
@@ -934,7 +946,7 @@ pub struct IfFunctionExpr {
 /// Generic function call, whose signature is not yet implemented in the parser
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericFunctionExpr {
-    pub name: Name,
+    pub name: PathName,
     pub arguments: Vec<GenericFunctionExprArg>,
     pub over: Option<NamedWindowExpr>,
 }
@@ -1039,6 +1051,7 @@ pub enum BinaryOperator {
     Or,
     ArrayIndex,
     FieldAccess,
+    FunctionAccess,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1098,7 +1111,7 @@ pub struct GroupingQueryExpr {
     pub limit: Option<Limit>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SelectQueryExpr {
     pub with: Option<With>,
     pub select: Select,
@@ -1124,7 +1137,7 @@ pub enum SetQueryOperator {
     ExceptDistinct,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrderBy {
     pub exprs: Vec<OrderByExpr>,
 }
@@ -1154,7 +1167,7 @@ pub struct Limit {
     pub offset: Option<Box<Expr>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct With {
     pub ctes: Vec<Cte>,
 }
@@ -1178,7 +1191,7 @@ pub struct RecursiveCte {
     pub recursive_query: QueryExpr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Select {
     pub differential_privacy: Option<DifferentialPrivacy>,
     pub distinct: bool,
@@ -1198,7 +1211,7 @@ pub struct DifferentialPrivacyOption {
     pub value: Expr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DifferentialPrivacy {
     pub options: Vec<DifferentialPrivacyOption>,
 }
@@ -1427,7 +1440,7 @@ pub struct Qualify {
     pub expr: Box<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Window {
     pub named_windows: Vec<NamedWindow>,
 }
