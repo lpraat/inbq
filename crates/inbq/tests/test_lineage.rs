@@ -40,6 +40,7 @@ fn test_lineage() {
         let ready_lineage = lineage.lineage;
 
         // Test ready lineage
+        #[allow(clippy::type_complexity)]
         let mut ready_lineage_map: IndexMap<
             String,
             IndexMap<String, (Vec<String>, Vec<TestSideInput>)>,

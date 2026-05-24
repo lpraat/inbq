@@ -6944,6 +6944,7 @@ fn _extract_lineage(
             LineageNode::pretty_log_lineage_node(*pending_node, &lineage_extractor.context);
         }
 
+        #[allow(clippy::type_complexity)]
         let mut objects: IndexMap<
             ArenaIndex,
             IndexMap<ArenaIndex, IndexSet<(ArenaIndex, ArenaIndex, NodeOrigin)>>,
@@ -7020,11 +7021,11 @@ fn _extract_lineage(
             let obj_kind = obj.kind;
             if just_include_source_objects
                 && (!lineage_extractor.catalog.is_source_obj(&obj_name)
-                    && !lineage_extractor
+                    && lineage_extractor
                         .context
                         .last_select_statement
                         .as_ref()
-                        .is_some_and(|anon_name| *anon_name == *obj_name))
+                        .is_none_or(|anon_name| *anon_name != *obj_name))
             {
                 continue;
             }
