@@ -3520,6 +3520,28 @@ a = ["select"]
 [[tests]]
 sql = """
 insert into proj.dat.out_table
+select (a).concat("suffix").concat(b) as a
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "a", dtype = "STRING" },
+    { name = "b", dtype = "STRING" }
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "a", dtype = "STRING" }]
+[tests.ready_lineage."proj.dat.out_table"]
+a.inputs = ["proj.dat.in_table->a", "proj.dat.in_table->b"]
+a.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+a = ["select"]
+b = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
 select struct([a, 2] as x, b as y).coalesce(struct([3, 4] as x, b as y)).x[0] as res
 from proj.dat.in_table
 """
