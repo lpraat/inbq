@@ -1968,8 +1968,7 @@ impl LineageContext {
                             ));
                         }
                     }
-                    (Expr::Binary(left), right) => {
-                        debug_assert!(matches!(op, BinaryOperator::FieldAccess));
+                    (Expr::Binary(left), right) if matches!(op, BinaryOperator::FieldAccess) => {
                         match right {
                             Expr::Binary(binary_expr)
                                 if matches!(binary_expr.operator, BinaryOperator::ArrayIndex) =>
@@ -5925,29 +5924,29 @@ impl LineageContext {
                 let obj = &self.arena_objects[obj_idx];
                 let input = obj.lineage_nodes.clone();
 
-                if let Some(alias) = &merge_statement.source_alias {
-                    let new_source_name = alias.as_str();
-                    let source_idx = self.allocate_object(
-                        new_source_name,
-                        ContextObjectKind::Query,
-                        input
-                            .iter()
-                            .map(|idx| {
-                                let node = &self.arena_lineage_nodes[*idx];
-                                (
-                                    node.name.clone(),
-                                    node.r#type.clone(),
-                                    node.origin,
-                                    vec![*idx],
-                                )
-                            })
-                            .collect(),
-                    );
-                    self.add_object_nodes_to_output_lineage(source_idx);
-                    (Some(source_idx), Some(input))
+                let source_name = if let Some(alias) = &merge_statement.source_alias {
+                    alias.as_str()
                 } else {
-                    (None, Some(input))
-                }
+                    &self.get_anon_obj_name("query")
+                };
+                let source_idx = self.allocate_object(
+                    source_name,
+                    ContextObjectKind::Query,
+                    input
+                        .iter()
+                        .map(|idx| {
+                            let node = &self.arena_lineage_nodes[*idx];
+                            (
+                                node.name.clone(),
+                                node.r#type.clone(),
+                                node.origin,
+                                vec![*idx],
+                            )
+                        })
+                        .collect(),
+                );
+                self.add_object_nodes_to_output_lineage(source_idx);
+                (Some(source_idx), Some(input))
             } else {
                 (None, None)
             };

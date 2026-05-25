@@ -486,6 +486,45 @@ c = ["select"]
 
 [[tests]]
 sql = """
+merge into proj.dat.out_table as t
+using (
+    select
+        ref_time, x
+    from proj.dat.in_table
+)
+on false
+when not matched by target and ref_time > current_timestamp then
+    insert row
+when not matched by source then
+    delete
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "ref_time", dtype = "TIMESTAMP" },
+    { name = "x", dtype = "INT64"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [
+    { name = "ref_time", dtype = "TIMESTAMP" },
+    { name = "x", dtype = "INT64" },
+]
+[tests.ready_lineage."proj.dat.out_table"]
+ref_time.inputs = ["proj.dat.in_table->ref_time"]
+ref_time.side_inputs = [
+    { name = "proj.dat.in_table->ref_time", sides = ["merge_cond"] }
+]
+x.inputs = ["proj.dat.in_table->x"]
+x.side_inputs = [
+    { name = "proj.dat.in_table->ref_time", sides = ["merge_cond"] }
+]
+[tests.referenced_columns."proj.dat.in_table"]
+ref_time = ["select", "merge_cond"]
+x = ["select"]
+
+[[tests]]
+sql = """
 insert into `proj.dat.out_table`
 with tmp as (
     select * except (c)
