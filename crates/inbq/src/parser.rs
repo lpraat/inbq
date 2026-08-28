@@ -274,11 +274,8 @@ impl<'a> Parser<'a> {
 
     fn error(&self, token: &Token, message: &str) -> String {
         format!(
-            "[line {}, col {}] Error {}: {}",
-            token.line,
-            token.col,
-            &format!("at '{}'", token.lexeme),
-            message
+            "[line {}, col {}] Error at '{}': {}",
+            token.line, token.col, token.lexeme, message
         )
     }
 

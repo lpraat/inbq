@@ -16,9 +16,9 @@ fn test_lineage() {
         toml::from_str(&lineage_data_file).expect("Cannot parse test cases defined in toml");
 
     for test in test_lineage_data.tests {
-        println!("Testing lineage for SQL: {}", &test.sql);
+        println!("Testing lineage for SQL: {}", test.sql);
         let ast = parse_sql(&test.sql)
-            .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err));
+            .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", err));
 
         let mut lineages = extract_lineage(
             &[&ast],

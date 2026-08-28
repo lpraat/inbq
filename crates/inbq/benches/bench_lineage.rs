@@ -25,7 +25,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     for test in &test_lineage_data.tests {
         asts.push(
             parse_sql(&test.sql)
-                .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", &err)),
+                .unwrap_or_else(|err| panic!("Could not parse sql due to: {:?}", err)),
         );
         catalogs.push(Catalog {
             schema_objects: test.schema_objects.clone(),

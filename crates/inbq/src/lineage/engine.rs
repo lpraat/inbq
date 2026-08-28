@@ -60,7 +60,7 @@ impl LineageNode {
                     "Cannot find nested node {:?} in {:?} in table {:?}",
                     path,
                     self,
-                    &self.name
+                    self.name
                 )
             })
             .copied()
@@ -5331,7 +5331,7 @@ impl LineageContext {
                             anyhow!(
                                 "Cannot find column {:?} in table {:?}.",
                                 col_name,
-                                &self.arena_objects[left_join_table_idx].name
+                                self.arena_objects[left_join_table_idx].name
                             )
                         })?
                         .1;
@@ -5345,7 +5345,7 @@ impl LineageContext {
                             anyhow!(
                                 "Cannot find column {:?} in table {:?}.",
                                 col_name,
-                                &self.arena_objects[right_join_table_idx].name
+                                self.arena_objects[right_join_table_idx].name
                             )
                         })?
                         .1;
@@ -6678,7 +6678,7 @@ fn columns_to_nodes(
                 if set.contains(&field.name) {
                     panic!(
                         "Struct column `{}` in schema object `{}` contains duplicate field with name `{}`.",
-                        &col.name, schema_object_name, &field.name
+                        col.name, schema_object_name, field.name
                     );
                 }
                 set.insert(&field.name);
@@ -6800,7 +6800,7 @@ fn _extract_lineage(
                     if !are_args_unique {
                         panic!(
                             "Found duplicate arguments in schema object `{}`: `{:?}`.",
-                            &schema_object.name, duplicate_arguments
+                            schema_object.name, duplicate_arguments
                         );
                     }
 
