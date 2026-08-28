@@ -1,4 +1,4 @@
-use crate::ast::CreateJsFunctionStatement;
+use crate::ast::{CreateJsFunctionStatement, UnnestExpr};
 use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
@@ -147,14 +147,16 @@ impl From<NodeName> for String {
     }
 }
 
+const ANONYMOUS_LABEL: &str = "!anonymous";
+
 impl<'a> NodeName {
     fn as_str(&self) -> &str {
         match self {
-            NodeName::Anonymous => "!anonymous",
+            NodeName::Anonymous => ANONYMOUS_LABEL,
             NodeName::Defined(s) => s,
             NodeName::Nested(nested) => match nested.access_path.path.last().unwrap() {
                 AccessOp::Field(s) => s,
-                _ => "!anonymous",
+                _ => ANONYMOUS_LABEL,
             },
         }
     }
@@ -347,17 +349,25 @@ impl NodeType {
 
             (NodeType::Struct(s1), NodeType::Struct(s2)) => {
                 let mut fields = vec![];
+                let (s1, s2, one_has_anonymous_fields) = {
+                    if s1.has_anonymous_fields() {
+                        (s2, s1, true)
+                    } else if s2.has_anonymous_fields() {
+                        (s1, s2, true)
+                    } else {
+                        (s1, s2, false)
+                    }
+                };
                 for (f1, f2) in s1.fields.iter().zip(&s2.fields) {
-                    if !(f1.name.eq_ignore_ascii_case(&f2.name)) {
+                    if !one_has_anonymous_fields && !(f1.name.eq_ignore_ascii_case(&f2.name)) {
                         return None;
                     }
 
-                    if let Some(super_type) = f1.r#type.common_supertype_with(&f2.r#type) {
+                    {
+                        let super_type = f1.r#type.common_supertype_with(&f2.r#type)?;
                         let mut super_input = f1.input.clone();
                         super_input.extend(&f2.input);
                         fields.push(StructNodeFieldType::new(&f1.name, super_type, super_input));
-                    } else {
-                        return None;
                     }
                 }
                 Some(NodeType::Struct(StructNodeType { fields }))
@@ -520,6 +530,13 @@ impl StructNodeType {
             }
         }
         nodes
+    }
+
+    fn has_anonymous_fields(&self) -> bool {
+        self.fields
+            .iter()
+            .find(|f| f.name.eq_ignore_ascii_case(ANONYMOUS_LABEL))
+            .is_some()
     }
 }
 
@@ -1886,12 +1903,60 @@ impl LineageContext {
         }
     }
 
+    /// Handles an eventual `expr IN UNNEST(array_of_structs.field)`
+    /// like `select "bar" in unnest([struct("foo" as x, 2 as y), struct("bar", 2)].x)`
+    /// which is unexpectedly valid syntax
+    fn expr_in_unnest_array_of_structs_field_lin(
+        &mut self,
+        catalog: &LineageCatalog,
+        expr: &BinaryExpr,
+        node_origin: NodeOrigin,
+    ) -> anyhow::Result<Option<ArenaIndex>> {
+        if expr.operator == BinaryOperator::In
+            && let (left_expr, Expr::Unnest(UnnestExpr { array })) = (&expr.left, &*expr.right)
+            && let Expr::Binary(BinaryExpr {
+                left,
+                operator: BinaryOperator::FieldAccess,
+                right,
+            }) = &**array
+        {
+            match &**right {
+                Expr::Identifier(Identifier { name: ident })
+                | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
+                    let node_idx = self.expr_lin(catalog, left, false, node_origin)?;
+                    let node = &self.arena_lineage_nodes[node_idx];
+                    debug_assert!(matches!(node.r#type, NodeType::Array(_)));
+                    let mut access_path = AccessPath::default();
+                    access_path.path.push(AccessOp::Index);
+                    access_path.path.push(AccessOp::Field(ident.clone()));
+                    let nested_node_idx = node.access(&access_path)?;
+                    let right_node_idx =
+                        self.nested_node_lin(&access_path, nested_node_idx, node_origin, &[]);
+                    let left_node_idx = self.expr_lin(catalog, left_expr, false, node_origin)?;
+                    return Ok(Some(self.allocate_expr_node(
+                        "in_unnest_aos_field",
+                        NodeType::Boolean,
+                        node_origin,
+                        vec![left_node_idx, right_node_idx],
+                    )));
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+
     fn binary_expr_lin(
         &mut self,
         catalog: &LineageCatalog,
         expr: &BinaryExpr,
         node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
+        if let Some(node_idx) =
+            self.expr_in_unnest_array_of_structs_field_lin(catalog, expr, node_origin)?
+        {
+            return Ok(node_idx);
+        }
         let mut b = expr;
         let mut access_path = AccessPath::default();
         loop {

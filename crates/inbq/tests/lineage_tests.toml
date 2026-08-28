@@ -3602,3 +3602,25 @@ kind.table.columns = [{ name = "result", dtype = "ARRAY<BOOLEAN>" }]
 # Empty
 [tests.referenced_columns]
 # Empty
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select "a" in unnest([struct("foo" as x, 2 as y), struct(x, y)].x)
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "x", dtype = "string" },
+    { name = "y", dtype = "int64" }
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "res", dtype = "BOOLEAN" }]
+[tests.ready_lineage."proj.dat.out_table"]
+res.inputs = ["proj.dat.in_table->x"]
+res.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+x = ["select"]
+y = ["select"]
