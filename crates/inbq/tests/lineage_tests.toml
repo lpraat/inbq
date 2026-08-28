@@ -3584,3 +3584,21 @@ array_agg.side_inputs = []
 [tests.referenced_columns."proj.dat.in_table"]
 arr_col = ["unnest"]
 "arr_col[]" = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+WITH Words AS (
+  SELECT 'Intend' as value, 'east' as direction UNION ALL
+  SELECT 'Secure', 'north' UNION ALL
+  SELECT 'Clarity', 'west'
+)
+SELECT [EXISTS( SELECT value FROM Words WHERE direction = 'south' ), true] as result;
+"""
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "result", dtype = "ARRAY<BOOLEAN>" }]
+[tests.ready_lineage]
+# Empty
+[tests.referenced_columns]
+# Empty

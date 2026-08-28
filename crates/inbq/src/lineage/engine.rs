@@ -3230,10 +3230,9 @@ impl LineageContext {
                 let obj = &self.arena_objects[obj_idx];
                 debug_assert!(obj.lineage_nodes.len() == 1);
                 let node_idx = obj.lineage_nodes[0];
-                let node = &self.arena_lineage_nodes[node_idx];
                 self.allocate_expr_node(
                     "exists_subquery",
-                    node.r#type.clone(),
+                    NodeType::Boolean,
                     node_origin,
                     vec![node_idx],
                 )
