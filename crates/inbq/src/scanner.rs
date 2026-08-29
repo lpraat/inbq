@@ -667,7 +667,6 @@ impl Scanner {
 
             // Query positional parameter
             '?' => {
-                self.advance();
                 self.add_token(TokenType::QueryPositionalParameter);
             }
 

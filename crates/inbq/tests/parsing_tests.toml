@@ -43,6 +43,11 @@ select
 
 [[tests]]
 sql = """
+select ?, ?
+"""
+
+[[tests]]
+sql = """
 select
     --this is a comment
     'foo' as foo,
