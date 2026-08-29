@@ -125,13 +125,12 @@ impl<'a> Parser<'a> {
     }
 
     fn match_token_types(&mut self, token_types: &[TokenTypeVariant]) -> bool {
-        for tok in token_types {
-            if self.check_token_type(*tok) {
-                self.advance();
-                return true;
-            }
+        if self.check_token_types(token_types) {
+            self.advance();
+            true
+        } else {
+            false
         }
-        false
     }
 
     fn check_non_reserved_keyword(&self, value: &str) -> bool {
@@ -2265,10 +2264,10 @@ impl<'a> Parser<'a> {
             let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
                 let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
                 match &tok.kind {
-                    TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                    TokenType::Identifier(s) if s.eq_ignore_ascii_case("first") => {
                         Some(OrderByNulls::First)
                     }
-                    TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                    TokenType::Identifier(s) if s.eq_ignore_ascii_case("last") => {
                         Some(OrderByNulls::Last)
                     }
                     _ => unreachable!(),
@@ -3240,10 +3239,10 @@ impl<'a> Parser<'a> {
                 let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
                     let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
                     match &tok.kind {
-                        TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                        TokenType::Identifier(s) if s.eq_ignore_ascii_case("first") => {
                             Some(OrderByNulls::First)
                         }
-                        TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                        TokenType::Identifier(s) if s.eq_ignore_ascii_case("last") => {
                             Some(OrderByNulls::Last)
                         }
                         _ => unreachable!(),
@@ -4412,10 +4411,10 @@ impl<'a> Parser<'a> {
                 let nulls = if self.match_token_type(TokenTypeVariant::Nulls) {
                     let tok = self.consume_one_of_non_reserved_keywords(&["first", "last"])?;
                     match &tok.kind {
-                        TokenType::Identifier(s) if s.to_lowercase() == "first" => {
+                        TokenType::Identifier(s) if s.eq_ignore_ascii_case("first") => {
                             Some(OrderByNulls::First)
                         }
-                        TokenType::Identifier(s) if s.to_lowercase() == "last" => {
+                        TokenType::Identifier(s) if s.eq_ignore_ascii_case("last") => {
                             Some(OrderByNulls::Last)
                         }
                         _ => unreachable!(),
