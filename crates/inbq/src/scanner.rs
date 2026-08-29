@@ -57,6 +57,7 @@ impl Scanner {
         }
     }
 
+    #[allow(dead_code)]
     fn peek_prev(&self) -> Option<char> {
         self.peek_prev_i(1)
     }
@@ -150,15 +151,24 @@ impl Scanner {
             && (next_next_c == '\'' || next_next_c == '"')
     }
 
+    fn is_escaped(&self) -> bool {
+        let mut escaped = false;
+        let mut i = 1;
+        while self.peek_prev_i(i).is_some_and(|p| p == '\\') {
+            escaped = !escaped;
+            i += 1;
+        }
+        escaped
+    }
+
     fn scan_string(&mut self, delimiter: char) -> anyhow::Result<()> {
         loop {
             let peek_char = self.peek();
             if peek_char == '\0' {
                 return Err(anyhow!(self.error_str("Found unterminated string")));
             }
-            let escaped = self.peek_prev().is_some_and(|prev| {
-                prev == '\\' && self.peek_prev_i(2).is_some_and(|prev_2| prev_2 != '\\')
-            });
+            let escaped = self.is_escaped();
+
             if !escaped && self.match_char(delimiter) {
                 break;
             }
@@ -173,9 +183,7 @@ impl Scanner {
             if peek_char == '\0' {
                 return Err(anyhow!(self.error_str("Found unterminated string")));
             }
-            let escaped = self.peek_prev().is_some_and(|prev| {
-                prev == '\\' && self.peek_prev_i(2).is_some_and(|prev_2| prev_2 != '\\')
-            });
+            let escaped = self.is_escaped();
             if !escaped && self.match_char(delimiter) {
                 let curr = self.current - 1;
                 if self.match_char(delimiter) && self.match_char(delimiter) {
