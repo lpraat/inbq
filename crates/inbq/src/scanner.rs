@@ -335,115 +335,174 @@ impl Scanner {
             }
             self.advance();
         }
-        let identifer: String = self.source_chars[self.start..self.current].iter().collect();
+        let chars = &self.source_chars[self.start..self.current];
 
-        match identifer.to_lowercase().as_str() {
-            "array" => {
-                self.match_reserved_keyword(TokenType::Array);
-                if self.peek() == '<' && self.open_type_brackets.is_none() {
-                    self.open_type_brackets = Some(0);
+        if let Some(token_type) = Self::match_token_keyword(chars) {
+            match token_type {
+                TokenType::Array => {
+                    self.match_reserved_keyword(TokenType::Array);
+                    if self.peek() == '<' && self.open_type_brackets.is_none() {
+                        self.open_type_brackets = Some(0);
+                    }
                 }
-            }
-            "struct" => {
-                self.match_reserved_keyword(TokenType::Struct);
-                if self.peek() == '<' && self.open_type_brackets.is_none() {
-                    self.open_type_brackets = Some(0)
+                TokenType::Struct => {
+                    self.match_reserved_keyword(TokenType::Struct);
+                    if self.peek() == '<' && self.open_type_brackets.is_none() {
+                        self.open_type_brackets = Some(0);
+                    }
                 }
+                _ => self.match_reserved_keyword(token_type),
             }
-            "all" => self.match_reserved_keyword(TokenType::All),
-            "and" => self.match_reserved_keyword(TokenType::And),
-            "any" => self.match_reserved_keyword(TokenType::Any),
-            "as" => self.match_reserved_keyword(TokenType::As),
-            "asc" => self.match_reserved_keyword(TokenType::Asc),
-            "assert_rows_modified" => self.match_reserved_keyword(TokenType::AssertRowsModified),
-            "at" => self.match_reserved_keyword(TokenType::At),
-            "between" => self.match_reserved_keyword(TokenType::Between),
-            "by" => self.match_reserved_keyword(TokenType::By),
-            "case" => self.match_reserved_keyword(TokenType::Case),
-            "cast" => self.match_reserved_keyword(TokenType::Cast),
-            "collate" => self.match_reserved_keyword(TokenType::Collate),
-            "contains" => self.match_reserved_keyword(TokenType::Contains),
-            "create" => self.match_reserved_keyword(TokenType::Create),
-            "cross" => self.match_reserved_keyword(TokenType::Cross),
-            "cube" => self.match_reserved_keyword(TokenType::Cube),
-            "current" => self.match_reserved_keyword(TokenType::Current),
-            "default" => self.match_reserved_keyword(TokenType::Default),
-            "define" => self.match_reserved_keyword(TokenType::Define),
-            "desc" => self.match_reserved_keyword(TokenType::Desc),
-            "distinct" => self.match_reserved_keyword(TokenType::Distinct),
-            "else" => self.match_reserved_keyword(TokenType::Else),
-            "end" => self.match_reserved_keyword(TokenType::End),
-            "enum" => self.match_reserved_keyword(TokenType::Enum),
-            "escape" => self.match_reserved_keyword(TokenType::Escape),
-            "except" => self.match_reserved_keyword(TokenType::Except),
-            "exclude" => self.match_reserved_keyword(TokenType::Exclude),
-            "exists" => self.match_reserved_keyword(TokenType::Exists),
-            "extract" => self.match_reserved_keyword(TokenType::Extract),
-            "false" => self.match_reserved_keyword(TokenType::False),
-            "fetch" => self.match_reserved_keyword(TokenType::Fetch),
-            "following" => self.match_reserved_keyword(TokenType::Following),
-            "for" => self.match_reserved_keyword(TokenType::For),
-            "from" => self.match_reserved_keyword(TokenType::From),
-            "full" => self.match_reserved_keyword(TokenType::Full),
-            "group" => self.match_reserved_keyword(TokenType::Group),
-            "grouping" => self.match_reserved_keyword(TokenType::Grouping),
-            "groups" => self.match_reserved_keyword(TokenType::Groups),
-            "hash" => self.match_reserved_keyword(TokenType::Hash),
-            "having" => self.match_reserved_keyword(TokenType::Having),
-            "if" => self.match_reserved_keyword(TokenType::If),
-            "ignore" => self.match_reserved_keyword(TokenType::Ignore),
-            "in" => self.match_reserved_keyword(TokenType::In),
-            "inner" => self.match_reserved_keyword(TokenType::Inner),
-            "intersect" => self.match_reserved_keyword(TokenType::Intersect),
-            "interval" => self.match_reserved_keyword(TokenType::Interval),
-            "into" => self.match_reserved_keyword(TokenType::Into),
-            "is" => self.match_reserved_keyword(TokenType::Is),
-            "join" => self.match_reserved_keyword(TokenType::Join),
-            "lateral" => self.match_reserved_keyword(TokenType::Lateral),
-            "left" => self.match_reserved_keyword(TokenType::Left),
-            "like" => self.match_reserved_keyword(TokenType::Like),
-            "limit" => self.match_reserved_keyword(TokenType::Limit),
-            "lookup" => self.match_reserved_keyword(TokenType::Lookup),
-            "merge" => self.match_reserved_keyword(TokenType::Merge),
-            "natural" => self.match_reserved_keyword(TokenType::Natural),
-            "new" => self.match_reserved_keyword(TokenType::New),
-            "no" => self.match_reserved_keyword(TokenType::No),
-            "not" => self.match_reserved_keyword(TokenType::Not),
-            "null" => self.match_reserved_keyword(TokenType::Null),
-            "nulls" => self.match_reserved_keyword(TokenType::Nulls),
-            "of" => self.match_reserved_keyword(TokenType::Of),
-            "on" => self.match_reserved_keyword(TokenType::On),
-            "or" => self.match_reserved_keyword(TokenType::Or),
-            "order" => self.match_reserved_keyword(TokenType::Order),
-            "outer" => self.match_reserved_keyword(TokenType::Outer),
-            "over" => self.match_reserved_keyword(TokenType::Over),
-            "partition" => self.match_reserved_keyword(TokenType::Partition),
-            "preceding" => self.match_reserved_keyword(TokenType::Preceding),
-            "proto" => self.match_reserved_keyword(TokenType::Proto),
-            "qualify" => self.match_reserved_keyword(TokenType::Qualify),
-            "range" => self.match_reserved_keyword(TokenType::Range),
-            "recursive" => self.match_reserved_keyword(TokenType::Recursive),
-            "respect" => self.match_reserved_keyword(TokenType::Respect),
-            "right" => self.match_reserved_keyword(TokenType::Right),
-            "rollup" => self.match_reserved_keyword(TokenType::Rollup),
-            "rows" => self.match_reserved_keyword(TokenType::Rows),
-            "select" => self.match_reserved_keyword(TokenType::Select),
-            "set" => self.match_reserved_keyword(TokenType::Set),
-            "some" => self.match_reserved_keyword(TokenType::Some),
-            "tablesample" => self.match_reserved_keyword(TokenType::Tablesample),
-            "then" => self.match_reserved_keyword(TokenType::Then),
-            "to" => self.match_reserved_keyword(TokenType::To),
-            "treat" => self.match_reserved_keyword(TokenType::Treat),
-            "true" => self.match_reserved_keyword(TokenType::True),
-            "union" => self.match_reserved_keyword(TokenType::Union),
-            "unnest" => self.match_reserved_keyword(TokenType::Unnest),
-            "using" => self.match_reserved_keyword(TokenType::Using),
-            "when" => self.match_reserved_keyword(TokenType::When),
-            "where" => self.match_reserved_keyword(TokenType::Where),
-            "window" => self.match_reserved_keyword(TokenType::Window),
-            "with" => self.match_reserved_keyword(TokenType::With),
-            "within" => self.match_reserved_keyword(TokenType::Within),
-            _ => self.add_token(TokenType::Identifier(self.current_source_str())),
+        } else {
+            self.add_token(TokenType::Identifier(self.current_source_str()));
+        }
+    }
+
+    fn match_token_keyword(chars: &[char]) -> Option<TokenType> {
+        fn chars_match_keyword(chars: &[char], keyword: &[u8]) -> bool {
+            chars
+                .iter()
+                .zip(keyword)
+                .all(|(&c, &b)| c.to_ascii_lowercase() as u8 == b)
+        }
+        macro_rules! match_token_kw {
+            ($chars:expr, $kw:expr, $tok:expr) => {
+                if chars_match_keyword($chars, $kw) {
+                    return Some($tok);
+                }
+            };
+        }
+        match chars.len() {
+            2 => {
+                match_token_kw!(chars, b"as", TokenType::As);
+                match_token_kw!(chars, b"at", TokenType::At);
+                match_token_kw!(chars, b"by", TokenType::By);
+                match_token_kw!(chars, b"if", TokenType::If);
+                match_token_kw!(chars, b"in", TokenType::In);
+                match_token_kw!(chars, b"is", TokenType::Is);
+                match_token_kw!(chars, b"no", TokenType::No);
+                match_token_kw!(chars, b"of", TokenType::Of);
+                match_token_kw!(chars, b"on", TokenType::On);
+                match_token_kw!(chars, b"or", TokenType::Or);
+                match_token_kw!(chars, b"to", TokenType::To);
+                None
+            }
+            3 => {
+                match_token_kw!(chars, b"all", TokenType::All);
+                match_token_kw!(chars, b"and", TokenType::And);
+                match_token_kw!(chars, b"any", TokenType::Any);
+                match_token_kw!(chars, b"asc", TokenType::Asc);
+                match_token_kw!(chars, b"end", TokenType::End);
+                match_token_kw!(chars, b"for", TokenType::For);
+                match_token_kw!(chars, b"new", TokenType::New);
+                match_token_kw!(chars, b"not", TokenType::Not);
+                match_token_kw!(chars, b"set", TokenType::Set);
+                None
+            }
+            4 => {
+                match_token_kw!(chars, b"case", TokenType::Case);
+                match_token_kw!(chars, b"cast", TokenType::Cast);
+                match_token_kw!(chars, b"cube", TokenType::Cube);
+                match_token_kw!(chars, b"desc", TokenType::Desc);
+                match_token_kw!(chars, b"else", TokenType::Else);
+                match_token_kw!(chars, b"enum", TokenType::Enum);
+                match_token_kw!(chars, b"from", TokenType::From);
+                match_token_kw!(chars, b"full", TokenType::Full);
+                match_token_kw!(chars, b"hash", TokenType::Hash);
+                match_token_kw!(chars, b"into", TokenType::Into);
+                match_token_kw!(chars, b"join", TokenType::Join);
+                match_token_kw!(chars, b"left", TokenType::Left);
+                match_token_kw!(chars, b"like", TokenType::Like);
+                match_token_kw!(chars, b"null", TokenType::Null);
+                match_token_kw!(chars, b"over", TokenType::Over);
+                match_token_kw!(chars, b"rows", TokenType::Rows);
+                match_token_kw!(chars, b"some", TokenType::Some);
+                match_token_kw!(chars, b"then", TokenType::Then);
+                match_token_kw!(chars, b"true", TokenType::True);
+                match_token_kw!(chars, b"when", TokenType::When);
+                match_token_kw!(chars, b"with", TokenType::With);
+                None
+            }
+            5 => {
+                match_token_kw!(chars, b"array", TokenType::Array);
+                match_token_kw!(chars, b"cross", TokenType::Cross);
+                match_token_kw!(chars, b"false", TokenType::False);
+                match_token_kw!(chars, b"fetch", TokenType::Fetch);
+                match_token_kw!(chars, b"group", TokenType::Group);
+                match_token_kw!(chars, b"inner", TokenType::Inner);
+                match_token_kw!(chars, b"limit", TokenType::Limit);
+                match_token_kw!(chars, b"merge", TokenType::Merge);
+                match_token_kw!(chars, b"nulls", TokenType::Nulls);
+                match_token_kw!(chars, b"order", TokenType::Order);
+                match_token_kw!(chars, b"outer", TokenType::Outer);
+                match_token_kw!(chars, b"proto", TokenType::Proto);
+                match_token_kw!(chars, b"range", TokenType::Range);
+                match_token_kw!(chars, b"right", TokenType::Right);
+                match_token_kw!(chars, b"treat", TokenType::Treat);
+                match_token_kw!(chars, b"union", TokenType::Union);
+                match_token_kw!(chars, b"using", TokenType::Using);
+                match_token_kw!(chars, b"where", TokenType::Where);
+                None
+            }
+            6 => {
+                match_token_kw!(chars, b"create", TokenType::Create);
+                match_token_kw!(chars, b"define", TokenType::Define);
+                match_token_kw!(chars, b"escape", TokenType::Escape);
+                match_token_kw!(chars, b"except", TokenType::Except);
+                match_token_kw!(chars, b"exists", TokenType::Exists);
+                match_token_kw!(chars, b"groups", TokenType::Groups);
+                match_token_kw!(chars, b"having", TokenType::Having);
+                match_token_kw!(chars, b"ignore", TokenType::Ignore);
+                match_token_kw!(chars, b"lookup", TokenType::Lookup);
+                match_token_kw!(chars, b"rollup", TokenType::Rollup);
+                match_token_kw!(chars, b"select", TokenType::Select);
+                match_token_kw!(chars, b"struct", TokenType::Struct);
+                match_token_kw!(chars, b"unnest", TokenType::Unnest);
+                match_token_kw!(chars, b"window", TokenType::Window);
+                match_token_kw!(chars, b"within", TokenType::Within);
+                None
+            }
+            7 => {
+                match_token_kw!(chars, b"between", TokenType::Between);
+                match_token_kw!(chars, b"collate", TokenType::Collate);
+                match_token_kw!(chars, b"current", TokenType::Current);
+                match_token_kw!(chars, b"default", TokenType::Default);
+                match_token_kw!(chars, b"exclude", TokenType::Exclude);
+                match_token_kw!(chars, b"extract", TokenType::Extract);
+                match_token_kw!(chars, b"lateral", TokenType::Lateral);
+                match_token_kw!(chars, b"natural", TokenType::Natural);
+                match_token_kw!(chars, b"qualify", TokenType::Qualify);
+                match_token_kw!(chars, b"respect", TokenType::Respect);
+                None
+            }
+            8 => {
+                match_token_kw!(chars, b"contains", TokenType::Contains);
+                match_token_kw!(chars, b"distinct", TokenType::Distinct);
+                match_token_kw!(chars, b"grouping", TokenType::Grouping);
+                match_token_kw!(chars, b"interval", TokenType::Interval);
+                None
+            }
+            9 => {
+                match_token_kw!(chars, b"following", TokenType::Following);
+                match_token_kw!(chars, b"intersect", TokenType::Intersect);
+                match_token_kw!(chars, b"partition", TokenType::Partition);
+                match_token_kw!(chars, b"preceding", TokenType::Preceding);
+                match_token_kw!(chars, b"recursive", TokenType::Recursive);
+                None
+            }
+            11 => {
+                match_token_kw!(chars, b"tablesample", TokenType::Tablesample);
+                None
+            }
+            20 => {
+                match_token_kw!(
+                    chars,
+                    b"assert_rows_modified",
+                    TokenType::AssertRowsModified
+                );
+                None
+            }
+            _ => None,
         }
     }
 
