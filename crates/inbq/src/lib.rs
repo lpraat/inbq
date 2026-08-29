@@ -33,7 +33,7 @@
 //! fn main() -> anyhow::Result<()> {
 //!     env_logger::init();
 //!
-//!     let sql = r#""
+//!     let sql = r#"
 //!         declare default_val float64 default (select min(val) from project.dataset.out);
 //!
 //!         insert into `project.dataset.out`
@@ -42,7 +42,7 @@
 //!             if(x is null or s.x is null, default_val, x + s.x)
 //!         from `project.dataset.t1` inner join `project.dataset.t2` using (id)
 //!         where s.source = "baz";
-//!     ""#;
+//!     "#;
 //!     let mut scanner = Scanner::new(sql);
 //!     scanner.scan()?;
 //!     let mut parser = Parser::new(scanner.tokens());
