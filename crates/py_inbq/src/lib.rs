@@ -172,6 +172,12 @@ impl RsToPyObject for bool {
     }
 }
 
+impl RsToPyObject for &str {
+    fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
+        Ok(PyString::new(py_ctx.py, self).as_any().to_owned())
+    }
+}
+
 impl RsToPyObject for String {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         Ok(PyString::new(py_ctx.py, self).as_any().to_owned())
@@ -690,7 +696,7 @@ impl RsToPyObject for TokenType {
     }
 }
 
-impl RsToPyObject for Token {
+impl RsToPyObject for Token<'_> {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         let kwargs = &[
             kwarg!(py_ctx, "kind", self.kind),

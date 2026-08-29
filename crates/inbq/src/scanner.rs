@@ -1,10 +1,14 @@
+use std::ops::Range;
+
 use anyhow::anyhow;
 
 use crate::ast::{Token, TokenType};
 
-pub struct Scanner {
+pub struct Scanner<'source> {
+    source: &'source str,
     source_chars: Vec<char>,
-    tokens: Vec<Token>,
+    byte_offsets: Vec<usize>,
+    tokens: Vec<Token<'source>>,
     start: usize,
     current: usize,
     line: u32,
@@ -12,10 +16,19 @@ pub struct Scanner {
     open_type_brackets: Option<u32>,
 }
 
-impl Scanner {
-    pub fn new(source: &str) -> Self {
+impl<'source> Scanner<'source> {
+    pub fn new(source: &'source str) -> Self {
+        let mut source_chars: Vec<char> = Vec::with_capacity(source.len());
+        let mut byte_offsets: Vec<usize> = Vec::with_capacity(source.len() + 1);
+        for (byte_offset, ch) in source.char_indices() {
+            source_chars.push(ch);
+            byte_offsets.push(byte_offset);
+        }
+        byte_offsets.push(source.len());
         Self {
-            source_chars: source.chars().collect(),
+            source,
+            source_chars,
+            byte_offsets,
             tokens: vec![],
             start: 0,
             current: 0,
@@ -25,8 +38,16 @@ impl Scanner {
         }
     }
 
-    pub fn tokens(&self) -> &Vec<Token> {
+    pub fn tokens(&self) -> &Vec<Token<'source>> {
         &self.tokens
+    }
+
+    fn current_range(&self) -> Range<usize> {
+        self.byte_offsets[self.start]..self.byte_offsets[self.current]
+    }
+
+    fn current_source_str(&self) -> &str {
+        &self.source[self.current_range()]
     }
 
     fn advance(&mut self) -> char {
@@ -91,14 +112,10 @@ impl Scanner {
     fn add_token(&mut self, token_type: TokenType) {
         self.tokens.push(Token {
             kind: token_type,
-            lexeme: self.source_chars[self.start..self.current].iter().collect(),
+            lexeme: &self.source[self.current_range()],
             line: self.line,
             col: self.col,
         });
-    }
-
-    fn current_source_str(&self) -> String {
-        self.source_chars[self.start..self.current].iter().collect()
     }
 
     fn reset(&mut self) {
@@ -122,7 +139,7 @@ impl Scanner {
         }
         self.tokens.push(Token {
             kind: TokenType::Eof,
-            lexeme: String::from("eof"),
+            lexeme: "eof",
             line: self.line,
             col: self.col,
         });
@@ -321,7 +338,7 @@ impl Scanner {
             ..
         }) = self.tokens.last()
         {
-            self.add_token(TokenType::Identifier(self.current_source_str()));
+            self.add_token(TokenType::Identifier(self.current_source_str().to_owned()));
             return;
         }
         self.add_token(token_type);
@@ -354,7 +371,7 @@ impl Scanner {
                 _ => self.match_reserved_keyword(token_type),
             }
         } else {
-            self.add_token(TokenType::Identifier(self.current_source_str()));
+            self.add_token(TokenType::Identifier(self.current_source_str().to_owned()));
         }
     }
 

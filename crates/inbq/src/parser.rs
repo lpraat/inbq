@@ -55,13 +55,13 @@ impl ImplicitArgExpr {
     }
 }
 
-pub struct Parser<'a> {
-    source_tokens: &'a Vec<Token>,
+pub struct Parser<'source> {
+    source_tokens: &'source Vec<Token<'source>>,
     curr: usize,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a Vec<Token>) -> Parser<'a> {
+    pub fn new(tokens: &'a Vec<Token<'a>>) -> Parser<'a> {
         Self {
             source_tokens: tokens,
             curr: 0,
@@ -72,16 +72,16 @@ impl<'a> Parser<'a> {
         self.parse_query()
     }
 
-    fn peek_prev(&self) -> &Token {
+    fn peek_prev(&self) -> &Token<'a> {
         debug_assert!(self.curr > 0);
         &self.source_tokens[self.curr - 1]
     }
 
-    fn peek(&self) -> &Token {
+    fn peek(&self) -> &Token<'a> {
         &self.source_tokens[self.curr]
     }
 
-    fn peek_next_i(&self, i: usize) -> &Token {
+    fn peek_next_i(&self, i: usize) -> &Token<'a> {
         if self.curr + i >= self.source_tokens.len() {
             self.source_tokens.last().unwrap() // Eof
         } else {
@@ -89,7 +89,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn advance(&mut self) -> &Token {
+    fn advance(&mut self) -> &Token<'a> {
         if !self.is_at_end() {
             // Do not advance if we peek Eof
             self.curr += 1;
@@ -155,7 +155,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_non_reserved_keyword(&mut self, value: &str) -> anyhow::Result<&Token> {
+    fn consume_non_reserved_keyword(&mut self, value: &str) -> anyhow::Result<&Token<'a>> {
         if self.check_non_reserved_keyword(value) {
             Ok(self.advance())
         } else {
@@ -164,7 +164,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_one_of_non_reserved_keywords(&mut self, values: &[&str]) -> anyhow::Result<&Token> {
+    fn consume_one_of_non_reserved_keywords(
+        &mut self,
+        values: &[&str],
+    ) -> anyhow::Result<&Token<'a>> {
         for value in values {
             if self.check_non_reserved_keyword(value) {
                 return Ok(self.advance());
@@ -181,7 +184,7 @@ impl<'a> Parser<'a> {
         )))
     }
 
-    fn consume(&mut self, token_type: TokenTypeVariant) -> anyhow::Result<&Token> {
+    fn consume(&mut self, token_type: TokenTypeVariant) -> anyhow::Result<&Token<'a>> {
         if self.check_token_type(token_type) {
             Ok(self.advance())
         } else {
@@ -198,7 +201,7 @@ impl<'a> Parser<'a> {
         ])
     }
 
-    fn consume_identifier(&mut self) -> anyhow::Result<&Token> {
+    fn consume_identifier(&mut self) -> anyhow::Result<&Token<'a>> {
         self.consume_one_of(&[
             TokenTypeVariant::Identifier,
             TokenTypeVariant::QuotedIdentifier,
@@ -254,7 +257,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn consume_one_of(&mut self, token_types: &[TokenTypeVariant]) -> anyhow::Result<&Token> {
+    fn consume_one_of(&mut self, token_types: &[TokenTypeVariant]) -> anyhow::Result<&Token<'a>> {
         for token_type in token_types {
             if self.check_token_type(*token_type) {
                 return Ok(self.advance());

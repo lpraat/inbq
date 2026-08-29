@@ -1781,9 +1781,9 @@ impl TokenTypeVariant {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Token {
+pub struct Token<'source> {
     pub kind: TokenType,
-    pub lexeme: String,
+    pub lexeme: &'source str,
     pub line: u32,
     pub col: u32,
 }
