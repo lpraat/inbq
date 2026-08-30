@@ -121,33 +121,23 @@ macro_rules! get_lineage_class {
     };
 }
 
-macro_rules! kwarg {
-    ($py_ctx:expr, $py_field:expr, $rs_field:expr) => {
-        (
-            intern!($py_ctx.py, $py_field),
-            $rs_field.to_py_obj($py_ctx)?,
-        )
+macro_rules! arg {
+    ($py_ctx:expr, $rs_field:expr) => {
+        $rs_field.to_py_obj($py_ctx)?
     };
 }
-
-static VARIANT_FIELD_NAME: &str = "vty";
 
 trait RsToPyObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>>;
 }
 
-fn instantiate_py_class<'py>(
+fn instantiate_py_class_from_args<'py>(
     py_ctx: &PyContext<'py>,
     cls: Bound<'py, PyAny>,
-    kwargs: &[(&Bound<'py, PyString>, Bound<'py, PyAny>)],
+    args: &[Bound<'py, PyAny>],
 ) -> anyhow::Result<Bound<'py, PyAny>> {
-    let py_kwargs = PyDict::new(py_ctx.py);
-    for (key, value) in kwargs {
-        py_kwargs.set_item(key, value)?;
-    }
-
-    cls.call(PyTuple::empty(py_ctx.py), Some(&py_kwargs))
-        .map_err(|e| anyhow!(e))
+    let args = PyTuple::new(py_ctx.py, args)?;
+    cls.call(args, None).map_err(|e| anyhow!(e))
 }
 
 impl<T: RsToPyObject> RsToPyObject for Option<T> {
@@ -246,465 +236,677 @@ impl RsToPyObject for usize {
 impl RsToPyObject for TokenType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            TokenType::LeftParen => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::LeftParen)?, &[])
-            }
-            TokenType::RightParen => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::RightParen)?, &[])
-            }
-            TokenType::LeftSquare => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::LeftSquare)?, &[])
-            }
-            TokenType::RightSquare => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::RightSquare)?, &[])
-            }
-            TokenType::Comma => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Comma)?, &[])
-            }
+            TokenType::LeftParen => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::LeftParen)?,
+                &[],
+            ),
+            TokenType::RightParen => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::RightParen)?,
+                &[],
+            ),
+            TokenType::LeftSquare => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::LeftSquare)?,
+                &[],
+            ),
+            TokenType::RightSquare => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::RightSquare)?,
+                &[],
+            ),
+            TokenType::Comma => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Comma)?,
+                &[],
+            ),
             TokenType::Dot => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Dot)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Dot)?, &[])
             }
-            TokenType::Minus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Minus)?, &[])
-            }
-            TokenType::Plus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Plus)?, &[])
-            }
-            TokenType::BitwiseNot => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::BitwiseNot)?, &[])
-            }
-            TokenType::BitwiseOr => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::BitwiseOr)?, &[])
-            }
-            TokenType::BitwiseAnd => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::BitwiseAnd)?, &[])
-            }
-            TokenType::BitwiseXor => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::BitwiseXor)?, &[])
-            }
-            TokenType::BitwiseRightShift => instantiate_py_class(
+            TokenType::Minus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Minus)?,
+                &[],
+            ),
+            TokenType::Plus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Plus)?,
+                &[],
+            ),
+            TokenType::BitwiseNot => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::BitwiseNot)?,
+                &[],
+            ),
+            TokenType::BitwiseOr => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::BitwiseOr)?,
+                &[],
+            ),
+            TokenType::BitwiseAnd => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::BitwiseAnd)?,
+                &[],
+            ),
+            TokenType::BitwiseXor => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::BitwiseXor)?,
+                &[],
+            ),
+            TokenType::BitwiseRightShift => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::BitwiseRightShift)?,
                 &[],
             ),
-            TokenType::BitwiseLeftShift => instantiate_py_class(
+            TokenType::BitwiseLeftShift => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::BitwiseLeftShift)?,
                 &[],
             ),
-            TokenType::Colon => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Colon)?, &[])
-            }
-            TokenType::Semicolon => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Semicolon)?, &[])
-            }
-            TokenType::Slash => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Slash)?, &[])
-            }
-            TokenType::Star => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Star)?, &[])
-            }
-            TokenType::Tick => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Tick)?, &[])
-            }
-            TokenType::ConcatOperator => instantiate_py_class(
+            TokenType::Colon => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Colon)?,
+                &[],
+            ),
+            TokenType::Semicolon => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Semicolon)?,
+                &[],
+            ),
+            TokenType::Slash => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Slash)?,
+                &[],
+            ),
+            TokenType::Star => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Star)?,
+                &[],
+            ),
+            TokenType::Tick => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Tick)?,
+                &[],
+            ),
+            TokenType::ConcatOperator => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::ConcatOperator)?,
                 &[],
             ),
-            TokenType::Bang => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Bang)?, &[])
-            }
-            TokenType::BangEqual => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::BangEqual)?, &[])
-            }
-            TokenType::Equal => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Equal)?, &[])
-            }
-            TokenType::NotEqual => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::NotEqual)?, &[])
-            }
-            TokenType::Greater => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Greater)?, &[])
-            }
-            TokenType::GreaterEqual => instantiate_py_class(
+            TokenType::Bang => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Bang)?,
+                &[],
+            ),
+            TokenType::BangEqual => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::BangEqual)?,
+                &[],
+            ),
+            TokenType::Equal => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Equal)?,
+                &[],
+            ),
+            TokenType::NotEqual => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::NotEqual)?,
+                &[],
+            ),
+            TokenType::Greater => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Greater)?,
+                &[],
+            ),
+            TokenType::GreaterEqual => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::GreaterEqual)?,
                 &[],
             ),
-            TokenType::Less => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Less)?, &[])
-            }
-            TokenType::LessEqual => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::LessEqual)?, &[])
-            }
-            TokenType::RightArrow => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::RightArrow)?, &[])
-            }
+            TokenType::Less => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Less)?,
+                &[],
+            ),
+            TokenType::LessEqual => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::LessEqual)?,
+                &[],
+            ),
+            TokenType::RightArrow => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::RightArrow)?,
+                &[],
+            ),
             TokenType::QuotedIdentifier(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TokenType::QuotedIdentifier)?,
-                    kwargs,
+                    args,
                 )
             }
             TokenType::Identifier(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TokenType::Identifier)?,
-                    kwargs,
+                    args,
                 )
             }
             TokenType::QueryNamedParameter(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TokenType::QueryNamedParameter)?,
-                    kwargs,
+                    args,
                 )
             }
-            TokenType::QueryPositionalParameter => instantiate_py_class(
+            TokenType::QueryPositionalParameter => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::QueryPositionalParameter)?,
                 &[],
             ),
             TokenType::SystemVariable(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TokenType::SystemVariable)?,
-                    kwargs,
+                    args,
                 )
             }
             TokenType::String(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::String)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TokenType::String)?,
+                    args,
+                )
             }
             TokenType::RawString(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TokenType::RawString)?,
-                    kwargs,
+                    args,
                 )
             }
             TokenType::Bytes(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Bytes)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TokenType::Bytes)?,
+                    args,
+                )
             }
             TokenType::RawBytes(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::RawBytes)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TokenType::RawBytes)?,
+                    args,
+                )
             }
             TokenType::Number(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Number)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, TokenType::Number)?,
+                    args,
+                )
             }
             TokenType::Eof => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Eof)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Eof)?, &[])
             }
             TokenType::All => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::All)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::All)?, &[])
             }
             TokenType::And => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::And)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::And)?, &[])
             }
             TokenType::Any => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Any)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Any)?, &[])
             }
-            TokenType::Array => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Array)?, &[])
-            }
+            TokenType::Array => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Array)?,
+                &[],
+            ),
             TokenType::As => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::As)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::As)?, &[])
             }
             TokenType::Asc => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Asc)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Asc)?, &[])
             }
-            TokenType::AssertRowsModified => instantiate_py_class(
+            TokenType::AssertRowsModified => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, TokenType::AssertRowsModified)?,
                 &[],
             ),
             TokenType::At => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::At)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::At)?, &[])
             }
-            TokenType::Between => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Between)?, &[])
-            }
+            TokenType::Between => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Between)?,
+                &[],
+            ),
             TokenType::By => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::By)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::By)?, &[])
             }
-            TokenType::Case => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Case)?, &[])
-            }
-            TokenType::Cast => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Cast)?, &[])
-            }
-            TokenType::Collate => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Collate)?, &[])
-            }
-            TokenType::Contains => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Contains)?, &[])
-            }
-            TokenType::Create => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Create)?, &[])
-            }
-            TokenType::Cross => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Cross)?, &[])
-            }
-            TokenType::Cube => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Cube)?, &[])
-            }
-            TokenType::Current => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Current)?, &[])
-            }
-            TokenType::Default => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Default)?, &[])
-            }
-            TokenType::Define => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Define)?, &[])
-            }
-            TokenType::Desc => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Desc)?, &[])
-            }
-            TokenType::Distinct => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Distinct)?, &[])
-            }
-            TokenType::Else => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Else)?, &[])
-            }
+            TokenType::Case => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Case)?,
+                &[],
+            ),
+            TokenType::Cast => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Cast)?,
+                &[],
+            ),
+            TokenType::Collate => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Collate)?,
+                &[],
+            ),
+            TokenType::Contains => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Contains)?,
+                &[],
+            ),
+            TokenType::Create => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Create)?,
+                &[],
+            ),
+            TokenType::Cross => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Cross)?,
+                &[],
+            ),
+            TokenType::Cube => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Cube)?,
+                &[],
+            ),
+            TokenType::Current => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Current)?,
+                &[],
+            ),
+            TokenType::Default => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Default)?,
+                &[],
+            ),
+            TokenType::Define => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Define)?,
+                &[],
+            ),
+            TokenType::Desc => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Desc)?,
+                &[],
+            ),
+            TokenType::Distinct => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Distinct)?,
+                &[],
+            ),
+            TokenType::Else => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Else)?,
+                &[],
+            ),
             TokenType::End => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::End)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::End)?, &[])
             }
-            TokenType::Enum => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Enum)?, &[])
-            }
-            TokenType::Escape => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Escape)?, &[])
-            }
-            TokenType::Except => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Except)?, &[])
-            }
-            TokenType::Exclude => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Exclude)?, &[])
-            }
-            TokenType::Exists => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Exists)?, &[])
-            }
-            TokenType::Extract => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Extract)?, &[])
-            }
-            TokenType::False => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::False)?, &[])
-            }
-            TokenType::Fetch => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Fetch)?, &[])
-            }
-            TokenType::Following => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Following)?, &[])
-            }
+            TokenType::Enum => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Enum)?,
+                &[],
+            ),
+            TokenType::Escape => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Escape)?,
+                &[],
+            ),
+            TokenType::Except => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Except)?,
+                &[],
+            ),
+            TokenType::Exclude => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Exclude)?,
+                &[],
+            ),
+            TokenType::Exists => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Exists)?,
+                &[],
+            ),
+            TokenType::Extract => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Extract)?,
+                &[],
+            ),
+            TokenType::False => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::False)?,
+                &[],
+            ),
+            TokenType::Fetch => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Fetch)?,
+                &[],
+            ),
+            TokenType::Following => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Following)?,
+                &[],
+            ),
             TokenType::For => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::For)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::For)?, &[])
             }
-            TokenType::From => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::From)?, &[])
-            }
-            TokenType::Full => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Full)?, &[])
-            }
-            TokenType::Group => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Group)?, &[])
-            }
-            TokenType::Grouping => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Grouping)?, &[])
-            }
-            TokenType::Groups => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Groups)?, &[])
-            }
-            TokenType::Hash => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Hash)?, &[])
-            }
-            TokenType::Having => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Having)?, &[])
-            }
+            TokenType::From => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::From)?,
+                &[],
+            ),
+            TokenType::Full => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Full)?,
+                &[],
+            ),
+            TokenType::Group => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Group)?,
+                &[],
+            ),
+            TokenType::Grouping => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Grouping)?,
+                &[],
+            ),
+            TokenType::Groups => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Groups)?,
+                &[],
+            ),
+            TokenType::Hash => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Hash)?,
+                &[],
+            ),
+            TokenType::Having => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Having)?,
+                &[],
+            ),
             TokenType::If => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::If)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::If)?, &[])
             }
-            TokenType::Ignore => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Ignore)?, &[])
-            }
+            TokenType::Ignore => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Ignore)?,
+                &[],
+            ),
             TokenType::In => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::In)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::In)?, &[])
             }
-            TokenType::Inner => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Inner)?, &[])
-            }
-            TokenType::Intersect => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Intersect)?, &[])
-            }
-            TokenType::Interval => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Interval)?, &[])
-            }
-            TokenType::Into => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Into)?, &[])
-            }
+            TokenType::Inner => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Inner)?,
+                &[],
+            ),
+            TokenType::Intersect => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Intersect)?,
+                &[],
+            ),
+            TokenType::Interval => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Interval)?,
+                &[],
+            ),
+            TokenType::Into => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Into)?,
+                &[],
+            ),
             TokenType::Is => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Is)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Is)?, &[])
             }
-            TokenType::Join => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Join)?, &[])
-            }
-            TokenType::Lateral => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Lateral)?, &[])
-            }
-            TokenType::Left => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Left)?, &[])
-            }
-            TokenType::Like => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Like)?, &[])
-            }
-            TokenType::Limit => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Limit)?, &[])
-            }
-            TokenType::Lookup => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Lookup)?, &[])
-            }
-            TokenType::Merge => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Merge)?, &[])
-            }
-            TokenType::Natural => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Natural)?, &[])
-            }
+            TokenType::Join => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Join)?,
+                &[],
+            ),
+            TokenType::Lateral => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Lateral)?,
+                &[],
+            ),
+            TokenType::Left => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Left)?,
+                &[],
+            ),
+            TokenType::Like => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Like)?,
+                &[],
+            ),
+            TokenType::Limit => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Limit)?,
+                &[],
+            ),
+            TokenType::Lookup => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Lookup)?,
+                &[],
+            ),
+            TokenType::Merge => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Merge)?,
+                &[],
+            ),
+            TokenType::Natural => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Natural)?,
+                &[],
+            ),
             TokenType::New => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::New)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::New)?, &[])
             }
             TokenType::No => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::No)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::No)?, &[])
             }
             TokenType::Not => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Not)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Not)?, &[])
             }
-            TokenType::Null => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Null)?, &[])
-            }
-            TokenType::Nulls => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Nulls)?, &[])
-            }
+            TokenType::Null => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Null)?,
+                &[],
+            ),
+            TokenType::Nulls => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Nulls)?,
+                &[],
+            ),
             TokenType::Of => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Of)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Of)?, &[])
             }
             TokenType::On => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::On)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::On)?, &[])
             }
             TokenType::Or => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Or)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Or)?, &[])
             }
-            TokenType::Order => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Order)?, &[])
-            }
-            TokenType::Outer => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Outer)?, &[])
-            }
-            TokenType::Over => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Over)?, &[])
-            }
-            TokenType::Partition => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Partition)?, &[])
-            }
-            TokenType::Preceding => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Preceding)?, &[])
-            }
-            TokenType::Proto => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Proto)?, &[])
-            }
-            TokenType::Qualify => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Qualify)?, &[])
-            }
-            TokenType::Range => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Range)?, &[])
-            }
-            TokenType::Recursive => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Recursive)?, &[])
-            }
-            TokenType::Respect => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Respect)?, &[])
-            }
-            TokenType::Right => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Right)?, &[])
-            }
-            TokenType::Rollup => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Rollup)?, &[])
-            }
-            TokenType::Rows => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Rows)?, &[])
-            }
-            TokenType::Select => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Select)?, &[])
-            }
+            TokenType::Order => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Order)?,
+                &[],
+            ),
+            TokenType::Outer => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Outer)?,
+                &[],
+            ),
+            TokenType::Over => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Over)?,
+                &[],
+            ),
+            TokenType::Partition => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Partition)?,
+                &[],
+            ),
+            TokenType::Preceding => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Preceding)?,
+                &[],
+            ),
+            TokenType::Proto => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Proto)?,
+                &[],
+            ),
+            TokenType::Qualify => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Qualify)?,
+                &[],
+            ),
+            TokenType::Range => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Range)?,
+                &[],
+            ),
+            TokenType::Recursive => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Recursive)?,
+                &[],
+            ),
+            TokenType::Respect => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Respect)?,
+                &[],
+            ),
+            TokenType::Right => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Right)?,
+                &[],
+            ),
+            TokenType::Rollup => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Rollup)?,
+                &[],
+            ),
+            TokenType::Rows => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Rows)?,
+                &[],
+            ),
+            TokenType::Select => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Select)?,
+                &[],
+            ),
             TokenType::Set => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Set)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::Set)?, &[])
             }
-            TokenType::Some => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Some)?, &[])
-            }
-            TokenType::Struct => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Struct)?, &[])
-            }
-            TokenType::Tablesample => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Tablesample)?, &[])
-            }
-            TokenType::Then => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Then)?, &[])
-            }
+            TokenType::Some => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Some)?,
+                &[],
+            ),
+            TokenType::Struct => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Struct)?,
+                &[],
+            ),
+            TokenType::Tablesample => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Tablesample)?,
+                &[],
+            ),
+            TokenType::Then => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Then)?,
+                &[],
+            ),
             TokenType::To => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::To)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TokenType::To)?, &[])
             }
-            TokenType::Treat => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Treat)?, &[])
-            }
-            TokenType::True => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::True)?, &[])
-            }
-            TokenType::Union => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Union)?, &[])
-            }
-            TokenType::Unnest => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Unnest)?, &[])
-            }
-            TokenType::Using => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Using)?, &[])
-            }
-            TokenType::When => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::When)?, &[])
-            }
-            TokenType::Where => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Where)?, &[])
-            }
-            TokenType::Window => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Window)?, &[])
-            }
-            TokenType::With => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::With)?, &[])
-            }
-            TokenType::Within => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TokenType::Within)?, &[])
-            }
+            TokenType::Treat => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Treat)?,
+                &[],
+            ),
+            TokenType::True => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::True)?,
+                &[],
+            ),
+            TokenType::Union => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Union)?,
+                &[],
+            ),
+            TokenType::Unnest => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Unnest)?,
+                &[],
+            ),
+            TokenType::Using => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Using)?,
+                &[],
+            ),
+            TokenType::When => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::When)?,
+                &[],
+            ),
+            TokenType::Where => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Where)?,
+                &[],
+            ),
+            TokenType::Window => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Window)?,
+                &[],
+            ),
+            TokenType::With => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::With)?,
+                &[],
+            ),
+            TokenType::Within => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, TokenType::Within)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for Token<'_> {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "lexeme", self.lexeme),
-            kwarg!(py_ctx, "line", self.line),
-            kwarg!(py_ctx, "col", self.col),
+        let args = &[
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.lexeme),
+            arg!(py_ctx, self.line),
+            arg!(py_ctx, self.col),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Token)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Token)?, args)
     }
 }
 
@@ -712,15 +914,19 @@ impl RsToPyObject for Name {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Name::Identifier(identifier) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, identifier)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Name::Identifier)?, kwargs)
+                let args = &[arg!(py_ctx, identifier)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Name::Identifier)?,
+                    args,
+                )
             }
             Name::QuotedIdentifier(quoted_identifier) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quoted_identifier)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, quoted_identifier)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Name::QuotedIdentifier)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -729,8 +935,8 @@ impl RsToPyObject for Name {
 
 impl RsToPyObject for Number {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "value", self.value)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Number)?, kwargs)
+        let args = &[arg!(py_ctx, self.value)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Number)?, args)
     }
 }
 
@@ -738,39 +944,45 @@ impl RsToPyObject for PathPart {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             PathPart::Identifier(identifier) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, identifier)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, identifier)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, PathPart::Identifier)?,
-                    kwargs,
+                    args,
                 )
             }
             PathPart::QuotedIdentifier(quoted_identifier) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quoted_identifier)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, quoted_identifier)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, PathPart::QuotedIdentifier)?,
-                    kwargs,
+                    args,
                 )
             }
             PathPart::Number(number) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, number)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, PathPart::Number)?, kwargs)
+                let args = &[arg!(py_ctx, number)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, PathPart::Number)?,
+                    args,
+                )
             }
-            PathPart::DotSeparator => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, PathPart::DotSeparator)?, &[])
-            }
-            PathPart::SlashSeparator => instantiate_py_class(
+            PathPart::DotSeparator => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, PathPart::DotSeparator)?,
+                &[],
+            ),
+            PathPart::SlashSeparator => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, PathPart::SlashSeparator)?,
                 &[],
             ),
-            PathPart::DashSeparator => instantiate_py_class(
+            PathPart::DashSeparator => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, PathPart::DashSeparator)?,
                 &[],
             ),
-            PathPart::ColonSeparator => instantiate_py_class(
+            PathPart::ColonSeparator => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, PathPart::ColonSeparator)?,
                 &[],
@@ -781,21 +993,15 @@ impl RsToPyObject for PathPart {
 
 impl RsToPyObject for PathName {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "parts", self.parts),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, PathName)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.parts)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, PathName)?, args)
     }
 }
 
 impl RsToPyObject for StructFieldType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "type_", self.r#type),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, StructFieldType)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.r#type)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, StructFieldType)?, args)
     }
 }
 
@@ -803,61 +1009,76 @@ impl RsToPyObject for Type {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Type::Array { r#type } => {
-                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Array)?, kwargs)
+                let args = &[arg!(py_ctx, r#type)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Array)?, args)
             }
-            Type::BigNumeric => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::BigNumeric)?, &[])
+            Type::BigNumeric => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Type::BigNumeric)?,
+                &[],
+            ),
+            Type::Bool => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Bool)?, &[])
             }
-            Type::Bool => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Bool)?, &[]),
-            Type::Bytes => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Bytes)?, &[]),
-            Type::Date => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Date)?, &[]),
+            Type::Bytes => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Bytes)?, &[])
+            }
+            Type::Date => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Date)?, &[])
+            }
             Type::Datetime => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Datetime)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Datetime)?, &[])
             }
             Type::Float64 => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Float64)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Float64)?, &[])
             }
-            Type::Geography => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Geography)?, &[])
+            Type::Geography => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Type::Geography)?,
+                &[],
+            ),
+            Type::Int64 => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Int64)?, &[])
             }
-            Type::Int64 => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Int64)?, &[]),
             Type::Interval => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Interval)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Interval)?, &[])
             }
-            Type::Json => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Json)?, &[]),
+            Type::Json => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Json)?, &[])
+            }
             Type::Numeric => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Numeric)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Numeric)?, &[])
             }
             Type::Range { r#type } => {
-                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Range)?, kwargs)
+                let args = &[arg!(py_ctx, r#type)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Range)?, args)
             }
             Type::String => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::String)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::String)?, &[])
             }
             Type::Struct { fields } => {
-                let kwargs = &[kwarg!(py_ctx, "fields", fields)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Struct)?, kwargs)
+                let args = &[arg!(py_ctx, fields)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Struct)?, args)
             }
-            Type::Time => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Time)?, &[]),
-            Type::Timestamp => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Type::Timestamp)?, &[])
+            Type::Time => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Type::Time)?, &[])
             }
+            Type::Timestamp => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Type::Timestamp)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for StructParameterizedFieldType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "type_", self.r#type),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.r#type)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, StructParameterizedFieldType)?,
-            kwargs,
+            args,
         )
     }
 }
@@ -866,113 +1087,107 @@ impl RsToPyObject for ParameterizedType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             ParameterizedType::Array { r#type } => {
-                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, r#type)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::Array)?,
-                    kwargs,
+                    args,
                 )
             }
             ParameterizedType::BigNumeric { precision, scale } => {
-                let kwargs = &[
-                    kwarg!(py_ctx, "precision", precision),
-                    kwarg!(py_ctx, "scale", scale),
-                ];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, precision), arg!(py_ctx, scale)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::BigNumeric)?,
-                    kwargs,
+                    args,
                 )
             }
-            ParameterizedType::Bool => instantiate_py_class(
+            ParameterizedType::Bool => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Bool)?,
                 &[],
             ),
             ParameterizedType::Bytes { max_length } => {
-                let kwargs = &[kwarg!(py_ctx, "max_length", max_length)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, max_length)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::Bytes)?,
-                    kwargs,
+                    args,
                 )
             }
-            ParameterizedType::Date => instantiate_py_class(
+            ParameterizedType::Date => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Date)?,
                 &[],
             ),
-            ParameterizedType::Datetime => instantiate_py_class(
+            ParameterizedType::Datetime => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Datetime)?,
                 &[],
             ),
-            ParameterizedType::Float64 => instantiate_py_class(
+            ParameterizedType::Float64 => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Float64)?,
                 &[],
             ),
-            ParameterizedType::Geography => instantiate_py_class(
+            ParameterizedType::Geography => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Geography)?,
                 &[],
             ),
-            ParameterizedType::Int64 => instantiate_py_class(
+            ParameterizedType::Int64 => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Int64)?,
                 &[],
             ),
-            ParameterizedType::Interval => instantiate_py_class(
+            ParameterizedType::Interval => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Interval)?,
                 &[],
             ),
-            ParameterizedType::Json => instantiate_py_class(
+            ParameterizedType::Json => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Json)?,
                 &[],
             ),
             ParameterizedType::Numeric { precision, scale } => {
-                let kwargs = &[
-                    kwarg!(py_ctx, "precision", precision),
-                    kwarg!(py_ctx, "scale", scale),
-                ];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, precision), arg!(py_ctx, scale)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::Numeric)?,
-                    kwargs,
+                    args,
                 )
             }
             ParameterizedType::Range { r#type } => {
-                let kwargs = &[kwarg!(py_ctx, "type_", r#type)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, r#type)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::Range)?,
-                    kwargs,
+                    args,
                 )
             }
             ParameterizedType::String { max_length } => {
-                let kwargs = &[kwarg!(py_ctx, "max_length", max_length)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, max_length)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::String)?,
-                    kwargs,
+                    args,
                 )
             }
             ParameterizedType::Struct { fields } => {
-                let kwargs = &[kwarg!(py_ctx, "fields", fields)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, fields)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ParameterizedType::Struct)?,
-                    kwargs,
+                    args,
                 )
             }
-            ParameterizedType::Time => instantiate_py_class(
+            ParameterizedType::Time => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Time)?,
                 &[],
             ),
-            ParameterizedType::Timestamp => instantiate_py_class(
+            ParameterizedType::Timestamp => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ParameterizedType::Timestamp)?,
                 &[],
@@ -984,135 +1199,157 @@ impl RsToPyObject for ParameterizedType {
 impl RsToPyObject for BinaryOperator {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            BinaryOperator::Star => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Star)?, &[])
-            }
-            BinaryOperator::Slash => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Slash)?, &[])
-            }
-            BinaryOperator::Concat => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Concat)?, &[])
-            }
-            BinaryOperator::Plus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Plus)?, &[])
-            }
-            BinaryOperator::Minus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Minus)?, &[])
-            }
-            BinaryOperator::BitwiseLeftShift => instantiate_py_class(
+            BinaryOperator::Star => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Star)?,
+                &[],
+            ),
+            BinaryOperator::Slash => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Slash)?,
+                &[],
+            ),
+            BinaryOperator::Concat => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Concat)?,
+                &[],
+            ),
+            BinaryOperator::Plus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Plus)?,
+                &[],
+            ),
+            BinaryOperator::Minus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Minus)?,
+                &[],
+            ),
+            BinaryOperator::BitwiseLeftShift => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::BitwiseLeftShift)?,
                 &[],
             ),
-            BinaryOperator::BitwiseRightShift => instantiate_py_class(
+            BinaryOperator::BitwiseRightShift => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::BitwiseRightShift)?,
                 &[],
             ),
-            BinaryOperator::BitwiseAnd => instantiate_py_class(
+            BinaryOperator::BitwiseAnd => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::BitwiseAnd)?,
                 &[],
             ),
-            BinaryOperator::BitwiseXor => instantiate_py_class(
+            BinaryOperator::BitwiseXor => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::BitwiseXor)?,
                 &[],
             ),
-            BinaryOperator::BitwiseOr => instantiate_py_class(
+            BinaryOperator::BitwiseOr => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::BitwiseOr)?,
                 &[],
             ),
-            BinaryOperator::Equal => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Equal)?, &[])
-            }
-            BinaryOperator::LessThan => instantiate_py_class(
+            BinaryOperator::Equal => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Equal)?,
+                &[],
+            ),
+            BinaryOperator::LessThan => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::LessThan)?,
                 &[],
             ),
-            BinaryOperator::GreaterThan => instantiate_py_class(
+            BinaryOperator::GreaterThan => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::GreaterThan)?,
                 &[],
             ),
-            BinaryOperator::LessThanOrEqualTo => instantiate_py_class(
+            BinaryOperator::LessThanOrEqualTo => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::LessThanOrEqualTo)?,
                 &[],
             ),
-            BinaryOperator::GreaterThanOrEqualTo => instantiate_py_class(
+            BinaryOperator::GreaterThanOrEqualTo => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::GreaterThanOrEqualTo)?,
                 &[],
             ),
-            BinaryOperator::NotEqual => instantiate_py_class(
+            BinaryOperator::NotEqual => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::NotEqual)?,
                 &[],
             ),
-            BinaryOperator::Like => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Like)?, &[])
-            }
-            BinaryOperator::NotLike => instantiate_py_class(
+            BinaryOperator::Like => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Like)?,
+                &[],
+            ),
+            BinaryOperator::NotLike => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::NotLike)?,
                 &[],
             ),
-            BinaryOperator::QuantifiedLike => instantiate_py_class(
+            BinaryOperator::QuantifiedLike => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::QuantifiedLike)?,
                 &[],
             ),
-            BinaryOperator::QuantifiedNotLike => instantiate_py_class(
+            BinaryOperator::QuantifiedNotLike => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::QuantifiedNotLike)?,
                 &[],
             ),
-            BinaryOperator::Between => instantiate_py_class(
+            BinaryOperator::Between => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::Between)?,
                 &[],
             ),
-            BinaryOperator::NotBetween => instantiate_py_class(
+            BinaryOperator::NotBetween => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::NotBetween)?,
                 &[],
             ),
-            BinaryOperator::In => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::In)?, &[])
-            }
-            BinaryOperator::NotIn => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::NotIn)?, &[])
-            }
-            BinaryOperator::And => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::And)?, &[])
-            }
-            BinaryOperator::Or => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryOperator::Or)?, &[])
-            }
-            BinaryOperator::ArrayIndex => instantiate_py_class(
+            BinaryOperator::In => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::In)?,
+                &[],
+            ),
+            BinaryOperator::NotIn => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::NotIn)?,
+                &[],
+            ),
+            BinaryOperator::And => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::And)?,
+                &[],
+            ),
+            BinaryOperator::Or => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, BinaryOperator::Or)?,
+                &[],
+            ),
+            BinaryOperator::ArrayIndex => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::ArrayIndex)?,
                 &[],
             ),
-            BinaryOperator::FieldAccess => instantiate_py_class(
+            BinaryOperator::FieldAccess => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::FieldAccess)?,
                 &[],
             ),
-            BinaryOperator::IsDistinctFrom => instantiate_py_class(
+            BinaryOperator::IsDistinctFrom => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::IsDistinctFrom)?,
                 &[],
             ),
-            BinaryOperator::IsNotDistinctFrom => instantiate_py_class(
+            BinaryOperator::IsNotDistinctFrom => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::IsNotDistinctFrom)?,
                 &[],
             ),
-            BinaryOperator::FunctionAccess => instantiate_py_class(
+            BinaryOperator::FunctionAccess => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, BinaryOperator::FunctionAccess)?,
                 &[],
@@ -1123,150 +1360,163 @@ impl RsToPyObject for BinaryOperator {
 
 impl RsToPyObject for BinaryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "left", self.left),
-            kwarg!(py_ctx, "operator", self.operator),
-            kwarg!(py_ctx, "right", self.right),
+        let args = &[
+            arg!(py_ctx, self.left),
+            arg!(py_ctx, self.operator),
+            arg!(py_ctx, self.right),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BinaryExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, BinaryExpr)?, args)
     }
 }
 
 impl RsToPyObject for UnaryOperator {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            UnaryOperator::Plus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::Plus)?, &[])
-            }
-            UnaryOperator::Minus => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::Minus)?, &[])
-            }
-            UnaryOperator::BitwiseNot => instantiate_py_class(
+            UnaryOperator::Plus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::Plus)?,
+                &[],
+            ),
+            UnaryOperator::Minus => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::Minus)?,
+                &[],
+            ),
+            UnaryOperator::BitwiseNot => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, UnaryOperator::BitwiseNot)?,
                 &[],
             ),
-            UnaryOperator::IsNull => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::IsNull)?, &[])
-            }
-            UnaryOperator::IsNotNull => instantiate_py_class(
+            UnaryOperator::IsNull => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::IsNull)?,
+                &[],
+            ),
+            UnaryOperator::IsNotNull => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, UnaryOperator::IsNotNull)?,
                 &[],
             ),
-            UnaryOperator::IsTrue => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::IsTrue)?, &[])
-            }
-            UnaryOperator::IsNotTrue => instantiate_py_class(
+            UnaryOperator::IsTrue => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::IsTrue)?,
+                &[],
+            ),
+            UnaryOperator::IsNotTrue => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, UnaryOperator::IsNotTrue)?,
                 &[],
             ),
-            UnaryOperator::IsFalse => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::IsFalse)?, &[])
-            }
-            UnaryOperator::IsNotFalse => instantiate_py_class(
+            UnaryOperator::IsFalse => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::IsFalse)?,
+                &[],
+            ),
+            UnaryOperator::IsNotFalse => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, UnaryOperator::IsNotFalse)?,
                 &[],
             ),
-            UnaryOperator::Not => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryOperator::Not)?, &[])
-            }
+            UnaryOperator::Not => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnaryOperator::Not)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for UnaryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "operator", self.operator),
-            kwarg!(py_ctx, "right", self.right),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnaryExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.operator), arg!(py_ctx, self.right)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, UnaryExpr)?, args)
     }
 }
 
 impl RsToPyObject for GroupingExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupingExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, GroupingExpr)?, args)
     }
 }
 
 impl RsToPyObject for ArrayExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "exprs", self.exprs),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ArrayExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.r#type), arg!(py_ctx, self.exprs)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ArrayExpr)?, args)
     }
 }
 
 impl RsToPyObject for StructField {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, StructField)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, StructField)?, args)
     }
 }
 
 impl RsToPyObject for StructExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "fields", self.fields),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, StructExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.r#type), arg!(py_ctx, self.fields)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, StructExpr)?, args)
     }
 }
 
 impl RsToPyObject for RangeExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "value", self.value),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RangeExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.r#type), arg!(py_ctx, self.value)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, RangeExpr)?, args)
     }
 }
 
 impl RsToPyObject for IntervalPart {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            IntervalPart::Year => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Year)?, &[])
-            }
-            IntervalPart::Quarter => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Quarter)?, &[])
-            }
-            IntervalPart::Month => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Month)?, &[])
-            }
-            IntervalPart::Week => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Week)?, &[])
-            }
-            IntervalPart::Day => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Day)?, &[])
-            }
-            IntervalPart::Hour => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Hour)?, &[])
-            }
-            IntervalPart::Minute => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Minute)?, &[])
-            }
-            IntervalPart::Second => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IntervalPart::Second)?, &[])
-            }
-            IntervalPart::Millisecond => instantiate_py_class(
+            IntervalPart::Year => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Year)?,
+                &[],
+            ),
+            IntervalPart::Quarter => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Quarter)?,
+                &[],
+            ),
+            IntervalPart::Month => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Month)?,
+                &[],
+            ),
+            IntervalPart::Week => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Week)?,
+                &[],
+            ),
+            IntervalPart::Day => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Day)?,
+                &[],
+            ),
+            IntervalPart::Hour => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Hour)?,
+                &[],
+            ),
+            IntervalPart::Minute => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Minute)?,
+                &[],
+            ),
+            IntervalPart::Second => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, IntervalPart::Second)?,
+                &[],
+            ),
+            IntervalPart::Millisecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, IntervalPart::Millisecond)?,
                 &[],
             ),
-            IntervalPart::Microsecond => instantiate_py_class(
+            IntervalPart::Microsecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, IntervalPart::Microsecond)?,
                 &[],
@@ -1279,11 +1529,11 @@ impl RsToPyObject for IntervalExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             IntervalExpr::Interval { value, part } => {
-                let kwargs = &[kwarg!(py_ctx, "value", value), kwarg!(py_ctx, "part", part)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value), arg!(py_ctx, part)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, IntervalExpr::Interval)?,
-                    kwargs,
+                    args,
                 )
             }
             IntervalExpr::IntervalRange {
@@ -1291,15 +1541,15 @@ impl RsToPyObject for IntervalExpr {
                 start_part,
                 end_part,
             } => {
-                let kwargs = &[
-                    kwarg!(py_ctx, "value", value),
-                    kwarg!(py_ctx, "start_part", start_part),
-                    kwarg!(py_ctx, "end_part", end_part),
+                let args = &[
+                    arg!(py_ctx, value),
+                    arg!(py_ctx, start_part),
+                    arg!(py_ctx, end_part),
                 ];
-                instantiate_py_class(
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, IntervalExpr::IntervalRange)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -1308,34 +1558,31 @@ impl RsToPyObject for IntervalExpr {
 
 impl RsToPyObject for WhenThen {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "when", self.when),
-            kwarg!(py_ctx, "then", self.then),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WhenThen)?, kwargs)
+        let args = &[arg!(py_ctx, self.when), arg!(py_ctx, self.then)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WhenThen)?, args)
     }
 }
 
 impl RsToPyObject for CaseExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "case_", self.case),
-            kwarg!(py_ctx, "when_thens", self.when_thens),
-            kwarg!(py_ctx, "else_", self.r#else),
+        let args = &[
+            arg!(py_ctx, self.case),
+            arg!(py_ctx, self.when_thens),
+            arg!(py_ctx, self.r#else),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CaseExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CaseExpr)?, args)
     }
 }
 
 impl RsToPyObject for FunctionAggregateNulls {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            FunctionAggregateNulls::Ignore => instantiate_py_class(
+            FunctionAggregateNulls::Ignore => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionAggregateNulls::Ignore)?,
                 &[],
             ),
-            FunctionAggregateNulls::Respect => instantiate_py_class(
+            FunctionAggregateNulls::Respect => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionAggregateNulls::Respect)?,
                 &[],
@@ -1347,12 +1594,12 @@ impl RsToPyObject for FunctionAggregateNulls {
 impl RsToPyObject for FunctionAggregateHavingKind {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            FunctionAggregateHavingKind::Max => instantiate_py_class(
+            FunctionAggregateHavingKind::Max => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionAggregateHavingKind::Max)?,
                 &[],
             ),
-            FunctionAggregateHavingKind::Min => instantiate_py_class(
+            FunctionAggregateHavingKind::Min => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionAggregateHavingKind::Min)?,
                 &[],
@@ -1363,14 +1610,11 @@ impl RsToPyObject for FunctionAggregateHavingKind {
 
 impl RsToPyObject for FunctionAggregateHaving {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "kind", self.kind),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.kind)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, FunctionAggregateHaving)?,
-            kwargs,
+            args,
         )
     }
 }
@@ -1378,12 +1622,12 @@ impl RsToPyObject for FunctionAggregateHaving {
 impl RsToPyObject for OrderBySortDirection {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            OrderBySortDirection::Asc => instantiate_py_class(
+            OrderBySortDirection::Asc => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, OrderBySortDirection::Asc)?,
                 &[],
             ),
-            OrderBySortDirection::Desc => instantiate_py_class(
+            OrderBySortDirection::Desc => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, OrderBySortDirection::Desc)?,
                 &[],
@@ -1394,67 +1638,71 @@ impl RsToPyObject for OrderBySortDirection {
 
 impl RsToPyObject for FunctionAggregateOrderBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "sort_direction", self.sort_direction),
-            kwarg!(py_ctx, "nulls", self.nulls),
+        let args = &[
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.sort_direction),
+            arg!(py_ctx, self.nulls),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, FunctionAggregateOrderBy)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for FunctionAggregate {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "distinct", self.distinct),
-            kwarg!(py_ctx, "nulls", self.nulls),
-            kwarg!(py_ctx, "having", self.having),
-            kwarg!(py_ctx, "order_by", self.order_by),
-            kwarg!(py_ctx, "limit", self.limit),
+        let args = &[
+            arg!(py_ctx, self.distinct),
+            arg!(py_ctx, self.nulls),
+            arg!(py_ctx, self.having),
+            arg!(py_ctx, self.order_by),
+            arg!(py_ctx, self.limit),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionAggregate)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, FunctionAggregate)?, args)
     }
 }
 
 impl RsToPyObject for GenericFunctionExprArg {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "aggregate", self.aggregate),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.aggregate),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, GenericFunctionExprArg)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for WindowOrderByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "sort_direction", self.sort_direction),
-            kwarg!(py_ctx, "nulls", self.nulls),
+        let args = &[
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.sort_direction),
+            arg!(py_ctx, self.nulls),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowOrderByExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WindowOrderByExpr)?, args)
     }
 }
 
 impl RsToPyObject for WindowFrameKind {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            WindowFrameKind::Range => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowFrameKind::Range)?, &[])
-            }
-            WindowFrameKind::Rows => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowFrameKind::Rows)?, &[])
-            }
+            WindowFrameKind::Range => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WindowFrameKind::Range)?,
+                &[],
+            ),
+            WindowFrameKind::Rows => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WindowFrameKind::Rows)?,
+                &[],
+            ),
         }
     }
 }
@@ -1462,59 +1710,61 @@ impl RsToPyObject for WindowFrameKind {
 impl RsToPyObject for FrameBound {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            FrameBound::UnboundedPreceding => instantiate_py_class(
+            FrameBound::UnboundedPreceding => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FrameBound::UnboundedPreceding)?,
                 &[],
             ),
             FrameBound::Preceding(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FrameBound::Preceding)?,
-                    kwargs,
+                    args,
                 )
             }
-            FrameBound::UnboundedFollowing => instantiate_py_class(
+            FrameBound::UnboundedFollowing => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FrameBound::UnboundedFollowing)?,
                 &[],
             ),
             FrameBound::Following(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FrameBound::Following)?,
-                    kwargs,
+                    args,
                 )
             }
-            FrameBound::CurrentRow => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FrameBound::CurrentRow)?, &[])
-            }
+            FrameBound::CurrentRow => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, FrameBound::CurrentRow)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for WindowFrame {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "start", self.start),
-            kwarg!(py_ctx, "end", self.end),
+        let args = &[
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.start),
+            arg!(py_ctx, self.end),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowFrame)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WindowFrame)?, args)
     }
 }
 
 impl RsToPyObject for WindowSpec {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "window_name", self.window_name),
-            kwarg!(py_ctx, "partition_by", self.partition_by),
-            kwarg!(py_ctx, "order_by", self.order_by),
-            kwarg!(py_ctx, "frame", self.frame),
+        let args = &[
+            arg!(py_ctx, self.window_name),
+            arg!(py_ctx, self.partition_by),
+            arg!(py_ctx, self.order_by),
+            arg!(py_ctx, self.frame),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WindowSpec)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WindowSpec)?, args)
     }
 }
 
@@ -1522,19 +1772,19 @@ impl RsToPyObject for NamedWindowExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             NamedWindowExpr::Reference(parse_token) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_token)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, parse_token)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, NamedWindowExpr::Reference)?,
-                    kwargs,
+                    args,
                 )
             }
             NamedWindowExpr::WindowSpec(window_spec) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, window_spec)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, window_spec)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, NamedWindowExpr::WindowSpec)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -1543,143 +1793,143 @@ impl RsToPyObject for NamedWindowExpr {
 
 impl RsToPyObject for GenericFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "arguments", self.arguments),
-            kwarg!(py_ctx, "over", self.over),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.arguments),
+            arg!(py_ctx, self.over),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GenericFunctionExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, GenericFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for ChainedGenericFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "function", self.function)];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.function)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, ChainedGenericFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ChainedFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "function", self.function)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ChainedFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.function)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ChainedFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for ArrayFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ArrayFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.query)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ArrayFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for ArrayAggFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "arg", self.arg),
-            kwarg!(py_ctx, "over", self.over),
-        ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, ArrayAggFunctionExpr)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.arg), arg!(py_ctx, self.over)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ArrayAggFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for ConcatFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "values", self.values)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ConcatFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.values)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ConcatFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for CastFunctionFormat {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "format", self.format),
-            kwarg!(py_ctx, "time_zone", self.time_zone),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CastFunctionFormat)?, kwargs)
+        let args = &[arg!(py_ctx, self.format), arg!(py_ctx, self.time_zone)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CastFunctionFormat)?, args)
     }
 }
 
 impl RsToPyObject for CastFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "format", self.format),
+        let args = &[
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.r#type),
+            arg!(py_ctx, self.format),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CastFunctionExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CastFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for SafeCastFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "format", self.format),
+        let args = &[
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.r#type),
+            arg!(py_ctx, self.format),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, SafeCastFunctionExpr)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SafeCastFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for CurrentDateFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.timezone)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CurrentDateFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for IfFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "condition", self.condition),
-            kwarg!(py_ctx, "true_result", self.true_result),
-            kwarg!(py_ctx, "false_result", self.false_result),
+        let args = &[
+            arg!(py_ctx, self.condition),
+            arg!(py_ctx, self.true_result),
+            arg!(py_ctx, self.false_result),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IfFunctionExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, IfFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for WeekBegin {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            WeekBegin::Sunday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Sunday)?, &[])
-            }
-            WeekBegin::Monday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Monday)?, &[])
-            }
-            WeekBegin::Tuesday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Tuesday)?, &[])
-            }
-            WeekBegin::Wednesday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Wednesday)?, &[])
-            }
-            WeekBegin::Thursday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Thursday)?, &[])
-            }
-            WeekBegin::Friday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Friday)?, &[])
-            }
-            WeekBegin::Saturday => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WeekBegin::Saturday)?, &[])
-            }
+            WeekBegin::Sunday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Sunday)?,
+                &[],
+            ),
+            WeekBegin::Monday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Monday)?,
+                &[],
+            ),
+            WeekBegin::Tuesday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Tuesday)?,
+                &[],
+            ),
+            WeekBegin::Wednesday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Wednesday)?,
+                &[],
+            ),
+            WeekBegin::Thursday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Thursday)?,
+                &[],
+            ),
+            WeekBegin::Friday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Friday)?,
+                &[],
+            ),
+            WeekBegin::Saturday => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, WeekBegin::Saturday)?,
+                &[],
+            ),
         }
     }
 }
@@ -1687,90 +1937,90 @@ impl RsToPyObject for WeekBegin {
 impl RsToPyObject for ExtractFunctionPart {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            ExtractFunctionPart::MicroSecond => instantiate_py_class(
+            ExtractFunctionPart::MicroSecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::MicroSecond)?,
                 &[],
             ),
-            ExtractFunctionPart::MilliSecond => instantiate_py_class(
+            ExtractFunctionPart::MilliSecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::MilliSecond)?,
                 &[],
             ),
-            ExtractFunctionPart::Second => instantiate_py_class(
+            ExtractFunctionPart::Second => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Second)?,
                 &[],
             ),
-            ExtractFunctionPart::Minute => instantiate_py_class(
+            ExtractFunctionPart::Minute => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Minute)?,
                 &[],
             ),
-            ExtractFunctionPart::Hour => instantiate_py_class(
+            ExtractFunctionPart::Hour => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Hour)?,
                 &[],
             ),
-            ExtractFunctionPart::DayOfWeek => instantiate_py_class(
+            ExtractFunctionPart::DayOfWeek => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::DayOfWeek)?,
                 &[],
             ),
-            ExtractFunctionPart::Day => instantiate_py_class(
+            ExtractFunctionPart::Day => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Day)?,
                 &[],
             ),
-            ExtractFunctionPart::DayOfYear => instantiate_py_class(
+            ExtractFunctionPart::DayOfYear => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::DayOfYear)?,
                 &[],
             ),
-            ExtractFunctionPart::Week => instantiate_py_class(
+            ExtractFunctionPart::Week => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Week)?,
                 &[],
             ),
             ExtractFunctionPart::WeekWithBegin(week_begin) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, week_begin)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, week_begin)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, ExtractFunctionPart::WeekWithBegin)?,
-                    kwargs,
+                    args,
                 )
             }
-            ExtractFunctionPart::IsoWeek => instantiate_py_class(
+            ExtractFunctionPart::IsoWeek => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::IsoWeek)?,
                 &[],
             ),
-            ExtractFunctionPart::Month => instantiate_py_class(
+            ExtractFunctionPart::Month => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Month)?,
                 &[],
             ),
-            ExtractFunctionPart::Quarter => instantiate_py_class(
+            ExtractFunctionPart::Quarter => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Quarter)?,
                 &[],
             ),
-            ExtractFunctionPart::Year => instantiate_py_class(
+            ExtractFunctionPart::Year => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Year)?,
                 &[],
             ),
-            ExtractFunctionPart::IsoYear => instantiate_py_class(
+            ExtractFunctionPart::IsoYear => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::IsoYear)?,
                 &[],
             ),
-            ExtractFunctionPart::Date => instantiate_py_class(
+            ExtractFunctionPart::Date => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Date)?,
                 &[],
             ),
-            ExtractFunctionPart::Time => instantiate_py_class(
+            ExtractFunctionPart::Time => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, ExtractFunctionPart::Time)?,
                 &[],
@@ -1781,241 +2031,231 @@ impl RsToPyObject for ExtractFunctionPart {
 
 impl RsToPyObject for ExtractFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "part", self.part),
-            kwarg!(py_ctx, "expr", self.expr),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ExtractFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.part), arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ExtractFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for LeftFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "value", self.value),
-            kwarg!(py_ctx, "length", self.length),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LeftFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.value), arg!(py_ctx, self.length)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, LeftFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for RightFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "value", self.value),
-            kwarg!(py_ctx, "length", self.length),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RightFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.value), arg!(py_ctx, self.length)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, RightFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for Granularity {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            Granularity::MicroSecond => instantiate_py_class(
+            Granularity::MicroSecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Granularity::MicroSecond)?,
                 &[],
             ),
-            Granularity::MilliSecond => instantiate_py_class(
+            Granularity::MilliSecond => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Granularity::MilliSecond)?,
                 &[],
             ),
-            Granularity::Second => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Second)?, &[])
-            }
-            Granularity::Minute => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Minute)?, &[])
-            }
-            Granularity::Hour => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Hour)?, &[])
-            }
-            Granularity::Day => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Day)?, &[])
-            }
-            Granularity::Week => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Week)?, &[])
-            }
+            Granularity::Second => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Second)?,
+                &[],
+            ),
+            Granularity::Minute => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Minute)?,
+                &[],
+            ),
+            Granularity::Hour => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Hour)?,
+                &[],
+            ),
+            Granularity::Day => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Day)?,
+                &[],
+            ),
+            Granularity::Week => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Week)?,
+                &[],
+            ),
             Granularity::WeekWithBegin(week_begin) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, week_begin)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, week_begin)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Granularity::WeekWithBegin)?,
-                    kwargs,
+                    args,
                 )
             }
-            Granularity::IsoWeek => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::IsoWeek)?, &[])
-            }
-            Granularity::Month => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Month)?, &[])
-            }
-            Granularity::Quarter => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Quarter)?, &[])
-            }
-            Granularity::Year => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Year)?, &[])
-            }
-            Granularity::IsoYear => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::IsoYear)?, &[])
-            }
-            Granularity::Date => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Date)?, &[])
-            }
-            Granularity::Time => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Granularity::Time)?, &[])
-            }
+            Granularity::IsoWeek => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::IsoWeek)?,
+                &[],
+            ),
+            Granularity::Month => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Month)?,
+                &[],
+            ),
+            Granularity::Quarter => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Quarter)?,
+                &[],
+            ),
+            Granularity::Year => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Year)?,
+                &[],
+            ),
+            Granularity::IsoYear => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::IsoYear)?,
+                &[],
+            ),
+            Granularity::Date => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Date)?,
+                &[],
+            ),
+            Granularity::Time => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Granularity::Time)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for DateDiffFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "start_date", self.start_date),
-            kwarg!(py_ctx, "end_date", self.end_date),
-            kwarg!(py_ctx, "granularity", self.granularity),
+        let args = &[
+            arg!(py_ctx, self.start_date),
+            arg!(py_ctx, self.end_date),
+            arg!(py_ctx, self.granularity),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, DateDiffFunctionExpr)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DateDiffFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for DatetimeDiffFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "start_datetime", self.start_datetime),
-            kwarg!(py_ctx, "end_datetime", self.end_datetime),
-            kwarg!(py_ctx, "granularity", self.granularity),
+        let args = &[
+            arg!(py_ctx, self.start_datetime),
+            arg!(py_ctx, self.end_datetime),
+            arg!(py_ctx, self.granularity),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, DatetimeDiffFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for TimeDiffFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "start_time", self.start_time),
-            kwarg!(py_ctx, "end_time", self.end_time),
-            kwarg!(py_ctx, "granularity", self.granularity),
+        let args = &[
+            arg!(py_ctx, self.start_time),
+            arg!(py_ctx, self.end_time),
+            arg!(py_ctx, self.granularity),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, TimeDiffFunctionExpr)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TimeDiffFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for TimestampDiffFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "start_timestamp", self.start_timestamp),
-            kwarg!(py_ctx, "end_timestamp", self.end_timestamp),
-            kwarg!(py_ctx, "granularity", self.granularity),
+        let args = &[
+            arg!(py_ctx, self.start_timestamp),
+            arg!(py_ctx, self.end_timestamp),
+            arg!(py_ctx, self.granularity),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, TimestampDiffFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for DateTruncFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "date", self.date),
-            kwarg!(py_ctx, "granularity", self.granularity),
-        ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, DateTruncFunctionExpr)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.date), arg!(py_ctx, self.granularity)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DateTruncFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for DatetimeTruncFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "datetime", self.datetime),
-            kwarg!(py_ctx, "granularity", self.granularity),
-            kwarg!(py_ctx, "timezone", self.timezone),
+        let args = &[
+            arg!(py_ctx, self.datetime),
+            arg!(py_ctx, self.granularity),
+            arg!(py_ctx, self.timezone),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, DatetimeTruncFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for TimestampTruncFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "timestamp", self.timestamp),
-            kwarg!(py_ctx, "granularity", self.granularity),
-            kwarg!(py_ctx, "timezone", self.timezone),
+        let args = &[
+            arg!(py_ctx, self.timestamp),
+            arg!(py_ctx, self.granularity),
+            arg!(py_ctx, self.timezone),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, TimestampTruncFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for TimeTruncFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "time", self.time),
-            kwarg!(py_ctx, "granularity", self.granularity),
-        ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, TimeTruncFunctionExpr)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.time), arg!(py_ctx, self.granularity)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TimeTruncFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for LastDayFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "granularity", self.granularity),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LastDayFunctionExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.granularity)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, LastDayFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for CurrentDatetimeFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.timezone)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CurrentDatetimeFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for CurrentTimeFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "timezone", self.timezone)];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.timezone)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CurrentTimeFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
@@ -2023,18 +2263,22 @@ impl RsToPyObject for CurrentTimeFunctionExpr {
 impl RsToPyObject for NormalizationMode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            NormalizationMode::NFC => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NormalizationMode::NFC)?, &[])
-            }
-            NormalizationMode::NFKC => instantiate_py_class(
+            NormalizationMode::NFC => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, NormalizationMode::NFC)?,
+                &[],
+            ),
+            NormalizationMode::NFKC => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, NormalizationMode::NFKC)?,
                 &[],
             ),
-            NormalizationMode::NFD => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NormalizationMode::NFD)?, &[])
-            }
-            NormalizationMode::NFKD => instantiate_py_class(
+            NormalizationMode::NFD => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, NormalizationMode::NFD)?,
+                &[],
+            ),
+            NormalizationMode::NFKD => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, NormalizationMode::NFKD)?,
                 &[],
@@ -2045,40 +2289,26 @@ impl RsToPyObject for NormalizationMode {
 
 impl RsToPyObject for NormalizeFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "value", self.value),
-            kwarg!(py_ctx, "mode", self.mode),
-        ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, NormalizeFunctionExpr)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.value), arg!(py_ctx, self.mode)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, NormalizeFunctionExpr)?, args)
     }
 }
 
 impl RsToPyObject for NormalizeAndCasefoldFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "value", self.value),
-            kwarg!(py_ctx, "mode", self.mode),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.value), arg!(py_ctx, self.mode)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, NormalizeAndCasefoldFunctionExpr)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for CoalesceFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "exprs", self.exprs)];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, CoalesceFunctionExpr)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.exprs)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CoalesceFunctionExpr)?, args)
     }
 }
 
@@ -2086,212 +2316,200 @@ impl RsToPyObject for FunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             FunctionExpr::Array(array_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::Array)?, kwargs)
+                let args = &[arg!(py_ctx, array_function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Array)?,
+                    args,
+                )
             }
             FunctionExpr::ArrayAgg(array_agg_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_agg_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, array_agg_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::ArrayAgg)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::Concat(concat_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, concat_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, concat_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::Concat)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::Coalesce(coalesce_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, coalesce_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, coalesce_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::Coalesce)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::Cast(cast_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, cast_function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::Cast)?, kwargs)
+                let args = &[arg!(py_ctx, cast_function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Cast)?,
+                    args,
+                )
             }
             FunctionExpr::SafeCast(safe_cast_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, safe_cast_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, safe_cast_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::SafeCast)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::CurrentDate(current_date_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    current_date_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, current_date_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::CurrentDate)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::CurrentDatetime(current_datetime_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    current_datetime_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, current_datetime_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::CurrentDatetime)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::CurrentTime(current_time_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    current_time_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, current_time_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::CurrentTime)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::If(if_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::If)?, kwargs)
+                let args = &[arg!(py_ctx, if_function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::If)?,
+                    args,
+                )
             }
             FunctionExpr::Extract(extract_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, extract_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, extract_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::Extract)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::Normalize(normalize_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, normalize_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, normalize_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::Normalize)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::NormalizeAndCasefold(normalize_and_casefold_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    normalize_and_casefold_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, normalize_and_casefold_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::NormalizeAndCasefold)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::Left(left_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, left_function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::Left)?, kwargs)
+                let args = &[arg!(py_ctx, left_function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Left)?,
+                    args,
+                )
             }
             FunctionExpr::Right(right_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, right_function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionExpr::Right)?, kwargs)
+                let args = &[arg!(py_ctx, right_function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FunctionExpr::Right)?,
+                    args,
+                )
             }
-            FunctionExpr::CurrentTimestamp => instantiate_py_class(
+            FunctionExpr::CurrentTimestamp => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionExpr::CurrentTimestamp)?,
                 &[],
             ),
             FunctionExpr::DateDiff(date_diff_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, date_diff_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, date_diff_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::DateDiff)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::DatetimeDiff(datetime_diff_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    datetime_diff_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, datetime_diff_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::DatetimeDiff)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::TimestampDiff(timestamp_diff_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    timestamp_diff_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, timestamp_diff_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::TimestampDiff)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::TimeDiff(time_diff_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, time_diff_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, time_diff_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::TimeDiff)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::DateTrunc(date_trunc_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, date_trunc_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, date_trunc_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::DateTrunc)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::DatetimeTrunc(datetime_trunc_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    datetime_trunc_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, datetime_trunc_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::DatetimeTrunc)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::TimestampTrunc(timestamp_trunc_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    timestamp_trunc_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, timestamp_trunc_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::TimestampTrunc)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::TimeTrunc(time_trunc_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, time_trunc_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, time_trunc_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::TimeTrunc)?,
-                    kwargs,
+                    args,
                 )
             }
             FunctionExpr::LastDay(last_day_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, last_day_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, last_day_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionExpr::LastDay)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -2301,15 +2519,21 @@ impl RsToPyObject for FunctionExpr {
 impl RsToPyObject for LikeQuantifier {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            LikeQuantifier::Any => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LikeQuantifier::Any)?, &[])
-            }
-            LikeQuantifier::Some => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LikeQuantifier::Some)?, &[])
-            }
-            LikeQuantifier::All => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LikeQuantifier::All)?, &[])
-            }
+            LikeQuantifier::Any => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, LikeQuantifier::Any)?,
+                &[],
+            ),
+            LikeQuantifier::Some => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, LikeQuantifier::Some)?,
+                &[],
+            ),
+            LikeQuantifier::All => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, LikeQuantifier::All)?,
+                &[],
+            ),
         }
     }
 }
@@ -2318,19 +2542,19 @@ impl RsToPyObject for QuantifiedLikeExprPattern {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             QuantifiedLikeExprPattern::ExprList { exprs } => {
-                let kwargs = &[kwarg!(py_ctx, "exprs", exprs)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, exprs)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, QuantifiedLikeExprPattern::ExprList)?,
-                    kwargs,
+                    args,
                 )
             }
             QuantifiedLikeExprPattern::ArrayUnnest { expr } => {
-                let kwargs = &[kwarg!(py_ctx, "expr", expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, QuantifiedLikeExprPattern::ArrayUnnest)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -2339,73 +2563,64 @@ impl RsToPyObject for QuantifiedLikeExprPattern {
 
 impl RsToPyObject for QuantifiedLikeExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "quantifier", self.quantifier),
-            kwarg!(py_ctx, "pattern", self.pattern),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, QuantifiedLikeExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.quantifier), arg!(py_ctx, self.pattern)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, QuantifiedLikeExpr)?, args)
     }
 }
 
 impl RsToPyObject for StringConcatExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "strings", self.strings)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, StringConcatExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.strings)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, StringConcatExpr)?, args)
     }
 }
 
 impl RsToPyObject for BytesConcatExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "bytes", self.bytes)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, BytesConcatExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.bytes)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, BytesConcatExpr)?, args)
     }
 }
 
 impl RsToPyObject for Identifier {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Identifier)?, kwargs)
+        let args = &[arg!(py_ctx, self.name)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Identifier)?, args)
     }
 }
 
 impl RsToPyObject for QuotedIdentifier {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, QuotedIdentifier)?, kwargs)
+        let args = &[arg!(py_ctx, self.name)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, QuotedIdentifier)?, args)
     }
 }
 
 impl RsToPyObject for SystemVariable {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "name", self.name)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SystemVariable)?, kwargs)
+        let args = &[arg!(py_ctx, self.name)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SystemVariable)?, args)
     }
 }
 
 impl RsToPyObject for WithExprVar {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "value", self.value),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WithExprVar)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.value)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WithExprVar)?, args)
     }
 }
 
 impl RsToPyObject for WithExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "vars", self.vars),
-            kwarg!(py_ctx, "result", self.result),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WithExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.vars), arg!(py_ctx, self.result)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WithExpr)?, args)
     }
 }
 
 impl RsToPyObject for UnnestExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "array", self.array)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnnestExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.array)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, UnnestExpr)?, args)
     }
 }
 
@@ -2413,190 +2628,234 @@ impl RsToPyObject for Expr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Expr::Binary(binary_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, binary_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Binary)?, kwargs)
+                let args = &[arg!(py_ctx, binary_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Binary)?, args)
             }
             Expr::Unary(unary_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unary_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Unary)?, kwargs)
+                let args = &[arg!(py_ctx, unary_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Unary)?, args)
             }
             Expr::Grouping(grouping_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Grouping)?, kwargs)
+                let args = &[arg!(py_ctx, grouping_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Grouping)?,
+                    args,
+                )
             }
             Expr::Array(array_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, array_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Array)?, kwargs)
+                let args = &[arg!(py_ctx, array_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Array)?, args)
             }
             Expr::Struct(struct_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, struct_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Struct)?, kwargs)
+                let args = &[arg!(py_ctx, struct_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Struct)?, args)
             }
             Expr::Identifier(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Identifier)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Identifier)?,
+                    args,
+                )
             }
             Expr::QuotedIdentifier(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::QuotedIdentifier)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::QueryNamedParameter(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::QueryNamedParameter)?,
-                    kwargs,
+                    args,
                 )
             }
-            Expr::QueryPositionalParameter => instantiate_py_class(
+            Expr::QueryPositionalParameter => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Expr::QueryPositionalParameter)?,
                 &[],
             ),
             Expr::SystemVariable(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::SystemVariable)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::String(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::String)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::String)?, args)
             }
             Expr::RawString(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::RawString)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::RawString)?,
+                    args,
+                )
             }
             Expr::Bytes(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Bytes)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Bytes)?, args)
             }
             Expr::RawBytes(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::RawBytes)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::RawBytes)?,
+                    args,
+                )
             }
             Expr::StringConcat(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::StringConcat)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::StringConcat)?,
+                    args,
+                )
             }
             Expr::BytesConcat(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::BytesConcat)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::BytesConcat)?,
+                    args,
+                )
             }
             Expr::Numeric(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Numeric)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Numeric)?, args)
             }
             Expr::BigNumeric(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::BigNumeric)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::BigNumeric)?,
+                    args,
+                )
             }
             Expr::Number(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Number)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Number)?, args)
             }
             Expr::Bool(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Bool)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Bool)?, args)
             }
             Expr::Date(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Date)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Date)?, args)
             }
             Expr::Time(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Time)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Time)?, args)
             }
             Expr::Datetime(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Datetime)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Datetime)?,
+                    args,
+                )
             }
             Expr::Timestamp(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Timestamp)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Timestamp)?,
+                    args,
+                )
             }
             Expr::Range(range_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, range_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Range)?, kwargs)
+                let args = &[arg!(py_ctx, range_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Range)?, args)
             }
             Expr::Interval(interval_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, interval_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Interval)?, kwargs)
+                let args = &[arg!(py_ctx, interval_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Interval)?,
+                    args,
+                )
             }
             Expr::Json(value) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, value)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Json)?, kwargs)
+                let args = &[arg!(py_ctx, value)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Json)?, args)
             }
             Expr::Default => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Default)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Default)?, &[])
             }
-            Expr::Null => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Null)?, &[]),
-            Expr::Star => instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Star)?, &[]),
+            Expr::Null => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Null)?, &[])
+            }
+            Expr::Star => {
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Star)?, &[])
+            }
             Expr::Query(query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Query)?, kwargs)
+                let args = &[arg!(py_ctx, query_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Query)?, args)
             }
             Expr::Exists(query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Exists)?, kwargs)
+                let args = &[arg!(py_ctx, query_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Exists)?, args)
             }
             Expr::Case(case_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, case_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Case)?, kwargs)
+                let args = &[arg!(py_ctx, case_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Case)?, args)
             }
             Expr::GenericFunction(generic_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, generic_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, generic_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::GenericFunction)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::ChainedGenericFunction(chained_generic_function_expr) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    chained_generic_function_expr
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, chained_generic_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::ChainedGenericFunction)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::Function(function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, function_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Function)?, kwargs)
+                let args = &[arg!(py_ctx, function_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Expr::Function)?,
+                    args,
+                )
             }
             Expr::ChainedFunction(chained_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, chained_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, chained_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::ChainedFunction)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::QuantifiedLike(quantified_like_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, quantified_like_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, quantified_like_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Expr::QuantifiedLike)?,
-                    kwargs,
+                    args,
                 )
             }
             Expr::With(with_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, with_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::With)?, kwargs)
+                let args = &[arg!(py_ctx, with_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::With)?, args)
             }
             Expr::Unnest(unnest_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unnest_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Expr::Unnest)?, kwargs)
+                let args = &[arg!(py_ctx, unnest_expr)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Expr::Unnest)?, args)
             }
         }
     }
@@ -2604,32 +2863,26 @@ impl RsToPyObject for Expr {
 
 impl RsToPyObject for Limit {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "count", self.count),
-            kwarg!(py_ctx, "offset", self.offset),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Limit)?, kwargs)
+        let args = &[arg!(py_ctx, self.count), arg!(py_ctx, self.offset)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Limit)?, args)
     }
 }
 
 impl RsToPyObject for NonRecursiveCte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "query", self.query),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NonRecursiveCte)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.query)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, NonRecursiveCte)?, args)
     }
 }
 
 impl RsToPyObject for RecursiveCte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "base_query", self.base_query),
-            kwarg!(py_ctx, "recursive_query", self.recursive_query),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.base_query),
+            arg!(py_ctx, self.recursive_query),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RecursiveCte)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, RecursiveCte)?, args)
     }
 }
 
@@ -2637,12 +2890,20 @@ impl RsToPyObject for Cte {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Cte::NonRecursive(non_recursive_cte) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, non_recursive_cte)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Cte::NonRecursive)?, kwargs)
+                let args = &[arg!(py_ctx, non_recursive_cte)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Cte::NonRecursive)?,
+                    args,
+                )
             }
             Cte::Recursive(recursive_cte) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, recursive_cte)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Cte::Recursive)?, kwargs)
+                let args = &[arg!(py_ctx, recursive_cte)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Cte::Recursive)?,
+                    args,
+                )
             }
         }
     }
@@ -2650,63 +2911,67 @@ impl RsToPyObject for Cte {
 
 impl RsToPyObject for With {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "ctes", self.ctes)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, With)?, kwargs)
+        let args = &[arg!(py_ctx, self.ctes)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, With)?, args)
     }
 }
 
 impl RsToPyObject for OrderByNulls {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            OrderByNulls::First => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, OrderByNulls::First)?, &[])
-            }
-            OrderByNulls::Last => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, OrderByNulls::Last)?, &[])
-            }
+            OrderByNulls::First => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, OrderByNulls::First)?,
+                &[],
+            ),
+            OrderByNulls::Last => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, OrderByNulls::Last)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for OrderByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "sort_direction", self.sort_direction),
-            kwarg!(py_ctx, "nulls", self.nulls),
+        let args = &[
+            arg!(py_ctx, self.expr),
+            arg!(py_ctx, self.sort_direction),
+            arg!(py_ctx, self.nulls),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, OrderByExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, OrderByExpr)?, args)
     }
 }
 
 impl RsToPyObject for OrderBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "exprs", self.exprs)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, OrderBy)?, kwargs)
+        let args = &[arg!(py_ctx, self.exprs)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, OrderBy)?, args)
     }
 }
 
 impl RsToPyObject for GroupingQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "with_", self.with),
-            kwarg!(py_ctx, "query", self.query),
-            kwarg!(py_ctx, "order_by", self.order_by),
-            kwarg!(py_ctx, "limit", self.limit),
+        let args = &[
+            arg!(py_ctx, self.with),
+            arg!(py_ctx, self.query),
+            arg!(py_ctx, self.order_by),
+            arg!(py_ctx, self.limit),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupingQueryExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, GroupingQueryExpr)?, args)
     }
 }
 
 impl RsToPyObject for SelectTableValue {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            SelectTableValue::Struct => instantiate_py_class(
+            SelectTableValue::Struct => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SelectTableValue::Struct)?,
                 &[],
             ),
-            SelectTableValue::Value => instantiate_py_class(
+            SelectTableValue::Value => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SelectTableValue::Value)?,
                 &[],
@@ -2717,28 +2982,22 @@ impl RsToPyObject for SelectTableValue {
 
 impl RsToPyObject for SelectColExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectColExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SelectColExpr)?, args)
     }
 }
 
 impl RsToPyObject for SelectColAllExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "except_", self.except),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectColAllExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.except)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SelectColAllExpr)?, args)
     }
 }
 
 impl RsToPyObject for SelectAllExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "except_", self.except)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectAllExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.except)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SelectAllExpr)?, args)
     }
 }
 
@@ -2746,16 +3005,28 @@ impl RsToPyObject for SelectExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             SelectExpr::Col(select_col_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_col_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectExpr::Col)?, kwargs)
+                let args = &[arg!(py_ctx, select_col_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, SelectExpr::Col)?,
+                    args,
+                )
             }
             SelectExpr::ColAll(select_col_all_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_col_all_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectExpr::ColAll)?, kwargs)
+                let args = &[arg!(py_ctx, select_col_all_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, SelectExpr::ColAll)?,
+                    args,
+                )
             }
             SelectExpr::All(select_all_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_all_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectExpr::All)?, kwargs)
+                let args = &[arg!(py_ctx, select_all_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, SelectExpr::All)?,
+                    args,
+                )
             }
         }
     }
@@ -2764,17 +3035,21 @@ impl RsToPyObject for SelectExpr {
 impl RsToPyObject for JoinKind {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            JoinKind::Inner => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinKind::Inner)?, &[])
-            }
+            JoinKind::Inner => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, JoinKind::Inner)?,
+                &[],
+            ),
             JoinKind::Left => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinKind::Left)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, JoinKind::Left)?, &[])
             }
-            JoinKind::Right => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinKind::Right)?, &[])
-            }
+            JoinKind::Right => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, JoinKind::Right)?,
+                &[],
+            ),
             JoinKind::Full => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinKind::Full)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, JoinKind::Full)?, &[])
             }
         }
     }
@@ -2784,15 +3059,19 @@ impl RsToPyObject for JoinCondition {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             JoinCondition::On(expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinCondition::On)?, kwargs)
+                let args = &[arg!(py_ctx, expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, JoinCondition::On)?,
+                    args,
+                )
             }
             JoinCondition::Using { columns } => {
-                let kwargs = &[kwarg!(py_ctx, "columns", columns)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, columns)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, JoinCondition::Using)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -2801,71 +3080,64 @@ impl RsToPyObject for JoinCondition {
 
 impl RsToPyObject for JoinExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "left", self.left),
-            kwarg!(py_ctx, "right", self.right),
-            kwarg!(py_ctx, "cond", self.cond),
+        let args = &[
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.left),
+            arg!(py_ctx, self.right),
+            arg!(py_ctx, self.cond),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, JoinExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, JoinExpr)?, args)
     }
 }
 
 impl RsToPyObject for CrossJoinExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "left", self.left),
-            kwarg!(py_ctx, "right", self.right),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CrossJoinExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.left), arg!(py_ctx, self.right)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CrossJoinExpr)?, args)
     }
 }
 
 impl RsToPyObject for FromPathExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "path", self.path),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "system_time", self.system_time),
-            kwarg!(py_ctx, "table_operator", self.table_operator),
-            kwarg!(py_ctx, "table_sample", self.table_sample),
+        let args = &[
+            arg!(py_ctx, self.path),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.system_time),
+            arg!(py_ctx, self.table_operator),
+            arg!(py_ctx, self.table_sample),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromPathExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, FromPathExpr)?, args)
     }
 }
 
 impl RsToPyObject for FromUnnestExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "array", self.array),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "with_offset", self.with_offset),
-            kwarg!(py_ctx, "offset_alias", self.offset_alias),
+        let args = &[
+            arg!(py_ctx, self.array),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.with_offset),
+            arg!(py_ctx, self.offset_alias),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromUnnestExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, FromUnnestExpr)?, args)
     }
 }
 
 impl RsToPyObject for FromGroupingQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "query", self.query),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "table_operator", self.table_operator),
-            kwarg!(py_ctx, "table_sample", self.table_sample),
+        let args = &[
+            arg!(py_ctx, self.query),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.table_operator),
+            arg!(py_ctx, self.table_sample),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, FromGroupingQueryExpr)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, FromGroupingQueryExpr)?, args)
     }
 }
 
 impl RsToPyObject for GroupingFromExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupingFromExpr)?, kwargs)
+        let args = &[arg!(py_ctx, self.query)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, GroupingFromExpr)?, args)
     }
 }
 
@@ -2873,19 +3145,19 @@ impl RsToPyObject for TableFunctionArgument {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             TableFunctionArgument::Table(path_name) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, path_name)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, path_name)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableFunctionArgument::Table)?,
-                    kwargs,
+                    args,
                 )
             }
             TableFunctionArgument::Expr(expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableFunctionArgument::Expr)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -2894,14 +3166,14 @@ impl RsToPyObject for TableFunctionArgument {
 
 impl RsToPyObject for TableFunctionExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "arguments", self.arguments),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "table_operator", self.table_operator),
-            kwarg!(py_ctx, "table_sample", self.table_sample),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.arguments),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.table_operator),
+            arg!(py_ctx, self.table_sample),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TableFunctionExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TableFunctionExpr)?, args)
     }
 }
 
@@ -2909,55 +3181,83 @@ impl RsToPyObject for FromExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             FromExpr::Join(join_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::Join)?, kwargs)
+                let args = &[arg!(py_ctx, join_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::Join)?,
+                    args,
+                )
             }
             FromExpr::FullJoin(join_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::FullJoin)?, kwargs)
+                let args = &[arg!(py_ctx, join_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::FullJoin)?,
+                    args,
+                )
             }
             FromExpr::LeftJoin(join_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::LeftJoin)?, kwargs)
+                let args = &[arg!(py_ctx, join_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::LeftJoin)?,
+                    args,
+                )
             }
             FromExpr::RightJoin(join_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, join_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::RightJoin)?, kwargs)
+                let args = &[arg!(py_ctx, join_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::RightJoin)?,
+                    args,
+                )
             }
             FromExpr::CrossJoin(cross_join_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, cross_join_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::CrossJoin)?, kwargs)
+                let args = &[arg!(py_ctx, cross_join_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::CrossJoin)?,
+                    args,
+                )
             }
             FromExpr::Path(from_path_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, from_path_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::Path)?, kwargs)
+                let args = &[arg!(py_ctx, from_path_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::Path)?,
+                    args,
+                )
             }
             FromExpr::Unnest(unnest_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unnest_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FromExpr::Unnest)?, kwargs)
+                let args = &[arg!(py_ctx, unnest_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, FromExpr::Unnest)?,
+                    args,
+                )
             }
             FromExpr::GroupingQuery(from_grouping_query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, from_grouping_query_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, from_grouping_query_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FromExpr::GroupingQuery)?,
-                    kwargs,
+                    args,
                 )
             }
             FromExpr::GroupingFrom(grouping_from_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_from_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, grouping_from_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FromExpr::GroupingFrom)?,
-                    kwargs,
+                    args,
                 )
             }
             FromExpr::TableFunction(table_function_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, table_function_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, table_function_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FromExpr::TableFunction)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -2966,92 +3266,80 @@ impl RsToPyObject for FromExpr {
 
 impl RsToPyObject for PivotColumn {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, PivotColumn)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, PivotColumn)?, args)
     }
 }
 
 impl RsToPyObject for PivotAggregate {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "expr", self.expr),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, PivotAggregate)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, PivotAggregate)?, args)
     }
 }
 
 impl RsToPyObject for Pivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "aggregates", self.aggregates),
-            kwarg!(py_ctx, "input_column", self.input_column),
-            kwarg!(py_ctx, "pivot_columns", self.pivot_columns),
-            kwarg!(py_ctx, "alias", self.alias),
+        let args = &[
+            arg!(py_ctx, self.aggregates),
+            arg!(py_ctx, self.input_column),
+            arg!(py_ctx, self.pivot_columns),
+            arg!(py_ctx, self.alias),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Pivot)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Pivot)?, args)
     }
 }
 
 impl RsToPyObject for UnpivotNulls {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            UnpivotNulls::Include => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnpivotNulls::Include)?, &[])
-            }
-            UnpivotNulls::Exclude => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UnpivotNulls::Exclude)?, &[])
-            }
+            UnpivotNulls::Include => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnpivotNulls::Include)?,
+                &[],
+            ),
+            UnpivotNulls::Exclude => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, UnpivotNulls::Exclude)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for ColumnToUnpivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ColumnToUnpivot)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ColumnToUnpivot)?, args)
     }
 }
 
 impl RsToPyObject for SingleColumnUnpivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "values_column", self.values_column),
-            kwarg!(py_ctx, "name_column", self.name_column),
-            kwarg!(py_ctx, "columns_to_unpivot", self.columns_to_unpivot),
+        let args = &[
+            arg!(py_ctx, self.values_column),
+            arg!(py_ctx, self.name_column),
+            arg!(py_ctx, self.columns_to_unpivot),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SingleColumnUnpivot)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SingleColumnUnpivot)?, args)
     }
 }
 
 impl RsToPyObject for ColumnSetToUnpivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "names", self.names),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ColumnSetToUnpivot)?, kwargs)
+        let args = &[arg!(py_ctx, self.names), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ColumnSetToUnpivot)?, args)
     }
 }
 
 impl RsToPyObject for MultiColumnUnpivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "values_columns", self.values_columns),
-            kwarg!(py_ctx, "name_column", self.name_column),
-            kwarg!(
-                py_ctx,
-                "column_sets_to_unpivot",
-                self.column_sets_to_unpivot
-            ),
+        let args = &[
+            arg!(py_ctx, self.values_columns),
+            arg!(py_ctx, self.name_column),
+            arg!(py_ctx, self.column_sets_to_unpivot),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, MultiColumnUnpivot)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, MultiColumnUnpivot)?, args)
     }
 }
 
@@ -3059,19 +3347,19 @@ impl RsToPyObject for UnpivotKind {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             UnpivotKind::SingleColumn(single_column_unpivot) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, single_column_unpivot)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, single_column_unpivot)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, UnpivotKind::SingleColumn)?,
-                    kwargs,
+                    args,
                 )
             }
             UnpivotKind::MultiColumn(multi_column_unpivot) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, multi_column_unpivot)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, multi_column_unpivot)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, UnpivotKind::MultiColumn)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3080,19 +3368,19 @@ impl RsToPyObject for UnpivotKind {
 
 impl RsToPyObject for Unpivot {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "nulls", self.nulls),
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "alias", self.alias),
+        let args = &[
+            arg!(py_ctx, self.nulls),
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.alias),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Unpivot)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Unpivot)?, args)
     }
 }
 
 impl RsToPyObject for TableSample {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "percent", self.percent)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TableSample)?, kwargs)
+        let args = &[arg!(py_ctx, self.percent)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TableSample)?, args)
     }
 }
 
@@ -3100,19 +3388,19 @@ impl RsToPyObject for TableOperator {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             TableOperator::Pivot(pivot) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, pivot)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, pivot)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableOperator::Pivot)?,
-                    kwargs,
+                    args,
                 )
             }
             TableOperator::Unpivot(unpivot) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, unpivot)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, unpivot)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableOperator::Unpivot)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3121,15 +3409,15 @@ impl RsToPyObject for TableOperator {
 
 impl RsToPyObject for inbq::ast::From {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, From)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, From)?, args)
     }
 }
 
 impl RsToPyObject for Where {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Where)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Where)?, args)
     }
 }
 
@@ -3137,124 +3425,124 @@ impl RsToPyObject for GroupByExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             GroupByExpr::Items { exprs } => {
-                let kwargs = &[kwarg!(py_ctx, "exprs", exprs)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupByExpr::Items)?, kwargs)
+                let args = &[arg!(py_ctx, exprs)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, GroupByExpr::Items)?,
+                    args,
+                )
             }
-            GroupByExpr::All => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupByExpr::All)?, &[])
-            }
+            GroupByExpr::All => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, GroupByExpr::All)?,
+                &[],
+            ),
         }
     }
 }
 
 impl RsToPyObject for GroupBy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, GroupBy)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, GroupBy)?, args)
     }
 }
 
 impl RsToPyObject for Having {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Having)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Having)?, args)
     }
 }
 
 impl RsToPyObject for Qualify {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "expr", self.expr)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Qualify)?, kwargs)
+        let args = &[arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Qualify)?, args)
     }
 }
 
 impl RsToPyObject for NamedWindow {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "window", self.window),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, NamedWindow)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.window)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, NamedWindow)?, args)
     }
 }
 
 impl RsToPyObject for Window {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "named_windows", self.named_windows)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Window)?, kwargs)
+        let args = &[arg!(py_ctx, self.named_windows)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Window)?, args)
     }
 }
 
 impl RsToPyObject for DifferentialPrivacyOption {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "value", self.value),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.value)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, DifferentialPrivacyOption)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for DifferentialPrivacy {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "options", self.options)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DifferentialPrivacy)?, kwargs)
+        let args = &[arg!(py_ctx, self.options)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DifferentialPrivacy)?, args)
     }
 }
 
 impl RsToPyObject for Select {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "differential_privacy", self.differential_privacy),
-            kwarg!(py_ctx, "distinct", self.distinct),
-            kwarg!(py_ctx, "table_value", self.table_value),
-            kwarg!(py_ctx, "exprs", self.exprs),
-            kwarg!(py_ctx, "from_", self.from),
-            kwarg!(py_ctx, "where", self.r#where),
-            kwarg!(py_ctx, "group_by", self.group_by),
-            kwarg!(py_ctx, "having", self.having),
-            kwarg!(py_ctx, "qualify", self.qualify),
-            kwarg!(py_ctx, "window", self.window),
+        let args = &[
+            arg!(py_ctx, self.differential_privacy),
+            arg!(py_ctx, self.distinct),
+            arg!(py_ctx, self.table_value),
+            arg!(py_ctx, self.exprs),
+            arg!(py_ctx, self.from),
+            arg!(py_ctx, self.r#where),
+            arg!(py_ctx, self.group_by),
+            arg!(py_ctx, self.having),
+            arg!(py_ctx, self.qualify),
+            arg!(py_ctx, self.window),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Select)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Select)?, args)
     }
 }
 
 impl RsToPyObject for SelectQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "with_", self.with),
-            kwarg!(py_ctx, "select", self.select),
-            kwarg!(py_ctx, "order_by", self.order_by),
-            kwarg!(py_ctx, "limit", self.limit),
+        let args = &[
+            arg!(py_ctx, self.with),
+            arg!(py_ctx, self.select),
+            arg!(py_ctx, self.order_by),
+            arg!(py_ctx, self.limit),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SelectQueryExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SelectQueryExpr)?, args)
     }
 }
 
 impl RsToPyObject for SetQueryOperator {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            SetQueryOperator::Union => instantiate_py_class(
+            SetQueryOperator::Union => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SetQueryOperator::Union)?,
                 &[],
             ),
-            SetQueryOperator::UnionDistinct => instantiate_py_class(
+            SetQueryOperator::UnionDistinct => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SetQueryOperator::UnionDistinct)?,
                 &[],
             ),
-            SetQueryOperator::IntersectDistinct => instantiate_py_class(
+            SetQueryOperator::IntersectDistinct => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SetQueryOperator::IntersectDistinct)?,
                 &[],
             ),
-            SetQueryOperator::ExceptDistinct => instantiate_py_class(
+            SetQueryOperator::ExceptDistinct => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, SetQueryOperator::ExceptDistinct)?,
                 &[],
@@ -3265,15 +3553,15 @@ impl RsToPyObject for SetQueryOperator {
 
 impl RsToPyObject for SetSelectQueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "with_", self.with),
-            kwarg!(py_ctx, "left_query", self.left_query),
-            kwarg!(py_ctx, "set_operator", self.set_operator),
-            kwarg!(py_ctx, "right_query", self.right_query),
-            kwarg!(py_ctx, "order_by", self.order_by),
-            kwarg!(py_ctx, "limit", self.limit),
+        let args = &[
+            arg!(py_ctx, self.with),
+            arg!(py_ctx, self.left_query),
+            arg!(py_ctx, self.set_operator),
+            arg!(py_ctx, self.right_query),
+            arg!(py_ctx, self.order_by),
+            arg!(py_ctx, self.limit),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SetSelectQueryExpr)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SetSelectQueryExpr)?, args)
     }
 }
 
@@ -3281,19 +3569,27 @@ impl RsToPyObject for QueryExpr {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             QueryExpr::Grouping(grouping_query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, grouping_query_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, QueryExpr::Grouping)?, kwargs)
+                let args = &[arg!(py_ctx, grouping_query_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, QueryExpr::Grouping)?,
+                    args,
+                )
             }
             QueryExpr::Select(select_query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, select_query_expr)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, QueryExpr::Select)?, kwargs)
+                let args = &[arg!(py_ctx, select_query_expr)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, QueryExpr::Select)?,
+                    args,
+                )
             }
             QueryExpr::SetSelect(set_select_query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, set_select_query_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, set_select_query_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, QueryExpr::SetSelect)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3302,61 +3598,58 @@ impl RsToPyObject for QueryExpr {
 
 impl RsToPyObject for QueryStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "query", self.query)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, QueryStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.query)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, QueryStatement)?, args)
     }
 }
 
 impl RsToPyObject for InsertStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "table", self.table),
-            kwarg!(py_ctx, "columns", self.columns),
-            kwarg!(py_ctx, "values", self.values),
-            kwarg!(py_ctx, "query", self.query),
+        let args = &[
+            arg!(py_ctx, self.table),
+            arg!(py_ctx, self.columns),
+            arg!(py_ctx, self.values),
+            arg!(py_ctx, self.query),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, InsertStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, InsertStatement)?, args)
     }
 }
 
 impl RsToPyObject for DeleteStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "table", self.table),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "cond", self.cond),
+        let args = &[
+            arg!(py_ctx, self.table),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.cond),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DeleteStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DeleteStatement)?, args)
     }
 }
 
 impl RsToPyObject for UpdateItem {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "column", self.column),
-            kwarg!(py_ctx, "expr", self.expr),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UpdateItem)?, kwargs)
+        let args = &[arg!(py_ctx, self.column), arg!(py_ctx, self.expr)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, UpdateItem)?, args)
     }
 }
 
 impl RsToPyObject for UpdateStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "table", self.table),
-            kwarg!(py_ctx, "alias", self.alias),
-            kwarg!(py_ctx, "update_items", self.update_items),
-            kwarg!(py_ctx, "from_", self.from),
-            kwarg!(py_ctx, "where", self.r#where),
+        let args = &[
+            arg!(py_ctx, self.table),
+            arg!(py_ctx, self.alias),
+            arg!(py_ctx, self.update_items),
+            arg!(py_ctx, self.from),
+            arg!(py_ctx, self.r#where),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, UpdateStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, UpdateStatement)?, args)
     }
 }
 
 impl RsToPyObject for TruncateStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "table", self.table)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, TruncateStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.table)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, TruncateStatement)?, args)
     }
 }
 
@@ -3364,15 +3657,19 @@ impl RsToPyObject for MergeSource {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             MergeSource::Table(parse_token) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, parse_token)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, MergeSource::Table)?, kwargs)
+                let args = &[arg!(py_ctx, parse_token)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, MergeSource::Table)?,
+                    args,
+                )
             }
             MergeSource::Subquery(query_expr) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_expr)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, query_expr)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, MergeSource::Subquery)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3381,18 +3678,15 @@ impl RsToPyObject for MergeSource {
 
 impl RsToPyObject for MergeUpdate {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "update_items", self.update_items)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, MergeUpdate)?, kwargs)
+        let args = &[arg!(py_ctx, self.update_items)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, MergeUpdate)?, args)
     }
 }
 
 impl RsToPyObject for MergeInsert {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "columns", self.columns),
-            kwarg!(py_ctx, "values", self.values),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, MergeInsert)?, kwargs)
+        let args = &[arg!(py_ctx, self.columns), arg!(py_ctx, self.values)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, MergeInsert)?, args)
     }
 }
 
@@ -3400,18 +3694,20 @@ impl RsToPyObject for Merge {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Merge::Update(merge_update) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_update)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Merge::Update)?, kwargs)
+                let args = &[arg!(py_ctx, merge_update)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Merge::Update)?, args)
             }
             Merge::Insert(merge_insert) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_insert)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Merge::Insert)?, kwargs)
+                let args = &[arg!(py_ctx, merge_insert)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Merge::Insert)?, args)
             }
-            Merge::InsertRow => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Merge::InsertRow)?, &[])
-            }
+            Merge::InsertRow => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Merge::InsertRow)?,
+                &[],
+            ),
             Merge::Delete => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Merge::Delete)?, &[])
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Merge::Delete)?, &[])
             }
         }
     }
@@ -3419,38 +3715,38 @@ impl RsToPyObject for Merge {
 
 impl RsToPyObject for WhenMatched {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "search_condition", self.search_condition),
-            kwarg!(py_ctx, "merge", self.merge),
+        let args = &[
+            arg!(py_ctx, self.search_condition),
+            arg!(py_ctx, self.merge),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WhenMatched)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WhenMatched)?, args)
     }
 }
 
 impl RsToPyObject for WhenNotMatchedByTarget {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "search_condition", self.search_condition),
-            kwarg!(py_ctx, "merge", self.merge),
+        let args = &[
+            arg!(py_ctx, self.search_condition),
+            arg!(py_ctx, self.merge),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, WhenNotMatchedByTarget)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for WhenNotMatchedBySource {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "search_condition", self.search_condition),
-            kwarg!(py_ctx, "merge", self.merge),
+        let args = &[
+            arg!(py_ctx, self.search_condition),
+            arg!(py_ctx, self.merge),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, WhenNotMatchedBySource)?,
-            kwargs,
+            args,
         )
     }
 }
@@ -3459,31 +3755,23 @@ impl RsToPyObject for When {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             When::Matched(when_matched) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, when_matched)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, When::Matched)?, kwargs)
+                let args = &[arg!(py_ctx, when_matched)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, When::Matched)?, args)
             }
             When::NotMatchedByTarget(when_not_matched_by_target) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    when_not_matched_by_target
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, when_not_matched_by_target)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, When::NotMatchedByTarget)?,
-                    kwargs,
+                    args,
                 )
             }
             When::NotMatchedBySource(when_not_matched_by_source) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    when_not_matched_by_source
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, when_not_matched_by_source)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, When::NotMatchedBySource)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3492,26 +3780,26 @@ impl RsToPyObject for When {
 
 impl RsToPyObject for MergeStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "target_table", self.target_table),
-            kwarg!(py_ctx, "target_alias", self.target_alias),
-            kwarg!(py_ctx, "source", self.source),
-            kwarg!(py_ctx, "source_alias", self.source_alias),
-            kwarg!(py_ctx, "condition", self.condition),
-            kwarg!(py_ctx, "whens", self.whens),
+        let args = &[
+            arg!(py_ctx, self.target_table),
+            arg!(py_ctx, self.target_alias),
+            arg!(py_ctx, self.source),
+            arg!(py_ctx, self.source_alias),
+            arg!(py_ctx, self.condition),
+            arg!(py_ctx, self.whens),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, MergeStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, MergeStatement)?, args)
     }
 }
 
 impl RsToPyObject for DeclareVarStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "vars", self.vars),
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "default", self.default),
+        let args = &[
+            arg!(py_ctx, self.vars),
+            arg!(py_ctx, self.r#type),
+            arg!(py_ctx, self.default),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DeclareVarStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DeclareVarStatement)?, args)
     }
 }
 
@@ -3519,19 +3807,19 @@ impl RsToPyObject for SetVariable {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             SetVariable::UserVariable(name) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, name)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, name)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, SetVariable::UserVariable)?,
-                    kwargs,
+                    args,
                 )
             }
             SetVariable::SystemVariable(system_variable) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, system_variable)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, system_variable)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, SetVariable::SystemVariable)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3540,66 +3828,57 @@ impl RsToPyObject for SetVariable {
 
 impl RsToPyObject for SetVarStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "vars", self.vars),
-            kwarg!(py_ctx, "exprs", self.exprs),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, SetVarStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.vars), arg!(py_ctx, self.exprs)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, SetVarStatement)?, args)
     }
 }
 
 impl RsToPyObject for StatementsBlock {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "statements", self.statements),
-            kwarg!(py_ctx, "exception_statements", self.exception_statements),
+        let args = &[
+            arg!(py_ctx, self.statements),
+            arg!(py_ctx, self.exception_statements),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, StatementsBlock)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, StatementsBlock)?, args)
     }
 }
 
 impl RsToPyObject for ColumnSchema {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "type_", self.r#type),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ColumnSchema)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.r#type)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ColumnSchema)?, args)
     }
 }
 
 impl RsToPyObject for PrimaryKeyConstraintNotEnforced {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "columns", self.columns)];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.columns)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, PrimaryKeyConstraintNotEnforced)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ForeignKeyReference {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "table", self.table),
-            kwarg!(py_ctx, "columns", self.columns),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ForeignKeyReference)?, kwargs)
+        let args = &[arg!(py_ctx, self.table), arg!(py_ctx, self.columns)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ForeignKeyReference)?, args)
     }
 }
 
 impl RsToPyObject for ForeignKeyConstraintNotEnforced {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "columns", self.columns),
-            kwarg!(py_ctx, "reference", self.reference),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.columns),
+            arg!(py_ctx, self.reference),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, ForeignKeyConstraintNotEnforced)?,
-            kwargs,
+            args,
         )
     }
 }
@@ -3608,27 +3887,19 @@ impl RsToPyObject for TableConstraint {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             TableConstraint::PrimaryKeyNotEnforced(primary_key_constraint_not_enforced) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    primary_key_constraint_not_enforced
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, primary_key_constraint_not_enforced)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableConstraint::PrimaryKeyNotEnforced)?,
-                    kwargs,
+                    args,
                 )
             }
             TableConstraint::ForeignKeyNotEnforced(foreign_key_constraint_not_enforced) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    foreign_key_constraint_not_enforced
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, foreign_key_constraint_not_enforced)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, TableConstraint::ForeignKeyNotEnforced)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -3637,226 +3908,194 @@ impl RsToPyObject for TableConstraint {
 
 impl RsToPyObject for CreateTableStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "schema", self.schema),
-            kwarg!(py_ctx, "constraints", self.constraints),
-            kwarg!(py_ctx, "default_collate", self.default_collate),
-            kwarg!(py_ctx, "partition", self.partition),
-            kwarg!(py_ctx, "clustering_columns", self.clustering_columns),
-            kwarg!(py_ctx, "connection", self.connection),
-            kwarg!(py_ctx, "options", self.options),
-            kwarg!(py_ctx, "replace", self.replace),
-            kwarg!(py_ctx, "is_temporary", self.is_temporary),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "query", self.query),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.schema),
+            arg!(py_ctx, self.constraints),
+            arg!(py_ctx, self.default_collate),
+            arg!(py_ctx, self.partition),
+            arg!(py_ctx, self.clustering_columns),
+            arg!(py_ctx, self.connection),
+            arg!(py_ctx, self.options),
+            arg!(py_ctx, self.replace),
+            arg!(py_ctx, self.is_temporary),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.query),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, CreateTableStatement)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CreateTableStatement)?, args)
     }
 }
 
 impl RsToPyObject for DropTableStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "if_exists", self.if_exists),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DropTableStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.if_exists)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DropTableStatement)?, args)
     }
 }
 
 impl RsToPyObject for IfBranch {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "condition", self.condition),
-            kwarg!(py_ctx, "statements", self.statements),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IfBranch)?, kwargs)
+        let args = &[arg!(py_ctx, self.condition), arg!(py_ctx, self.statements)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, IfBranch)?, args)
     }
 }
 
 impl RsToPyObject for IfStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "if_", self.r#if),
-            kwarg!(py_ctx, "else_ifs", self.else_ifs),
-            kwarg!(py_ctx, "else_", self.r#else),
+        let args = &[
+            arg!(py_ctx, self.r#if),
+            arg!(py_ctx, self.else_ifs),
+            arg!(py_ctx, self.r#else),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, IfStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, IfStatement)?, args)
     }
 }
 
 impl RsToPyObject for RaiseStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "message", self.message)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RaiseStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.message)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, RaiseStatement)?, args)
     }
 }
 
 impl RsToPyObject for CallStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "procedure_name", self.procedure_name),
-            kwarg!(py_ctx, "arguments", self.arguments),
+        let args = &[
+            arg!(py_ctx, self.procedure_name),
+            arg!(py_ctx, self.arguments),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CallStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CallStatement)?, args)
     }
 }
 
 impl RsToPyObject for CaseWhenThenStatements {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "when", self.when),
-            kwarg!(py_ctx, "then", self.then),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.when), arg!(py_ctx, self.then)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CaseWhenThenStatements)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for CaseStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "case_", self.case),
-            kwarg!(py_ctx, "when_thens", self.when_thens),
-            kwarg!(py_ctx, "else_", self.r#else),
+        let args = &[
+            arg!(py_ctx, self.case),
+            arg!(py_ctx, self.when_thens),
+            arg!(py_ctx, self.r#else),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CaseStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CaseStatement)?, args)
     }
 }
 
 impl RsToPyObject for LoopStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "statements", self.statements)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LoopStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.statements)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, LoopStatement)?, args)
     }
 }
 
 impl RsToPyObject for RepeatStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "statements", self.statements),
-            kwarg!(py_ctx, "until", self.until),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, RepeatStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.statements), arg!(py_ctx, self.until)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, RepeatStatement)?, args)
     }
 }
 
 impl RsToPyObject for WhileStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "condition", self.condition),
-            kwarg!(py_ctx, "statements", self.statements),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, WhileStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.condition), arg!(py_ctx, self.statements)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, WhileStatement)?, args)
     }
 }
 
 impl RsToPyObject for ForInStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "var_name", self.var_name),
-            kwarg!(py_ctx, "table_expr", self.table_expr),
-            kwarg!(py_ctx, "statements", self.statements),
+        let args = &[
+            arg!(py_ctx, self.var_name),
+            arg!(py_ctx, self.table_expr),
+            arg!(py_ctx, self.statements),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ForInStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ForInStatement)?, args)
     }
 }
 
 impl RsToPyObject for LabeledStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "statement", self.statement),
-            kwarg!(py_ctx, "start_label", self.start_label),
-            kwarg!(py_ctx, "end_label", self.end_label),
+        let args = &[
+            arg!(py_ctx, self.statement),
+            arg!(py_ctx, self.start_label),
+            arg!(py_ctx, self.end_label),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, LabeledStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, LabeledStatement)?, args)
     }
 }
 
 impl RsToPyObject for DdlOption {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "value", self.value),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DdlOption)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.value)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DdlOption)?, args)
     }
 }
 
 impl RsToPyObject for ViewColumn {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "options", self.options),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, ViewColumn)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.options)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, ViewColumn)?, args)
     }
 }
 
 impl RsToPyObject for CreateViewStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "replace", self.replace),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "columns", self.columns),
-            kwarg!(py_ctx, "options", self.options),
-            kwarg!(py_ctx, "query", self.query),
+        let args = &[
+            arg!(py_ctx, self.replace),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.columns),
+            arg!(py_ctx, self.options),
+            arg!(py_ctx, self.query),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, CreateViewStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CreateViewStatement)?, args)
     }
 }
 
 impl RsToPyObject for ExecuteImmediateUsingIdentifier {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "identifier", self.identifier),
-            kwarg!(py_ctx, "alias", self.alias),
-        ];
-        instantiate_py_class(
+        let args = &[arg!(py_ctx, self.identifier), arg!(py_ctx, self.alias)];
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, ExecuteImmediateUsingIdentifier)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ExecuteImmediateStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "sql", self.sql),
-            kwarg!(py_ctx, "into_vars", self.into_vars),
-            kwarg!(py_ctx, "using_identifiers", self.using_identifiers),
+        let args = &[
+            arg!(py_ctx, self.sql),
+            arg!(py_ctx, self.into_vars),
+            arg!(py_ctx, self.using_identifiers),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, ExecuteImmediateStatement)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for CreateSchemaStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "default_collate", self.default_collate),
-            kwarg!(py_ctx, "options", self.options),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.default_collate),
+            arg!(py_ctx, self.options),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, CreateSchemaStatement)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, CreateSchemaStatement)?, args)
     }
 }
 
@@ -3864,14 +4103,14 @@ impl RsToPyObject for FunctionArgumentType {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             FunctionArgumentType::Standard(standard_ty) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, standard_ty)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, standard_ty)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, FunctionArgumentType::Standard)?,
-                    kwargs,
+                    args,
                 )
             }
-            FunctionArgumentType::AnyType => instantiate_py_class(
+            FunctionArgumentType::AnyType => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, FunctionArgumentType::AnyType)?,
                 &[],
@@ -3882,88 +4121,75 @@ impl RsToPyObject for FunctionArgumentType {
 
 impl RsToPyObject for FunctionArgument {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "type_", self.r#type),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, FunctionArgument)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.r#type)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, FunctionArgument)?, args)
     }
 }
 
 impl RsToPyObject for CreateSqlFunctionStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "replace", self.replace),
-            kwarg!(py_ctx, "is_temporary", self.is_temporary),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "arguments", self.arguments),
-            kwarg!(py_ctx, "returns", self.returns),
-            kwarg!(py_ctx, "options", self.options),
-            kwarg!(py_ctx, "body", self.body),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.replace),
+            arg!(py_ctx, self.is_temporary),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.arguments),
+            arg!(py_ctx, self.returns),
+            arg!(py_ctx, self.options),
+            arg!(py_ctx, self.body),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CreateSqlFunctionStatement)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for DropFunctionStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "if_exists", self.if_exists),
-        ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, DropFunctionStatement)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.if_exists)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DropFunctionStatement)?, args)
     }
 }
 
 impl RsToPyObject for CreateJsFunctionStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "replace", self.replace),
-            kwarg!(py_ctx, "is_temporary", self.is_temporary),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "arguments", self.arguments),
-            kwarg!(py_ctx, "returns", self.returns),
-            kwarg!(py_ctx, "is_deterministic", self.is_deterministic),
-            kwarg!(py_ctx, "options", self.options),
-            kwarg!(py_ctx, "body", self.body),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.replace),
+            arg!(py_ctx, self.is_temporary),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.arguments),
+            arg!(py_ctx, self.returns),
+            arg!(py_ctx, self.is_deterministic),
+            arg!(py_ctx, self.options),
+            arg!(py_ctx, self.body),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_ast_class!(py_ctx, CreateJsFunctionStatement)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for DropViewStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "if_exists", self.if_exists),
-        ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DropViewStatement)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.if_exists)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DropViewStatement)?, args)
     }
 }
 
 impl RsToPyObject for DropSchemaMode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
-            DropSchemaMode::Restrict => instantiate_py_class(
+            DropSchemaMode::Restrict => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, DropSchemaMode::Restrict)?,
                 &[],
             ),
-            DropSchemaMode::Cascade => instantiate_py_class(
+            DropSchemaMode::Cascade => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, DropSchemaMode::Cascade)?,
                 &[],
@@ -3974,28 +4200,24 @@ impl RsToPyObject for DropSchemaMode {
 
 impl RsToPyObject for DropSchemaStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "external", self.external),
-            kwarg!(py_ctx, "if_exists", self.if_exists),
-            kwarg!(py_ctx, "mode", self.mode),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.external),
+            arg!(py_ctx, self.if_exists),
+            arg!(py_ctx, self.mode),
         ];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, DropSchemaStatement)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, DropSchemaStatement)?, args)
     }
 }
 
 impl RsToPyObject for UndropSchemaStatement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "if_not_exists", self.if_not_exists),
-            kwarg!(py_ctx, "options", self.options),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.if_not_exists),
+            arg!(py_ctx, self.options),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_ast_class!(py_ctx, UndropSchemaStatement)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, UndropSchemaStatement)?, args)
     }
 }
 
@@ -4003,205 +4225,271 @@ impl RsToPyObject for Statement {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
         match self {
             Statement::Query(query_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, query_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Query)?, kwargs)
+                let args = &[arg!(py_ctx, query_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Query)?,
+                    args,
+                )
             }
             Statement::Insert(insert_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, insert_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Insert)?, kwargs)
+                let args = &[arg!(py_ctx, insert_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Insert)?,
+                    args,
+                )
             }
             Statement::Delete(delete_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, delete_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Delete)?, kwargs)
+                let args = &[arg!(py_ctx, delete_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Delete)?,
+                    args,
+                )
             }
             Statement::Update(update_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, update_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Update)?, kwargs)
+                let args = &[arg!(py_ctx, update_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Update)?,
+                    args,
+                )
             }
             Statement::Truncate(truncate_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, truncate_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Truncate)?, kwargs)
+                let args = &[arg!(py_ctx, truncate_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Truncate)?,
+                    args,
+                )
             }
             Statement::Merge(merge_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, merge_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Merge)?, kwargs)
+                let args = &[arg!(py_ctx, merge_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Merge)?,
+                    args,
+                )
             }
             Statement::DeclareVar(declare_var_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, declare_var_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, declare_var_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::DeclareVar)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::SetVar(set_var_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, set_var_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::SetVar)?, kwargs)
+                let args = &[arg!(py_ctx, set_var_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::SetVar)?,
+                    args,
+                )
             }
             Statement::Block(statements_block) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, statements_block)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Block)?, kwargs)
+                let args = &[arg!(py_ctx, statements_block)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Block)?,
+                    args,
+                )
             }
             Statement::CreateSchema(create_schema_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_schema_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, create_schema_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateSchema)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::CreateTable(create_table_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_table_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, create_table_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateTable)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::CreateView(create_view_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, create_view_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, create_view_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateView)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::DropTable(drop_table_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_table_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, drop_table_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::DropTable)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::DropFunction(drop_function_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_function_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, drop_function_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::DropFunction)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::DropView(drop_view_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_view_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::DropView)?, kwargs)
+                let args = &[arg!(py_ctx, drop_view_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::DropView)?,
+                    args,
+                )
             }
             Statement::DropSchema(drop_schema_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, drop_schema_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, drop_schema_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::DropSchema)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::UndropSchema(undrop_schema_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, undrop_schema_statement)];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, undrop_schema_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::UndropSchema)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::If(if_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, if_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::If)?, kwargs)
+                let args = &[arg!(py_ctx, if_statement)];
+                instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Statement::If)?, args)
             }
             Statement::Case(case_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, case_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Case)?, kwargs)
+                let args = &[arg!(py_ctx, case_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Case)?,
+                    args,
+                )
             }
             Statement::Raise(raise_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, raise_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Raise)?, kwargs)
+                let args = &[arg!(py_ctx, raise_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Raise)?,
+                    args,
+                )
             }
             Statement::Call(call_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, call_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Call)?, kwargs)
+                let args = &[arg!(py_ctx, call_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Call)?,
+                    args,
+                )
             }
-            Statement::BeginTransaction => instantiate_py_class(
+            Statement::BeginTransaction => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Statement::BeginTransaction)?,
                 &[],
             ),
-            Statement::CommitTransaction => instantiate_py_class(
+            Statement::CommitTransaction => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Statement::CommitTransaction)?,
                 &[],
             ),
-            Statement::RollbackTransaction => instantiate_py_class(
+            Statement::RollbackTransaction => instantiate_py_class_from_args(
                 py_ctx,
                 get_ast_class!(py_ctx, Statement::RollbackTransaction)?,
                 &[],
             ),
-            Statement::Return => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Return)?, &[])
-            }
+            Statement::Return => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Statement::Return)?,
+                &[],
+            ),
             Statement::Loop(loop_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, loop_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Loop)?, kwargs)
+                let args = &[arg!(py_ctx, loop_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Loop)?,
+                    args,
+                )
             }
             Statement::Repeat(repeat_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, repeat_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Repeat)?, kwargs)
+                let args = &[arg!(py_ctx, repeat_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Repeat)?,
+                    args,
+                )
             }
             Statement::While(while_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, while_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::While)?, kwargs)
+                let args = &[arg!(py_ctx, while_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::While)?,
+                    args,
+                )
             }
             Statement::ForIn(for_in_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, for_in_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::ForIn)?, kwargs)
+                let args = &[arg!(py_ctx, for_in_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::ForIn)?,
+                    args,
+                )
             }
-            Statement::Break => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Break)?, &[])
-            }
-            Statement::Continue => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Continue)?, &[])
-            }
-            Statement::Iterate => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Iterate)?, &[])
-            }
-            Statement::Leave => {
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Leave)?, &[])
-            }
+            Statement::Break => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Statement::Break)?,
+                &[],
+            ),
+            Statement::Continue => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Statement::Continue)?,
+                &[],
+            ),
+            Statement::Iterate => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Statement::Iterate)?,
+                &[],
+            ),
+            Statement::Leave => instantiate_py_class_from_args(
+                py_ctx,
+                get_ast_class!(py_ctx, Statement::Leave)?,
+                &[],
+            ),
             Statement::Labeled(labeled_statement) => {
-                let kwargs = &[kwarg!(py_ctx, VARIANT_FIELD_NAME, labeled_statement)];
-                instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Statement::Labeled)?, kwargs)
+                let args = &[arg!(py_ctx, labeled_statement)];
+                instantiate_py_class_from_args(
+                    py_ctx,
+                    get_ast_class!(py_ctx, Statement::Labeled)?,
+                    args,
+                )
             }
             Statement::ExecuteImmediate(execute_immediate_statement) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    execute_immediate_statement
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, execute_immediate_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::ExecuteImmediate)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::CreateSqlFunction(create_sql_function_statement) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    create_sql_function_statement
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, create_sql_function_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateSqlFunction)?,
-                    kwargs,
+                    args,
                 )
             }
             Statement::CreateJsFunction(create_js_function_statement) => {
-                let kwargs = &[kwarg!(
-                    py_ctx,
-                    VARIANT_FIELD_NAME,
-                    create_js_function_statement
-                )];
-                instantiate_py_class(
+                let args = &[arg!(py_ctx, create_js_function_statement)];
+                instantiate_py_class_from_args(
                     py_ctx,
                     get_ast_class!(py_ctx, Statement::CreateJsFunction)?,
-                    kwargs,
+                    args,
                 )
             }
         }
@@ -4210,163 +4498,144 @@ impl RsToPyObject for Statement {
 
 impl RsToPyObject for Ast {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "statements", self.statements)];
-        instantiate_py_class(py_ctx, get_ast_class!(py_ctx, Ast)?, kwargs)
+        let args = &[arg!(py_ctx, self.statements)];
+        instantiate_py_class_from_args(py_ctx, get_ast_class!(py_ctx, Ast)?, args)
     }
 }
 
 impl RsToPyObject for ReadyLineageNodeInput {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "obj_name", self.obj_name),
-            kwarg!(py_ctx, "obj_kind", self.obj_kind),
-            kwarg!(py_ctx, "node_name", self.node_name),
+        let args = &[
+            arg!(py_ctx, self.obj_name),
+            arg!(py_ctx, self.obj_kind),
+            arg!(py_ctx, self.node_name),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_lineage_class!(py_ctx, ReadyLineageNodeInput)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ReadyLineageNodeSideInput {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "obj_name", self.obj_name),
-            kwarg!(py_ctx, "obj_kind", self.obj_kind),
-            kwarg!(py_ctx, "node_name", self.node_name),
-            kwarg!(py_ctx, "sides", self.sides),
+        let args = &[
+            arg!(py_ctx, self.obj_name),
+            arg!(py_ctx, self.obj_kind),
+            arg!(py_ctx, self.node_name),
+            arg!(py_ctx, self.sides),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_lineage_class!(py_ctx, ReadyLineageNodeSideInput)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ReadyLineageNode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "type_", self.r#type),
-            kwarg!(py_ctx, "inputs", self.inputs),
-            kwarg!(py_ctx, "side_inputs", self.side_inputs),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.r#type),
+            arg!(py_ctx, self.inputs),
+            arg!(py_ctx, self.side_inputs),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_lineage_class!(py_ctx, ReadyLineageNode)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, ReadyLineageNode)?, args)
     }
 }
 
 impl RsToPyObject for ReadyLineageObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "nodes", self.nodes),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.nodes),
         ];
-        instantiate_py_class(
+        instantiate_py_class_from_args(
             py_ctx,
             get_lineage_class!(py_ctx, ReadyLineageObject)?,
-            kwargs,
+            args,
         )
     }
 }
 
 impl RsToPyObject for ReadyLineage {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "objects", self.objects)];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, ReadyLineage)?, kwargs)
+        let args = &[arg!(py_ctx, self.objects)];
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, ReadyLineage)?, args)
     }
 }
 
 impl RsToPyObject for RawLineageObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "id", self.id),
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "nodes", self.nodes),
+        let args = &[
+            arg!(py_ctx, self.id),
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.nodes),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_lineage_class!(py_ctx, RawLineageObject)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, RawLineageObject)?, args)
     }
 }
 
 impl RsToPyObject for RawLineageNode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "id", self.id),
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "source_object", self.source_object),
-            kwarg!(py_ctx, "inputs", self.inputs),
+        let args = &[
+            arg!(py_ctx, self.id),
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.source_object),
+            arg!(py_ctx, self.inputs),
         ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, RawLineageNode)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, RawLineageNode)?, args)
     }
 }
 
 impl RsToPyObject for RawLineage {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "objects", self.objects),
-            kwarg!(py_ctx, "lineage_nodes", self.lineage_nodes),
-            kwarg!(py_ctx, "output_lineage", self.output_lineage),
+        let args = &[
+            arg!(py_ctx, self.objects),
+            arg!(py_ctx, self.lineage_nodes),
+            arg!(py_ctx, self.output_lineage),
         ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, RawLineage)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, RawLineage)?, args)
     }
 }
 
 impl RsToPyObject for ReferencedNode {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "referenced_in", self.referenced_in),
-        ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, ReferencedNode)?, kwargs)
+        let args = &[arg!(py_ctx, self.name), arg!(py_ctx, self.referenced_in)];
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, ReferencedNode)?, args)
     }
 }
 
 impl RsToPyObject for ReferencedObject {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "name", self.name),
-            kwarg!(py_ctx, "kind", self.kind),
-            kwarg!(py_ctx, "nodes", self.nodes),
+        let args = &[
+            arg!(py_ctx, self.name),
+            arg!(py_ctx, self.kind),
+            arg!(py_ctx, self.nodes),
         ];
-        instantiate_py_class(
-            py_ctx,
-            get_lineage_class!(py_ctx, ReferencedObject)?,
-            kwargs,
-        )
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, ReferencedObject)?, args)
     }
 }
 
 impl RsToPyObject for ReferencedColumns {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[kwarg!(py_ctx, "objects", self.objects)];
-        instantiate_py_class(
-            py_ctx,
-            get_lineage_class!(py_ctx, ReferencedColumns)?,
-            kwargs,
-        )
+        let args = &[arg!(py_ctx, self.objects)];
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, ReferencedColumns)?, args)
     }
 }
 
 impl RsToPyObject for Lineage {
     fn to_py_obj<'py>(&self, py_ctx: &mut PyContext<'py>) -> anyhow::Result<Bound<'py, PyAny>> {
-        let kwargs = &[
-            kwarg!(py_ctx, "lineage", self.lineage),
-            kwarg!(py_ctx, "raw_lineage", self.raw_lineage),
-            kwarg!(py_ctx, "referenced_columns", self.referenced_columns),
+        let args = &[
+            arg!(py_ctx, self.lineage),
+            arg!(py_ctx, self.raw_lineage),
+            arg!(py_ctx, self.referenced_columns),
         ];
-        instantiate_py_class(py_ctx, get_lineage_class!(py_ctx, Lineage)?, kwargs)
+        instantiate_py_class_from_args(py_ctx, get_lineage_class!(py_ctx, Lineage)?, args)
     }
 }
 
@@ -4582,11 +4851,8 @@ fn run_pipeline(
 
     let mut py_ctx = PyContext::new(py).unwrap();
 
-    let py_kwargs = PyDict::new(py);
-
     let py_asts = {
         let mut py_list = Vec::with_capacity(asts.len());
-        let py_kwargs = PyDict::new(py);
         for ast in &asts {
             match ast {
                 Ok(ast) => py_list.push(ast.to_py_obj(&mut py_ctx).unwrap()),
@@ -4594,20 +4860,17 @@ fn run_pipeline(
                     if raise_exception_on_error {
                         return Err(PyRuntimeError::new_err(err.to_string()));
                     }
-                    py_kwargs.set_item(
-                        intern!(py, "error"),
-                        err.to_string().to_py_obj(&mut py_ctx).unwrap(),
-                    )?;
+                    let error = err.to_string().to_py_obj(&mut py_ctx).unwrap();
                     py_list.push(
                         py_ctx
                             .inbq_module
                             .getattr(intern!(py, "PipelineError"))?
-                            .call(PyTuple::empty(py_ctx.py), Some(&py_kwargs))?,
+                            .call(PyTuple::new(py, &[error])?, None)?,
                     );
                 }
             }
         }
-        PyList::new(py_ctx.py, py_list)?
+        PyList::new(py_ctx.py, py_list)?.as_any().to_owned()
     };
 
     let py_lineages = if let Some(lineages) = &lineages {
@@ -4620,15 +4883,12 @@ fn run_pipeline(
                     if raise_exception_on_error {
                         return Err(PyRuntimeError::new_err(err.to_string()));
                     }
-                    py_kwargs.set_item(
-                        intern!(py, "error"),
-                        err.to_string().to_py_obj(&mut py_ctx).unwrap(),
-                    )?;
+                    let error = err.to_string().to_py_obj(&mut py_ctx).unwrap();
                     py_list.push(
                         py_ctx
                             .inbq_module
                             .getattr(intern!(py, "PipelineError"))?
-                            .call(PyTuple::empty(py_ctx.py), Some(&py_kwargs))?,
+                            .call(PyTuple::new(py, &[error])?, Some(&py_kwargs))?,
                     );
                 }
             }
@@ -4638,22 +4898,19 @@ fn run_pipeline(
         PyNone::get(py).into_bound().as_any().to_owned()
     };
 
-    py_kwargs.set_item(intern!(py, "asts"), py_asts)?;
-
-    let pipeline_output_cls = if lineages.is_some() {
-        py_kwargs.set_item(intern!(py, "lineages"), py_lineages)?;
-        py_ctx
+    let pipeline_output = if lineages.is_some() {
+        let args = &[py_asts, py_lineages];
+        let cls = py_ctx
             .inbq_module
-            .getattr(intern!(py, "PipelineParsingLineageOutput"))?
+            .getattr(intern!(py, "PipelineParsingLineageOutput"))?;
+        cls.call(PyTuple::new(py, args)?, None)?
     } else {
-        py_ctx
+        let args = &[py_asts];
+        let cls = py_ctx
             .inbq_module
-            .getattr(intern!(py, "PipelineParsingOutput"))?
+            .getattr(intern!(py, "PipelineParsingOutput"))?;
+        cls.call(PyTuple::new(py, args)?, None)?
     };
-
-    let pipeline_output = pipeline_output_cls
-        .call(PyTuple::empty(py_ctx.py), Some(&py_kwargs))
-        .unwrap();
 
     Ok(pipeline_output.into())
 }
