@@ -72,6 +72,16 @@ impl RsType {
     }
 }
 
+impl From<&syn::Type> for RsType {
+    fn from(value: &syn::Type) -> Self {
+        match value {
+            syn::Type::Path(type_path) => type_path.into(),
+            syn::Type::Reference(type_ref) => (&*type_ref.elem).into(),
+            other => panic!("Unsupported syn::Type: {:?}", other),
+        }
+    }
+}
+
 impl From<&syn::TypePath> for RsType {
     fn from(value: &syn::TypePath) -> Self {
         let segments = &value.path.segments;
@@ -85,9 +95,7 @@ impl From<&syn::TypePath> for RsType {
                 let inner_type: RsType = match args {
                     syn::PathArguments::AngleBracketed(angle_bracketed_generic_arguments) => {
                         match angle_bracketed_generic_arguments.args.first() {
-                            Some(GenericArgument::Type(syn::Type::Path(type_path))) => {
-                                type_path.into()
-                            }
+                            Some(GenericArgument::Type(ty)) => ty.into(),
                             _ => unreachable!(),
                         }
                     }
@@ -166,10 +174,7 @@ impl PyCodeGenerator {
                                             .iter()
                                             .map(|f| RsStructField {
                                                 name: f.ident.as_ref().unwrap().to_string(),
-                                                r#type: match &f.ty {
-                                                    syn::Type::Path(type_path) => type_path.into(),
-                                                    _ => unreachable!(),
-                                                },
+                                                r#type: (&f.ty).into(),
                                             })
                                             .collect(),
                                     })
@@ -180,10 +185,7 @@ impl PyCodeGenerator {
                                         types: fields_unnamed
                                             .unnamed
                                             .iter()
-                                            .map(|f| match &f.ty {
-                                                syn::Type::Path(type_path) => type_path.into(),
-                                                _ => unreachable!(),
-                                            })
+                                            .map(|f| (&f.ty).into())
                                             .collect(),
                                     })
                                 }
@@ -204,10 +206,7 @@ impl PyCodeGenerator {
                                     .as_ref()
                                     .expect("Found unexpected tuple struct")
                                     .to_string(),
-                                r#type: match &f.ty {
-                                    syn::Type::Path(type_path) => type_path.into(),
-                                    _ => unreachable!(),
-                                },
+                                r#type: (&f.ty).into(),
                             })
                             .collect(),
                     });
@@ -232,7 +231,7 @@ impl PyCodeGenerator {
             writeln!(
                 &mut buffer,
                 r#"
-@dataclass
+@dataclass(slots=True)
 class {}(AstNode):
 {}
             "#,
@@ -274,7 +273,7 @@ class {}(AstNode):
                     writeln!(
                         &mut buffer,
                         r#"
-@dataclass
+@dataclass(slots=True)
 class {}(AstNode): ...
 "#,
                         py_variant
@@ -297,7 +296,7 @@ class {}(AstNode): ...
                     writeln!(
                         &mut buffer,
                         r#"
-@dataclass
+@dataclass(slots=True)
 class {}(AstNode):
 {}
                     "#,
@@ -320,7 +319,7 @@ class {}(AstNode):
                     writeln!(
                         &mut buffer,
                         r#"
-@dataclass
+@dataclass(slots=True)
 class {}(AstNode):
     vty: {}
                     "#,
@@ -395,6 +394,7 @@ from typing import (
             &mut buffer,
             r#"
 class AstNode:
+    __slots__ = ()
     _PRIMITIVE_TYPES: ClassVar[frozenset[typing.Type[Any]]] = frozenset(
         (bool, str, int, float)
     )
@@ -490,11 +490,20 @@ class AstNode:
             if isinstance(curr, node_types):
                 yield curr
 
-            if hasattr(curr, "__dict__"):
+            if hasattr(curr, "__slots__") and curr.__slots__:
+                for slot in curr.__slots__:
+                    node = getattr(curr, slot, None)
+                    if node is None:
+                        continue
+                    elif isinstance(node, list):
+                        pending.extend(node)
+                    else:
+                        pending.append(node)
+            elif hasattr(curr, "__dict__"):
                 for node in curr.__dict__.values():
                     if node is None:
                         continue
-                    elif isinstance(node,list):
+                    elif isinstance(node, list):
                         pending.extend(node)
                     else:
                         pending.append(node)

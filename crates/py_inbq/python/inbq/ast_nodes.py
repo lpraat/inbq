@@ -20,6 +20,7 @@ from typing import (
 
 
 class AstNode:
+    __slots__ = ()
     _PRIMITIVE_TYPES: ClassVar[frozenset[typing.Type[Any]]] = frozenset(
         (bool, str, int, float)
     )
@@ -661,7 +662,16 @@ class AstNode:
             if isinstance(curr, node_types):
                 yield curr
 
-            if hasattr(curr, "__dict__"):
+            if hasattr(curr, "__slots__"):
+                for slot in curr.__slots__:
+                    node = getattr(curr, slot, None)
+                    if node is None:
+                        continue
+                    elif isinstance(node, list):
+                        pending.extend(node)
+                    else:
+                        pending.append(node)
+            elif hasattr(curr, "__dict__"):
                 for node in curr.__dict__.values():
                     if node is None:
                         continue
@@ -671,18 +681,18 @@ class AstNode:
                         pending.append(node)
 
 
-@dataclass
+@dataclass(slots=True)
 class Ast(AstNode):
     statements: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DropViewStatement(AstNode):
     name: "PathName"
     if_exists: "bool"
 
 
-@dataclass
+@dataclass(slots=True)
 class DropSchemaStatement(AstNode):
     name: "PathName"
     external: "bool"
@@ -690,26 +700,26 @@ class DropSchemaStatement(AstNode):
     mode: "Optional[DropSchemaMode]"
 
 
-@dataclass
+@dataclass(slots=True)
 class UndropSchemaStatement(AstNode):
     name: "PathName"
     if_not_exists: "bool"
     options: "Optional[list[DdlOption]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DropFunctionStatement(AstNode):
     name: "PathName"
     if_exists: "bool"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionArgument(AstNode):
     name: "Name"
     type_: "FunctionArgumentType"
 
 
-@dataclass
+@dataclass(slots=True)
 class CreateSqlFunctionStatement(AstNode):
     name: "PathName"
     replace: "bool"
@@ -721,7 +731,7 @@ class CreateSqlFunctionStatement(AstNode):
     body: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class CreateJsFunctionStatement(AstNode):
     name: "PathName"
     replace: "bool"
@@ -734,7 +744,7 @@ class CreateJsFunctionStatement(AstNode):
     body: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class CreateSchemaStatement(AstNode):
     name: "PathName"
     if_not_exists: "bool"
@@ -742,20 +752,20 @@ class CreateSchemaStatement(AstNode):
     options: "Optional[list[DdlOption]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ExecuteImmediateStatement(AstNode):
     sql: "Expr"
     into_vars: "Optional[list[Name]]"
     using_identifiers: "Optional[list[ExecuteImmediateUsingIdentifier]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ExecuteImmediateUsingIdentifier(AstNode):
     identifier: "Expr"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CreateViewStatement(AstNode):
     replace: "bool"
     if_not_exists: "bool"
@@ -765,112 +775,112 @@ class CreateViewStatement(AstNode):
     query: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ViewColumn(AstNode):
     name: "Name"
     options: "Optional[list[DdlOption]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DdlOption(AstNode):
     name: "Name"
     value: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ForInStatement(AstNode):
     var_name: "Name"
     table_expr: "QueryExpr"
     statements: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class WhileStatement(AstNode):
     condition: "Expr"
     statements: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class RepeatStatement(AstNode):
     statements: "list[Statement]"
     until: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class LoopStatement(AstNode):
     statements: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class LabeledStatement(AstNode):
     statement: "Statement"
     start_label: "Name"
     end_label: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class PathName(AstNode):
     name: "str"
     parts: "list[PathPart]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CaseStatement(AstNode):
     case_: "Optional[Expr]"
     when_thens: "list[CaseWhenThenStatements]"
     else_: "Optional[list[Statement]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CaseWhenThenStatements(AstNode):
     when: "Expr"
     then: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CallStatement(AstNode):
     procedure_name: "PathName"
     arguments: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class RaiseStatement(AstNode):
     message: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class IfStatement(AstNode):
     if_: "IfBranch"
     else_ifs: "Optional[list[IfBranch]]"
     else_: "Optional[list[Statement]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class IfBranch(AstNode):
     condition: "Expr"
     statements: "list[Statement]"
 
 
-@dataclass
+@dataclass(slots=True)
 class StatementsBlock(AstNode):
     statements: "list[Statement]"
     exception_statements: "Optional[list[Statement]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DeclareVarStatement(AstNode):
     vars: "list[Name]"
     type_: "Optional[ParameterizedType]"
     default: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SetVarStatement(AstNode):
     vars: "list[SetVariable]"
     exprs: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CreateTableStatement(AstNode):
     name: "PathName"
     schema: "Optional[list[ColumnSchema]]"
@@ -886,54 +896,54 @@ class CreateTableStatement(AstNode):
     query: "Optional[QueryExpr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class PrimaryKeyConstraintNotEnforced(AstNode):
     columns: "list[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ForeignKeyConstraintNotEnforced(AstNode):
     name: "Optional[Name]"
     columns: "list[Name]"
     reference: "ForeignKeyReference"
 
 
-@dataclass
+@dataclass(slots=True)
 class ForeignKeyReference(AstNode):
     table: "PathName"
     columns: "list[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DropTableStatement(AstNode):
     name: "PathName"
     if_exists: "bool"
 
 
-@dataclass
+@dataclass(slots=True)
 class ColumnSchema(AstNode):
     name: "Name"
     type_: "ParameterizedType"
 
 
-@dataclass
+@dataclass(slots=True)
 class StructParameterizedFieldType(AstNode):
     name: "Name"
     type_: "ParameterizedType"
 
 
-@dataclass
+@dataclass(slots=True)
 class StructFieldType(AstNode):
     name: "Optional[Name]"
     type_: "Type"
 
 
-@dataclass
+@dataclass(slots=True)
 class QueryStatement(AstNode):
     query: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class InsertStatement(AstNode):
     table: "PathName"
     columns: "Optional[list[Name]]"
@@ -941,20 +951,20 @@ class InsertStatement(AstNode):
     query: "Optional[QueryExpr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DeleteStatement(AstNode):
     table: "PathName"
     alias: "Optional[Name]"
     cond: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class UpdateItem(AstNode):
     column: "Expr"
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class UpdateStatement(AstNode):
     table: "PathName"
     alias: "Optional[Name]"
@@ -963,12 +973,12 @@ class UpdateStatement(AstNode):
     where: "Where"
 
 
-@dataclass
+@dataclass(slots=True)
 class TruncateStatement(AstNode):
     table: "PathName"
 
 
-@dataclass
+@dataclass(slots=True)
 class MergeStatement(AstNode):
     target_table: "PathName"
     target_alias: "Optional[Name]"
@@ -978,279 +988,279 @@ class MergeStatement(AstNode):
     whens: "list[When]"
 
 
-@dataclass
+@dataclass(slots=True)
 class MergeUpdate(AstNode):
     update_items: "list[UpdateItem]"
 
 
-@dataclass
+@dataclass(slots=True)
 class MergeInsert(AstNode):
     columns: "Optional[list[Name]]"
     values: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class WhenMatched(AstNode):
     search_condition: "Optional[Expr]"
     merge: "Merge"
 
 
-@dataclass
+@dataclass(slots=True)
 class WhenNotMatchedByTarget(AstNode):
     search_condition: "Optional[Expr]"
     merge: "Merge"
 
 
-@dataclass
+@dataclass(slots=True)
 class WhenNotMatchedBySource(AstNode):
     search_condition: "Optional[Expr]"
     merge: "Merge"
 
 
-@dataclass
+@dataclass(slots=True)
 class ChainedGenericFunctionExpr(AstNode):
     function: "GenericFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ChainedFunctionExpr(AstNode):
     function: "FunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class UnnestExpr(AstNode):
     array: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class WithExpr(AstNode):
     vars: "list[WithExprVar]"
     result: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class WithExprVar(AstNode):
     name: "Name"
     value: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class SystemVariable(AstNode):
     name: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Number(AstNode):
     value: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Identifier(AstNode):
     name: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class QuotedIdentifier(AstNode):
     name: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class StringConcatExpr(AstNode):
     strings: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class BytesConcatExpr(AstNode):
     bytes: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CaseExpr(AstNode):
     case_: "Optional[Expr]"
     when_thens: "list[WhenThen]"
     else_: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class WhenThen(AstNode):
     when: "Expr"
     then: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class RangeExpr(AstNode):
     type_: "Type"
     value: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class CoalesceFunctionExpr(AstNode):
     exprs: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizeFunctionExpr(AstNode):
     value: "Expr"
     mode: "NormalizationMode"
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizeAndCasefoldFunctionExpr(AstNode):
     value: "Expr"
     mode: "NormalizationMode"
 
 
-@dataclass
+@dataclass(slots=True)
 class CurrentDatetimeFunctionExpr(AstNode):
     timezone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CurrentTimeFunctionExpr(AstNode):
     timezone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class LastDayFunctionExpr(AstNode):
     expr: "Expr"
     granularity: "Optional[Granularity]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DateTruncFunctionExpr(AstNode):
     date: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class DateDiffFunctionExpr(AstNode):
     start_date: "Expr"
     end_date: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class DatetimeTruncFunctionExpr(AstNode):
     datetime: "Expr"
     granularity: "Granularity"
     timezone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DatetimeDiffFunctionExpr(AstNode):
     start_datetime: "Expr"
     end_datetime: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class TimestampTruncFunctionExpr(AstNode):
     timestamp: "Expr"
     granularity: "Granularity"
     timezone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class TimestampDiffFunctionExpr(AstNode):
     start_timestamp: "Expr"
     end_timestamp: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class TimeTruncFunctionExpr(AstNode):
     time: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class TimeDiffFunctionExpr(AstNode):
     start_time: "Expr"
     end_time: "Expr"
     granularity: "Granularity"
 
 
-@dataclass
+@dataclass(slots=True)
 class RightFunctionExpr(AstNode):
     value: "Expr"
     length: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class LeftFunctionExpr(AstNode):
     value: "Expr"
     length: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionExpr(AstNode):
     part: "ExtractFunctionPart"
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class CurrentDateFunctionExpr(AstNode):
     timezone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ArrayAggFunctionExpr(AstNode):
     arg: "GenericFunctionExprArg"
     over: "Optional[NamedWindowExpr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ArrayFunctionExpr(AstNode):
     query: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ConcatFunctionExpr(AstNode):
     values: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CastFunctionExpr(AstNode):
     expr: "Expr"
     type_: "ParameterizedType"
     format: "Optional[CastFunctionFormat]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SafeCastFunctionExpr(AstNode):
     expr: "Expr"
     type_: "ParameterizedType"
     format: "Optional[CastFunctionFormat]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CastFunctionFormat(AstNode):
     format: "Expr"
     time_zone: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class IfFunctionExpr(AstNode):
     condition: "Expr"
     true_result: "Expr"
     false_result: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class GenericFunctionExpr(AstNode):
     name: "PathName"
     arguments: "list[GenericFunctionExprArg]"
     over: "Optional[NamedWindowExpr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class GenericFunctionExprArg(AstNode):
     name: "Optional[Name]"
     expr: "Expr"
     aggregate: "Optional[FunctionAggregate]"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregate(AstNode):
     distinct: "bool"
     nulls: "Optional[FunctionAggregateNulls]"
@@ -1259,62 +1269,62 @@ class FunctionAggregate(AstNode):
     limit: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateOrderBy(AstNode):
     expr: "Expr"
     sort_direction: "Optional[OrderBySortDirection]"
     nulls: "Optional[OrderByNulls]"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateHaving(AstNode):
     expr: "Expr"
     kind: "FunctionAggregateHavingKind"
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryExpr(AstNode):
     operator: "UnaryOperator"
     right: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryExpr(AstNode):
     left: "Expr"
     operator: "BinaryOperator"
     right: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class QuantifiedLikeExpr(AstNode):
     quantifier: "LikeQuantifier"
     pattern: "QuantifiedLikeExprPattern"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupingExpr(AstNode):
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class ArrayExpr(AstNode):
     type_: "Optional[Type]"
     exprs: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class StructExpr(AstNode):
     type_: "Optional[Type]"
     fields: "list[StructField]"
 
 
-@dataclass
+@dataclass(slots=True)
 class StructField(AstNode):
     expr: "Expr"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupingQueryExpr(AstNode):
     with_: "Optional[With]"
     query: "QueryExpr"
@@ -1322,7 +1332,7 @@ class GroupingQueryExpr(AstNode):
     limit: "Optional[Limit]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectQueryExpr(AstNode):
     with_: "Optional[With]"
     select: "Select"
@@ -1330,7 +1340,7 @@ class SelectQueryExpr(AstNode):
     limit: "Optional[Limit]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SetSelectQueryExpr(AstNode):
     with_: "Optional[With]"
     left_query: "QueryExpr"
@@ -1340,43 +1350,43 @@ class SetSelectQueryExpr(AstNode):
     limit: "Optional[Limit]"
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderBy(AstNode):
     exprs: "list[OrderByExpr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderByExpr(AstNode):
     expr: "Expr"
     sort_direction: "Optional[OrderBySortDirection]"
     nulls: "Optional[OrderByNulls]"
 
 
-@dataclass
+@dataclass(slots=True)
 class Limit(AstNode):
     count: "Expr"
     offset: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class With(AstNode):
     ctes: "list[Cte]"
 
 
-@dataclass
+@dataclass(slots=True)
 class NonRecursiveCte(AstNode):
     name: "Name"
     query: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class RecursiveCte(AstNode):
     name: "Name"
     base_query: "QueryExpr"
     recursive_query: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Select(AstNode):
     differential_privacy: "Optional[DifferentialPrivacy]"
     distinct: "bool"
@@ -1390,40 +1400,40 @@ class Select(AstNode):
     window: "Optional[Window]"
 
 
-@dataclass
+@dataclass(slots=True)
 class DifferentialPrivacyOption(AstNode):
     name: "Name"
     value: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class DifferentialPrivacy(AstNode):
     options: "list[DifferentialPrivacyOption]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectColExpr(AstNode):
     expr: "Expr"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectColAllExpr(AstNode):
     expr: "Expr"
     except_: "Optional[list[Name]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectAllExpr(AstNode):
     except_: "Optional[list[Name]]"
 
 
-@dataclass
+@dataclass(slots=True)
 class From(AstNode):
     expr: "FromExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Pivot(AstNode):
     aggregates: "list[PivotAggregate]"
     input_column: "Name"
@@ -1431,57 +1441,57 @@ class Pivot(AstNode):
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class PivotAggregate(AstNode):
     expr: "Expr"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class PivotColumn(AstNode):
     expr: "Expr"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class Unpivot(AstNode):
     nulls: "UnpivotNulls"
     kind: "UnpivotKind"
     alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableSample(AstNode):
     percent: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class SingleColumnUnpivot(AstNode):
     values_column: "Name"
     name_column: "Name"
     columns_to_unpivot: "list[ColumnToUnpivot]"
 
 
-@dataclass
+@dataclass(slots=True)
 class MultiColumnUnpivot(AstNode):
     values_columns: "list[Name]"
     name_column: "Name"
     column_sets_to_unpivot: "list[ColumnSetToUnpivot]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ColumnToUnpivot(AstNode):
     name: "Name"
     alias: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ColumnSetToUnpivot(AstNode):
     names: "list[Name]"
     alias: "Optional[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableFunctionExpr(AstNode):
     name: "PathName"
     arguments: "list[TableFunctionArgument]"
@@ -1490,13 +1500,13 @@ class TableFunctionExpr(AstNode):
     table_sample: "Optional[TableSample]"
 
 
-@dataclass
+@dataclass(slots=True)
 class CrossJoinExpr(AstNode):
     left: "FromExpr"
     right: "FromExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinExpr(AstNode):
     kind: "JoinKind"
     left: "FromExpr"
@@ -1504,7 +1514,7 @@ class JoinExpr(AstNode):
     cond: "JoinCondition"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromUnnestExpr(AstNode):
     array: "Expr"
     alias: "Optional[Name]"
@@ -1512,7 +1522,7 @@ class FromUnnestExpr(AstNode):
     offset_alias: "Optional[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromPathExpr(AstNode):
     path: "PathName"
     alias: "Optional[Name]"
@@ -1521,12 +1531,12 @@ class FromPathExpr(AstNode):
     table_sample: "Optional[TableSample]"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupingFromExpr(AstNode):
     query: "FromExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromGroupingQueryExpr(AstNode):
     query: "QueryExpr"
     alias: "Optional[Name]"
@@ -1534,45 +1544,45 @@ class FromGroupingQueryExpr(AstNode):
     table_sample: "Optional[TableSample]"
 
 
-@dataclass
+@dataclass(slots=True)
 class Where(AstNode):
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupBy(AstNode):
     expr: "GroupByExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Having(AstNode):
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Qualify(AstNode):
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Window(AstNode):
     named_windows: "list[NamedWindow]"
 
 
-@dataclass
+@dataclass(slots=True)
 class WindowOrderByExpr(AstNode):
     expr: "Expr"
     sort_direction: "Optional[OrderBySortDirection]"
     nulls: "Optional[OrderByNulls]"
 
 
-@dataclass
+@dataclass(slots=True)
 class NamedWindow(AstNode):
     name: "Name"
     window: "NamedWindowExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class WindowSpec(AstNode):
     window_name: "Optional[Name]"
     partition_by: "Optional[list[Expr]]"
@@ -1580,14 +1590,14 @@ class WindowSpec(AstNode):
     frame: "Optional[WindowFrame]"
 
 
-@dataclass
+@dataclass(slots=True)
 class WindowFrame(AstNode):
     kind: "WindowFrameKind"
     start: "Optional[FrameBound]"
     end: "Optional[FrameBound]"
 
 
-@dataclass
+@dataclass(slots=True)
 class Token(AstNode):
     kind: "TokenType"
     lexeme: "str"
@@ -1595,1990 +1605,1990 @@ class Token(AstNode):
     col: "int"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Query(AstNode):
     vty: "QueryStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Insert(AstNode):
     vty: "InsertStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Delete(AstNode):
     vty: "DeleteStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Update(AstNode):
     vty: "UpdateStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Truncate(AstNode):
     vty: "TruncateStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Merge(AstNode):
     vty: "MergeStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_DeclareVar(AstNode):
     vty: "DeclareVarStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_SetVar(AstNode):
     vty: "SetVarStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Block(AstNode):
     vty: "StatementsBlock"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CreateSchema(AstNode):
     vty: "CreateSchemaStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CreateTable(AstNode):
     vty: "CreateTableStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CreateSqlFunction(AstNode):
     vty: "CreateSqlFunctionStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CreateJsFunction(AstNode):
     vty: "CreateJsFunctionStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CreateView(AstNode):
     vty: "CreateViewStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_DropTable(AstNode):
     vty: "DropTableStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_DropView(AstNode):
     vty: "DropViewStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_UndropSchema(AstNode):
     vty: "UndropSchemaStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_DropSchema(AstNode):
     vty: "DropSchemaStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_DropFunction(AstNode):
     vty: "DropFunctionStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_If(AstNode):
     vty: "IfStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Case(AstNode):
     vty: "CaseStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_BeginTransaction(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_CommitTransaction(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_RollbackTransaction(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Raise(AstNode):
     vty: "RaiseStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Return(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Call(AstNode):
     vty: "CallStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_ExecuteImmediate(AstNode):
     vty: "ExecuteImmediateStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Loop(AstNode):
     vty: "LoopStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Repeat(AstNode):
     vty: "RepeatStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_While(AstNode):
     vty: "WhileStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_ForIn(AstNode):
     vty: "ForInStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Break(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Continue(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Iterate(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Leave(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Statement_Labeled(AstNode):
     vty: "LabeledStatement"
 
 
-@dataclass
+@dataclass(slots=True)
 class DropSchemaMode_Restrict(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class DropSchemaMode_Cascade(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionArgumentType_Standard(AstNode):
     vty: "Type"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionArgumentType_AnyType(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Name_Identifier(AstNode):
     vty: "Identifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class Name_QuotedIdentifier(AstNode):
     vty: "QuotedIdentifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_Identifier(AstNode):
     vty: "Identifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_QuotedIdentifier(AstNode):
     vty: "QuotedIdentifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_Number(AstNode):
     vty: "Number"
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_DotSeparator(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_SlashSeparator(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_DashSeparator(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class PathPart_ColonSeparator(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SetVariable_UserVariable(AstNode):
     vty: "Name"
 
 
-@dataclass
+@dataclass(slots=True)
 class SetVariable_SystemVariable(AstNode):
     vty: "SystemVariable"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableConstraint_PrimaryKeyNotEnforced(AstNode):
     vty: "PrimaryKeyConstraintNotEnforced"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableConstraint_ForeignKeyNotEnforced(AstNode):
     vty: "ForeignKeyConstraintNotEnforced"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Array(AstNode):
     type_: "ParameterizedType"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_BigNumeric(AstNode):
     precision: "Optional[str]"
     scale: "Optional[str]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Bool(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Bytes(AstNode):
     max_length: "Optional[str]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Date(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Datetime(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Float64(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Geography(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Int64(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Interval(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Json(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Numeric(AstNode):
     precision: "Optional[str]"
     scale: "Optional[str]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Range(AstNode):
     type_: "ParameterizedType"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_String(AstNode):
     max_length: "Optional[str]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Struct(AstNode):
     fields: "list[StructParameterizedFieldType]"
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Time(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ParameterizedType_Timestamp(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Array(AstNode):
     type_: "Type"
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_BigNumeric(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Bool(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Bytes(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Date(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Datetime(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Float64(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Geography(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Int64(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Interval(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Json(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Numeric(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Range(AstNode):
     type_: "Type"
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_String(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Struct(AstNode):
     fields: "list[StructFieldType]"
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Time(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Type_Timestamp(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class MergeSource_Table(AstNode):
     vty: "PathName"
 
 
-@dataclass
+@dataclass(slots=True)
 class MergeSource_Subquery(AstNode):
     vty: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Merge_Update(AstNode):
     vty: "MergeUpdate"
 
 
-@dataclass
+@dataclass(slots=True)
 class Merge_Insert(AstNode):
     vty: "MergeInsert"
 
 
-@dataclass
+@dataclass(slots=True)
 class Merge_InsertRow(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Merge_Delete(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class When_Matched(AstNode):
     vty: "WhenMatched"
 
 
-@dataclass
+@dataclass(slots=True)
 class When_NotMatchedByTarget(AstNode):
     vty: "WhenNotMatchedByTarget"
 
 
-@dataclass
+@dataclass(slots=True)
 class When_NotMatchedBySource(AstNode):
     vty: "WhenNotMatchedBySource"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Binary(AstNode):
     vty: "BinaryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Unary(AstNode):
     vty: "UnaryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Grouping(AstNode):
     vty: "GroupingExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Array(AstNode):
     vty: "ArrayExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Struct(AstNode):
     vty: "StructExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Identifier(AstNode):
     vty: "Identifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_QuotedIdentifier(AstNode):
     vty: "QuotedIdentifier"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_QueryNamedParameter(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_QueryPositionalParameter(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_SystemVariable(AstNode):
     vty: "SystemVariable"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_String(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_RawString(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_StringConcat(AstNode):
     vty: "StringConcatExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Bytes(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_RawBytes(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_BytesConcat(AstNode):
     vty: "BytesConcatExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Numeric(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_BigNumeric(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Number(AstNode):
     vty: "Number"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Bool(AstNode):
     vty: "bool"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_With(AstNode):
     vty: "WithExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Date(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Time(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Datetime(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Timestamp(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Range(AstNode):
     vty: "RangeExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Interval(AstNode):
     vty: "IntervalExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Json(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Default(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Null(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Star(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Query(AstNode):
     vty: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Case(AstNode):
     vty: "CaseExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_ChainedGenericFunction(AstNode):
     vty: "ChainedGenericFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_GenericFunction(AstNode):
     vty: "GenericFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Function(AstNode):
     vty: "FunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_ChainedFunction(AstNode):
     vty: "ChainedFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_QuantifiedLike(AstNode):
     vty: "QuantifiedLikeExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Exists(AstNode):
     vty: "QueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class Expr_Unnest(AstNode):
     vty: "UnnestExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalExpr_Interval(AstNode):
     value: "Expr"
     part: "IntervalPart"
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalExpr_IntervalRange(AstNode):
     value: "str"
     start_part: "IntervalPart"
     end_part: "IntervalPart"
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Year(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Quarter(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Month(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Week(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Day(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Hour(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Minute(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Second(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Millisecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class IntervalPart_Microsecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Array(AstNode):
     vty: "ArrayFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_ArrayAgg(AstNode):
     vty: "ArrayAggFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Coalesce(AstNode):
     vty: "CoalesceFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Concat(AstNode):
     vty: "ConcatFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Cast(AstNode):
     vty: "CastFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_SafeCast(AstNode):
     vty: "SafeCastFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Extract(AstNode):
     vty: "ExtractFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_If(AstNode):
     vty: "IfFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_CurrentDate(AstNode):
     vty: "CurrentDateFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_DateDiff(AstNode):
     vty: "DateDiffFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_DateTrunc(AstNode):
     vty: "DateTruncFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_CurrentDatetime(AstNode):
     vty: "CurrentDatetimeFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_DatetimeDiff(AstNode):
     vty: "DatetimeDiffFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_DatetimeTrunc(AstNode):
     vty: "DatetimeTruncFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_CurrentTimestamp(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_TimestampDiff(AstNode):
     vty: "TimestampDiffFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_TimestampTrunc(AstNode):
     vty: "TimestampTruncFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_CurrentTime(AstNode):
     vty: "CurrentTimeFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_TimeDiff(AstNode):
     vty: "TimeDiffFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_TimeTrunc(AstNode):
     vty: "TimeTruncFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_LastDay(AstNode):
     vty: "LastDayFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Left(AstNode):
     vty: "LeftFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Right(AstNode):
     vty: "RightFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_Normalize(AstNode):
     vty: "NormalizeFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionExpr_NormalizeAndCasefold(AstNode):
     vty: "NormalizeAndCasefoldFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizationMode_NFC(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizationMode_NFKC(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizationMode_NFD(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class NormalizationMode_NFKD(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_MicroSecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_MilliSecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Second(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Minute(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Hour(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Day(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Week(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_WeekWithBegin(AstNode):
     vty: "WeekBegin"
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_IsoWeek(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Month(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Quarter(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Year(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_IsoYear(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Date(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Granularity_Time(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_MicroSecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_MilliSecond(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Second(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Minute(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Hour(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_DayOfWeek(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Day(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_DayOfYear(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Week(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_WeekWithBegin(AstNode):
     vty: "WeekBegin"
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_IsoWeek(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Month(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Quarter(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Year(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_IsoYear(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Date(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class ExtractFunctionPart_Time(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Sunday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Monday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Tuesday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Wednesday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Thursday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Friday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WeekBegin_Saturday(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateNulls_Ignore(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateNulls_Respect(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateHavingKind_Max(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FunctionAggregateHavingKind_Min(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_Plus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_Minus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_BitwiseNot(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsNull(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsNotNull(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsTrue(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsNotTrue(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsFalse(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_IsNotFalse(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnaryOperator_Not(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Star(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Slash(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Concat(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Plus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Minus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_BitwiseLeftShift(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_BitwiseRightShift(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_BitwiseAnd(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_BitwiseXor(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_BitwiseOr(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Equal(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_LessThan(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_GreaterThan(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_LessThanOrEqualTo(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_GreaterThanOrEqualTo(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_NotEqual(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Like(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_NotLike(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_QuantifiedLike(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_QuantifiedNotLike(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Between(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_NotBetween(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_In(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_NotIn(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_IsDistinctFrom(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_IsNotDistinctFrom(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_And(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_Or(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_ArrayIndex(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_FieldAccess(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class BinaryOperator_FunctionAccess(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class LikeQuantifier_Any(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class LikeQuantifier_Some(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class LikeQuantifier_All(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class QuantifiedLikeExprPattern_ExprList(AstNode):
     exprs: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class QuantifiedLikeExprPattern_ArrayUnnest(AstNode):
     expr: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class QueryExpr_Grouping(AstNode):
     vty: "GroupingQueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class QueryExpr_Select(AstNode):
     vty: "SelectQueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class QueryExpr_SetSelect(AstNode):
     vty: "SetSelectQueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class SetQueryOperator_Union(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SetQueryOperator_UnionDistinct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SetQueryOperator_IntersectDistinct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SetQueryOperator_ExceptDistinct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderBySortDirection_Asc(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderBySortDirection_Desc(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderByNulls_First(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class OrderByNulls_Last(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class Cte_NonRecursive(AstNode):
     vty: "NonRecursiveCte"
 
 
-@dataclass
+@dataclass(slots=True)
 class Cte_Recursive(AstNode):
     vty: "RecursiveCte"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectTableValue_Struct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectTableValue_Value(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectExpr_Col(AstNode):
     vty: "SelectColExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectExpr_ColAll(AstNode):
     vty: "SelectColAllExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class SelectExpr_All(AstNode):
     vty: "SelectAllExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableOperator_Pivot(AstNode):
     vty: "Pivot"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableOperator_Unpivot(AstNode):
     vty: "Unpivot"
 
 
-@dataclass
+@dataclass(slots=True)
 class UnpivotNulls_Include(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnpivotNulls_Exclude(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class UnpivotKind_SingleColumn(AstNode):
     vty: "SingleColumnUnpivot"
 
 
-@dataclass
+@dataclass(slots=True)
 class UnpivotKind_MultiColumn(AstNode):
     vty: "MultiColumnUnpivot"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_Join(AstNode):
     vty: "JoinExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_FullJoin(AstNode):
     vty: "JoinExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_LeftJoin(AstNode):
     vty: "JoinExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_RightJoin(AstNode):
     vty: "JoinExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_CrossJoin(AstNode):
     vty: "CrossJoinExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_Path(AstNode):
     vty: "FromPathExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_TableFunction(AstNode):
     vty: "TableFunctionExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_Unnest(AstNode):
     vty: "FromUnnestExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_GroupingQuery(AstNode):
     vty: "FromGroupingQueryExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class FromExpr_GroupingFrom(AstNode):
     vty: "GroupingFromExpr"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableFunctionArgument_Table(AstNode):
     vty: "PathName"
 
 
-@dataclass
+@dataclass(slots=True)
 class TableFunctionArgument_Expr(AstNode):
     vty: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinKind_Inner(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinKind_Left(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinKind_Right(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinKind_Full(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinCondition_On(AstNode):
     vty: "Expr"
 
 
-@dataclass
+@dataclass(slots=True)
 class JoinCondition_Using(AstNode):
     columns: "list[Name]"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupByExpr_Items(AstNode):
     exprs: "list[Expr]"
 
 
-@dataclass
+@dataclass(slots=True)
 class GroupByExpr_All(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class NamedWindowExpr_Reference(AstNode):
     vty: "Name"
 
 
-@dataclass
+@dataclass(slots=True)
 class NamedWindowExpr_WindowSpec(AstNode):
     vty: "WindowSpec"
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameBound_UnboundedPreceding(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameBound_Preceding(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameBound_UnboundedFollowing(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameBound_Following(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class FrameBound_CurrentRow(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WindowFrameKind_Range(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class WindowFrameKind_Rows(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_LeftParen(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_RightParen(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_LeftSquare(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_RightSquare(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Comma(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Dot(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Minus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Plus(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseNot(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseOr(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseAnd(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseXor(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseRightShift(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BitwiseLeftShift(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Colon(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Semicolon(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Slash(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Star(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Tick(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_ConcatOperator(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Bang(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_BangEqual(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Equal(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_NotEqual(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Greater(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_GreaterEqual(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Less(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_LessEqual(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_RightArrow(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_QuotedIdentifier(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Identifier(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_String(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_RawString(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Bytes(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_RawBytes(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Number(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_QueryNamedParameter(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_QueryPositionalParameter(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_SystemVariable(AstNode):
     vty: "str"
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Eof(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_All(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_And(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Any(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Array(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_As(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Asc(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_AssertRowsModified(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_At(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Between(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_By(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Case(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Cast(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Collate(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Contains(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Create(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Cross(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Cube(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Current(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Default(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Define(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Desc(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Distinct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Else(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_End(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Enum(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Escape(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Except(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Exclude(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Exists(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Extract(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_False(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Fetch(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Following(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_For(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_From(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Full(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Group(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Grouping(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Groups(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Hash(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Having(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_If(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Ignore(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_In(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Inner(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Intersect(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Interval(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Into(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Is(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Join(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Lateral(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Left(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Like(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Limit(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Lookup(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Merge(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Natural(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_New(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_No(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Not(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Null(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Nulls(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Of(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_On(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Or(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Order(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Outer(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Over(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Partition(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Preceding(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Proto(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Qualify(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Range(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Recursive(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Respect(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Right(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Rollup(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Rows(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Select(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Set(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Some(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Struct(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Tablesample(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Then(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_To(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Treat(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_True(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Union(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Unnest(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Using(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_When(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Where(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Window(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_With(AstNode): ...
 
 
-@dataclass
+@dataclass(slots=True)
 class TokenType_Within(AstNode): ...
 
 

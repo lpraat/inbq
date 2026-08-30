@@ -12,17 +12,17 @@ from inbq._inbq import run_pipeline as run_pipeline
 PipelineOutputType = TypeVar("PipelineOutputType")
 
 
-@dataclass
+@dataclass(slots=True)
 class PipelineError:
     error: str
 
 
-@dataclass
+@dataclass(slots=True)
 class PipelineParsingOutput:
     asts: list[ast_nodes.Ast | PipelineError]
 
 
-@dataclass
+@dataclass(slots=True)
 class PipelineParsingLineageOutput:
     asts: list[ast_nodes.Ast | PipelineError]
     lineages: list[lineage.Lineage | PipelineError]
