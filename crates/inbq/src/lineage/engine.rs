@@ -1553,15 +1553,15 @@ impl LineageContext {
         let mut new_columns: IndexMap<String, Vec<IndexDepth>> = IndexMap::new();
         let mut new_ambiguous_columns: HashSet<String> = ambiguous_columns;
 
-        for key in new_tables.keys() {
-            let query_table = &self.arena_objects[new_tables[key].arena_index];
+        for index_depth in new_tables.values() {
+            let query_table = &self.arena_objects[index_depth.arena_index];
             for node_idx in &query_table.lineage_nodes {
                 let node = &self.arena_lineage_nodes[*node_idx];
                 new_columns
                     .entry(node.name.as_str().to_lowercase())
                     .or_default()
                     .push(IndexDepth {
-                        arena_index: new_tables[key].arena_index,
+                        arena_index: index_depth.arena_index,
                         depth: self.query_depth,
                     });
             }
@@ -2915,7 +2915,8 @@ impl LineageContext {
                     input.push(return_node_idx);
                     (
                         routine_name,
-                        return_type.unwrap_or(self.arena_lineage_nodes[node_idx].r#type.clone()),
+                        return_type
+                            .unwrap_or_else(|| self.arena_lineage_nodes[node_idx].r#type.clone()),
                     )
                 } else {
                     let return_node_idx = self.arena_objects[routine_idx].lineage_nodes[0];
@@ -2962,11 +2963,9 @@ impl LineageContext {
                 )
             }
             _ => {
-                let func = find_matching_function(name);
-                let return_type = if let Some(func_def) = func {
-                    (func_def.compute_return_type)(&args, &input)
-                } else {
-                    NodeType::Unknown
+                let return_type = match find_matching_function(name) {
+                    Some(func_def) => (func_def.compute_return_type)(name, &args, &input),
+                    None => NodeType::Unknown,
                 };
                 (name.to_lowercase(), return_type)
             }
@@ -3932,10 +3931,15 @@ impl LineageContext {
                 let col_in_table_idx = source
                     .lineage_nodes
                     .iter()
-                    .map(|&n_idx| (&self.arena_lineage_nodes[n_idx], n_idx))
-                    .filter(|(n, _)| n.name.as_str().eq_ignore_ascii_case(col_name))
-                    .collect::<Vec<_>>()[0]
-                    .1;
+                    .copied()
+                    .find(|&n_idx| {
+                        self.arena_lineage_nodes[n_idx]
+                            .name
+                            .as_str()
+                            .eq_ignore_ascii_case(col_name)
+                    })
+                    .unwrap();
+
                 new_lineage_nodes.push((
                     NodeName::Defined(col_name.clone()),
                     self.arena_lineage_nodes[col_in_table_idx].r#type.clone(),
@@ -6678,7 +6682,41 @@ pub struct Lineage {
     pub referenced_columns: ReferencedColumns,
 }
 
+fn fast_parse_simple_dtype(dtype: &str) -> Option<NodeType> {
+    const LONGEST_SIMPLE_TYPE_LEN: usize = 10; // bignumeric
+    if dtype.len() > LONGEST_SIMPLE_TYPE_LEN {
+        return None;
+    }
+    let mut buf = [0u8; LONGEST_SIMPLE_TYPE_LEN];
+    for (i, b) in dtype.bytes().enumerate() {
+        buf[i] = b.to_ascii_lowercase();
+    }
+    let lower = std::str::from_utf8(&buf[..dtype.len()]).ok()?;
+    match lower {
+        "int64" | "int" | "integer" | "smallint" | "bigint" | "tinyint" | "byteint" => {
+            Some(NodeType::Int64)
+        }
+        "string" => Some(NodeType::String),
+        "bool" | "boolean" => Some(NodeType::Boolean),
+        "float64" | "float" => Some(NodeType::Float64),
+        "timestamp" => Some(NodeType::Timestamp),
+        "date" => Some(NodeType::Date),
+        "datetime" => Some(NodeType::Datetime),
+        "time" => Some(NodeType::Time),
+        "numeric" | "decimal" | "dec" => Some(NodeType::Numeric),
+        "bignumeric" | "bigdecimal" => Some(NodeType::BigNumeric),
+        "bytes" => Some(NodeType::Bytes),
+        "json" => Some(NodeType::Json),
+        "geography" => Some(NodeType::Geography),
+        "interval" => Some(NodeType::Interval),
+        _ => None,
+    }
+}
+
 fn parse_parameterized_dtype(dtype: &str) -> anyhow::Result<NodeType> {
+    if let Some(node_type) = fast_parse_simple_dtype(dtype) {
+        return Ok(node_type);
+    }
     let mut scanner = Scanner::new(dtype);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
@@ -6687,6 +6725,9 @@ fn parse_parameterized_dtype(dtype: &str) -> anyhow::Result<NodeType> {
 }
 
 fn parse_dtype(dtype: &str) -> anyhow::Result<NodeType> {
+    if let Some(node_type) = fast_parse_simple_dtype(dtype) {
+        return Ok(node_type);
+    }
     let mut scanner = Scanner::new(dtype);
     scanner.scan()?;
     let mut parser = Parser::new(scanner.tokens());
@@ -7013,32 +7054,27 @@ fn _extract_lineage(
             IndexMap<ArenaIndex, IndexSet<(ArenaIndex, ArenaIndex, NodeOrigin)>>,
         > = IndexMap::new();
 
+        let mut visited = HashSet::new();
+        let mut stack: Vec<(ArenaIndex, NodeOrigin)> = Vec::new();
+
         for output_node_idx in &lineage_extractor.context.output {
             let output_node = &lineage_extractor.context.arena_lineage_nodes[*output_node_idx];
             let output_source_idx = output_node.source_obj;
 
-            let mut visited = HashSet::new();
+            visited.clear();
+            stack.clear();
+            stack.extend(output_node.input.iter().map(|node_idx| {
+                (
+                    *node_idx,
+                    lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
+                        | output_node.origin,
+                )
+            }));
 
-            let mut stack: Vec<(ArenaIndex, NodeOrigin)> = output_node
-                .input
-                .iter()
-                .map(|node_idx| {
-                    (
-                        *node_idx,
-                        lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
-                            | output_node.origin,
-                    )
-                })
-                .collect();
-            loop {
-                if stack.is_empty() {
-                    break;
-                }
-                let (curr_node_idx, curr_origin) = stack.pop().unwrap();
-                if visited.contains(&(curr_node_idx, curr_origin)) {
+            while let Some((curr_node_idx, curr_origin)) = stack.pop() {
+                if !visited.insert((curr_node_idx, curr_origin)) {
                     continue;
                 }
-                visited.insert((curr_node_idx, curr_origin));
                 let node = &lineage_extractor.context.arena_lineage_nodes[curr_node_idx];
 
                 let source_obj_idx = node.source_obj;
@@ -7052,25 +7088,17 @@ fn _extract_lineage(
                         .and_modify(|s| {
                             s.insert((source_obj_idx, curr_node_idx, curr_origin));
                         })
-                        .or_insert(IndexSet::from([(
-                            source_obj_idx,
-                            curr_node_idx,
-                            curr_origin,
-                        )]));
+                        .or_insert_with(|| {
+                            IndexSet::from([(source_obj_idx, curr_node_idx, curr_origin)])
+                        });
                 } else {
-                    stack.extend(
-                        &node
-                            .input
-                            .iter()
-                            .map(|node_idx| {
-                                (
-                                    *node_idx,
-                                    lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
-                                        | curr_origin,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    );
+                    stack.extend(node.input.iter().map(|node_idx| {
+                        (
+                            *node_idx,
+                            lineage_extractor.context.arena_lineage_nodes[*node_idx].origin
+                                | curr_origin,
+                        )
+                    }));
                 }
             }
         }
