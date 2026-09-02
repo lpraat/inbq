@@ -1,4 +1,4 @@
-use crate::ast::{CreateJsFunctionStatement, UnnestExpr};
+use crate::ast::{CreateJsFunctionStatement, Number, UnnestExpr};
 use crate::{
     arena::{Arena, ArenaIndex},
     ast::{
@@ -1906,7 +1906,7 @@ impl LineageContext {
     /// Handles an eventual `expr IN UNNEST(array_of_structs.field)`
     /// like `select "bar" in unnest([struct("foo" as x, 2 as y), struct("bar", 2)].x)`
     /// which is unexpectedly valid syntax
-    fn expr_in_unnest_array_of_structs_field_lin(
+    fn in_unnest_array_of_structs_field_expr_lin(
         &mut self,
         catalog: &LineageCatalog,
         expr: &BinaryExpr,
@@ -1915,35 +1915,40 @@ impl LineageContext {
         if expr.operator == BinaryOperator::In
             && let (left_expr, Expr::Unnest(UnnestExpr { array })) = (&expr.left, &*expr.right)
             && let Expr::Binary(BinaryExpr {
-                left,
+                left: _,
                 operator: BinaryOperator::FieldAccess,
-                right,
+                right: _,
             }) = &**array
         {
-            match &**right {
-                Expr::Identifier(Identifier { name: ident })
-                | Expr::QuotedIdentifier(QuotedIdentifier { name: ident }) => {
-                    let node_idx = self.expr_lin(catalog, left, false, node_origin)?;
-                    let node = &self.arena_lineage_nodes[node_idx];
-                    debug_assert!(matches!(node.r#type, NodeType::Array(_)));
-                    let mut access_path = AccessPath::default();
-                    access_path.path.push(AccessOp::Index);
-                    access_path.path.push(AccessOp::Field(ident.clone()));
-                    let nested_node_idx = node.access(&access_path)?;
-                    let right_node_idx =
-                        self.nested_node_lin(&access_path, nested_node_idx, node_origin, &[]);
-                    let left_node_idx = self.expr_lin(catalog, left_expr, false, node_origin)?;
-                    return Ok(Some(self.allocate_expr_node(
-                        "in_unnest_aos_field",
-                        NodeType::Boolean,
-                        node_origin,
-                        vec![left_node_idx, right_node_idx],
-                    )));
+            // Rewrite unnest(array_of_structs.f1.f2) as array_of_structs[0].f1.f2
+            fn index_aos(expr: &Expr) -> Expr {
+                match expr {
+                    Expr::Binary(binary) => Expr::Binary(BinaryExpr {
+                        left: Box::new(index_aos(&binary.left)),
+                        operator: binary.operator,
+                        right: binary.right.clone(),
+                    }),
+                    base => Expr::Binary(BinaryExpr {
+                        left: Box::new(base.clone()),
+                        operator: BinaryOperator::ArrayIndex,
+                        right: Box::new(Expr::Number(Number {
+                            value: "0".to_string(),
+                        })),
+                    }),
                 }
-                _ => {}
             }
+            let rewritten_right_expr = index_aos(array);
+            let left_idx = self.expr_lin(catalog, left_expr, false, node_origin)?;
+            let right_idx = self.expr_lin(catalog, &rewritten_right_expr, false, node_origin)?;
+            Ok(Some(self.allocate_expr_node(
+                "in_unnest_aos_field",
+                NodeType::Boolean,
+                node_origin,
+                vec![left_idx, right_idx],
+            )))
+        } else {
+            Ok(None)
         }
-        Ok(None)
     }
 
     fn binary_expr_lin(
@@ -1952,11 +1957,12 @@ impl LineageContext {
         expr: &BinaryExpr,
         node_origin: NodeOrigin,
     ) -> anyhow::Result<ArenaIndex> {
-        if let Some(node_idx) =
-            self.expr_in_unnest_array_of_structs_field_lin(catalog, expr, node_origin)?
+        if let Some(unnest_aos) =
+            self.in_unnest_array_of_structs_field_expr_lin(catalog, expr, node_origin)?
         {
-            return Ok(node_idx);
+            return Ok(unnest_aos);
         }
+
         let mut b = expr;
         let mut access_path = AccessPath::default();
         loop {

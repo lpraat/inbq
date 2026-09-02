@@ -3624,3 +3624,44 @@ res.side_inputs = []
 [tests.referenced_columns."proj.dat.in_table"]
 x = ["select"]
 y = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select 1 in unnest([struct(ss as ss, 2 as y), struct((1,3), 4)].ss.w)
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "ss", dtype = "struct<w int64, z int64>"}
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "res", dtype = "BOOLEAN" }]
+[tests.ready_lineage."proj.dat.out_table"]
+res.inputs = ["proj.dat.in_table->ss.w"]
+res.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+ss = ["select"]
+"ss.w" = ["select"]
+
+[[tests]]
+sql = """
+insert into proj.dat.out_table
+select 1 in unnest(ss.ii[0].x)
+from proj.dat.in_table
+"""
+[[tests.schema_objects]]
+name = "proj.dat.in_table"
+kind.table.columns = [
+    { name = "ss", dtype = "array<struct<ii array<struct<x int64, y int64>>>>" },
+]
+[[tests.schema_objects]]
+name = "proj.dat.out_table"
+kind.table.columns = [{ name = "res", dtype = "BOOLEAN" }]
+[tests.ready_lineage."proj.dat.out_table"]
+res.inputs = ["proj.dat.in_table->ss[].ii[].x"]
+res.side_inputs = []
+[tests.referenced_columns."proj.dat.in_table"]
+"ss[].ii[].x" = ["select"]
